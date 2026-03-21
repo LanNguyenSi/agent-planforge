@@ -23,6 +23,7 @@
     "executionWaves",
     "dependencyGraph",
     "promptExports",
+    "handoffManifest",
     "risks",
     "openQuestions"
   ],
@@ -416,6 +417,179 @@
           },
           "path": {
             "type": "string"
+          }
+        }
+      }
+    },
+    "handoffManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "summary",
+        "coordinationStrategy",
+        "recommendedArchitectureOptionId",
+        "recommendedArchitectureShape",
+        "sharedContext",
+        "sharedArtifacts",
+        "steps"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "coordinationStrategy": {
+          "type": "string"
+        },
+        "recommendedArchitectureOptionId": {
+          "type": "string"
+        },
+        "recommendedArchitectureShape": {
+          "type": "string"
+        },
+        "sharedContext": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "phase",
+            "path",
+            "plannerProfile",
+            "intakeCompleteness"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "enum": [
+                "phase_0",
+                "phase_1",
+                "phase_2",
+                "phase_3"
+              ]
+            },
+            "path": {
+              "type": "string",
+              "enum": [
+                "core",
+                "enterprise"
+              ]
+            },
+            "plannerProfile": {
+              "type": "string",
+              "enum": [
+                "startup",
+                "product",
+                "enterprise",
+                "platform"
+              ]
+            },
+            "intakeCompleteness": {
+              "type": "string",
+              "enum": [
+                "complete",
+                "partial",
+                "insufficient"
+              ]
+            }
+          }
+        },
+        "sharedArtifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "objective",
+              "executionMode",
+              "dependsOn",
+              "parallelGroup",
+              "agentAssignments"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "objective": {
+                "type": "string"
+              },
+              "executionMode": {
+                "type": "string",
+                "enum": [
+                  "sequential",
+                  "parallel"
+                ]
+              },
+              "dependsOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "parallelGroup": {
+                "type": "string"
+              },
+              "agentAssignments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "role",
+                    "promptExportId",
+                    "promptPath",
+                    "reads",
+                    "writes",
+                    "successCriteria"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "promptExportId": {
+                      "type": "string"
+                    },
+                    "promptPath": {
+                      "type": "string"
+                    },
+                    "reads": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "writes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "successCriteria": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

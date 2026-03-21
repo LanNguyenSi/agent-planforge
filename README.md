@@ -26,6 +26,7 @@ it produces a first planning package:
 - task backlog with dependencies
 - delivery plan with execution waves
 - prompt pack for downstream agents
+- multi-agent handoff manifest for orchestrated follow-on work
 - machine-readable planning output
 - phase rationale and recommended artifacts
 - explicit guidance areas beyond the local planning playbook
@@ -45,6 +46,7 @@ This first version includes:
 - reusable markdown templates for generated planning artifacts
 - profile-aware planning modes for startup, product, enterprise, and platform work
 - prompt exports for downstream agent execution
+- handoff manifest generation for staged or parallel downstream agents
 
 ## Quick Start
 
@@ -77,6 +79,7 @@ This creates:
 - `out/sample/architecture-overview.md`
 - `out/sample/delivery-plan.md`
 - `out/sample/prompts/`
+- `out/sample/handoff-manifest.json`
 - `out/sample/adrs/ADR-001-initial-architecture.md`
 - `out/sample/tasks/`
 - `out/sample/governance/` for enterprise-path starter docs when relevant
@@ -107,4 +110,4 @@ Likely next additions:
 
 - richer validation against the JSON schemas
 - prompt packs for agent-specific planning modes
-- optional enterprise artifact generation
+- richer handoff and agent coordination policies

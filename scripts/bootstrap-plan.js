@@ -89,6 +89,10 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+function slugify(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 function renderTemplate(repoRoot, relativeTemplatePath, values) {
   const template = readText(path.join(repoRoot, relativeTemplatePath));
   return Object.entries(values).reduce((content, [key, value]) => {
@@ -701,6 +705,7 @@ function buildOutput(input, config) {
     executionWaves: executionWaves(tasks),
     dependencyGraph: dependencyGraph(tasks),
     promptExports: [],
+    handoffManifest: {},
     risks: buildRisks(input, phase),
     openQuestions: input.openQuestions || []
   };
@@ -915,6 +920,14 @@ function renderTaskDocument(repoRoot, task) {
   });
 }
 
+function taskDocumentPath(task) {
+  return `tasks/${task.id}-${slugify(task.title)}.md`;
+}
+
+function adrDocumentPath(index, adr) {
+  return `adrs/${String(index + 1).padStart(3, "0")}-${slugify(adr.title)}.md`;
+}
+
 function renderRunbookBaseline(repoRoot, input, output) {
   return renderTemplate(repoRoot, "templates/runbook-template.md", {
     title: `${input.projectName} Release Readiness`,
@@ -1111,15 +1124,216 @@ function writePromptExports(repoRoot, input, output, outdir) {
   output.promptExports = promptExports;
 }
 
+function buildHandoffManifest(input, output) {
+  const promptById = new Map(output.promptExports.map((item) => [item.id, item]));
+  const steps = [];
+  const intakePrompt = promptById.get("intake-followup");
+  const architecturePrompt = promptById.get("architecture-analysis");
+  const executionPrompt = promptById.get("execution-next-wave");
+  const governancePrompt = promptById.get("governance-setup");
+  const architectureOption = output.architectureOptions.find(
+    (option) => option.id === output.architectureRecommendation.optionId
+  );
+  const firstWave = output.executionWaves[0];
+
+  if (intakePrompt) {
+    steps.push({
+      id: "step-1-intake-clarification",
+      name: "Resolve Missing Planning Inputs",
+      objective: "Close the blocking or high-value planning gaps before deeper architecture or delivery work continues.",
+      executionMode: "sequential",
+      dependsOn: [],
+      parallelGroup: "preflight",
+      agentAssignments: [
+        {
+          id: "agent-intake-clarifier",
+          role: "requirements-analyst",
+          promptExportId: intakePrompt.id,
+          promptPath: intakePrompt.path,
+          reads: [
+            "plan-output.json",
+            "intake-questionnaire.md",
+            "project-charter.md",
+            intakePrompt.path
+          ],
+          writes: [
+            "updated planning input",
+            "clarified assumptions",
+            "resolved blocker answers"
+          ],
+          successCriteria: [
+            "Every blocking intake question has an explicit answer or a named decision owner.",
+            "The clarified requirements are concrete enough to rerun the planner without guesswork."
+          ]
+        }
+      ]
+    });
+  }
+
+  const planningDependencies = intakePrompt ? ["step-1-intake-clarification"] : [];
+
+  if (architecturePrompt) {
+    steps.push({
+      id: "step-2-architecture-review",
+      name: "Review Architecture Direction",
+      objective: "Challenge the default architecture and confirm whether the recommended option still fits the clarified scope.",
+      executionMode: "parallel",
+      dependsOn: planningDependencies,
+      parallelGroup: "planning-review",
+      agentAssignments: [
+        {
+          id: "agent-architecture-reviewer",
+          role: "architecture-reviewer",
+          promptExportId: architecturePrompt.id,
+          promptPath: architecturePrompt.path,
+          reads: [
+            "plan-output.json",
+            "architecture-overview.md",
+            "delivery-plan.md",
+            architecturePrompt.path
+          ],
+          writes: [
+            "architecture review notes",
+            "ADR update proposals",
+            "recommended architecture adjustments"
+          ],
+          successCriteria: [
+            "The recommended option is either confirmed or replaced with an explicit rationale.",
+            "Key tradeoffs and module boundaries are clear enough to guide the first implementation wave."
+          ]
+        }
+      ]
+    });
+  }
+
+  if (governancePrompt) {
+    steps.push({
+      id: "step-3-governance-setup",
+      name: "Establish Governance Baseline",
+      objective: "Create the minimum enterprise control artifacts needed before implementation moves too far ahead.",
+      executionMode: "parallel",
+      dependsOn: planningDependencies,
+      parallelGroup: "planning-review",
+      agentAssignments: [
+        {
+          id: "agent-governance-lead",
+          role: "governance-analyst",
+          promptExportId: governancePrompt.id,
+          promptPath: governancePrompt.path,
+          reads: [
+            "plan-output.json",
+            governancePrompt.path,
+            "governance/service-ownership.md",
+            "governance/data-classification-matrix.md",
+            "governance/access-review-plan.md",
+            "governance/exception-register.md"
+          ],
+          writes: [
+            "completed governance artifact set",
+            "control gaps",
+            "named ownership and review cadences"
+          ],
+          successCriteria: [
+            "Service ownership, data classification, access review, and exception tracking are populated with real owners and cadences.",
+            "Known control gaps are explicit instead of being left implicit."
+          ]
+        }
+      ]
+    });
+  }
+
+  if (executionPrompt && firstWave) {
+    const executionDependencies = [];
+    if (architecturePrompt) {
+      executionDependencies.push("step-2-architecture-review");
+    }
+    if (governancePrompt) {
+      executionDependencies.push("step-3-governance-setup");
+    }
+    if (!executionDependencies.length && intakePrompt) {
+      executionDependencies.push("step-1-intake-clarification");
+    }
+
+    const waveTaskPaths = firstWave.taskIds
+      .map((taskId) => output.tasks.find((task) => task.id === taskId))
+      .filter(Boolean)
+      .map(taskDocumentPath);
+
+    steps.push({
+      id: "step-4-wave-1-execution",
+      name: "Execute First Delivery Wave",
+      objective: "Implement the initial foundation tasks with the current architecture and control assumptions.",
+      executionMode: "sequential",
+      dependsOn: executionDependencies,
+      parallelGroup: "delivery",
+      agentAssignments: [
+        {
+          id: "agent-delivery-lead",
+          role: "implementation-lead",
+          promptExportId: executionPrompt.id,
+          promptPath: executionPrompt.path,
+          reads: [
+            "plan-output.json",
+            "delivery-plan.md",
+            executionPrompt.path
+          ].concat(waveTaskPaths),
+          writes: [
+            "implemented wave-1 scope",
+            "updated tests and docs",
+            "next-wave handoff notes"
+          ],
+          successCriteria: [
+            `All tasks in ${firstWave.id} are either completed or explicitly re-scoped with reasons.`,
+            "Dependency-sensitive work lands in a reviewable sequence without skipping tests or documentation."
+          ]
+        }
+      ]
+    });
+  }
+
+  const manifestArtifacts = [
+    "plan-output.json",
+    "project-charter.md",
+    "architecture-overview.md",
+    "delivery-plan.md"
+  ];
+
+  if (output.intakeCompleteness !== "complete") {
+    manifestArtifacts.push("intake-questionnaire.md");
+  }
+
+  output.adrCandidates.forEach((adr, index) => {
+    manifestArtifacts.push(adrDocumentPath(index, adr));
+  });
+
+  return {
+    version: "1.0",
+    summary: "Coordinate downstream planning, governance, and execution agents from a single generated manifest.",
+    coordinationStrategy: intakePrompt
+      ? "Resolve intake blockers first, then run planning review steps in parallel where possible, then begin execution."
+      : "Use planning review steps in parallel where possible, then move into execution on the first delivery wave.",
+    recommendedArchitectureOptionId: output.architectureRecommendation.optionId,
+    recommendedArchitectureShape: architectureOption ? architectureOption.shape : output.architectureRecommendation.shape,
+    sharedContext: {
+      phase: output.phase,
+      path: output.path,
+      plannerProfile: output.plannerProfile,
+      intakeCompleteness: output.intakeCompleteness
+    },
+    sharedArtifacts: manifestArtifacts,
+    steps
+  };
+}
+
 function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
   output.adrCandidates.forEach((adr, index) => {
-    const filename = `${String(index + 1).padStart(3, "0")}-${adr.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`;
+    const filename = `${String(index + 1).padStart(3, "0")}-${slugify(adr.title)}.md`;
     writeFile(path.join(outdir, "adrs", filename), renderAdrDocument(repoRoot, input, adr));
   });
 
   output.tasks.forEach((task) => {
     writeFile(
-      path.join(outdir, "tasks", `${task.id}-${task.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`),
+      path.join(outdir, taskDocumentPath(task)),
       renderTaskDocument(repoRoot, task)
     );
   });
@@ -1151,7 +1365,9 @@ function main() {
 
   ensureDir(outdir);
   writePromptExports(repoRoot, input, output, outdir);
+  output.handoffManifest = buildHandoffManifest(input, output);
   writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
+  writeFile(path.join(outdir, "handoff-manifest.json"), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
   writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(repoRoot, input, output));
   writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
   writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
