@@ -2,6 +2,10 @@
 
 Planning bootstrap for AI agents that need to turn rough requirements into a first architecture, initial ADR candidates, and an implementation backlog.
 
+Status: WIP. The core planning flow works, but the project is still being hardened. Open implementation work is tracked in `tasks/`.
+
+`agent-planforge` is open source under the MIT license. Contribution, security reporting, and community expectations are documented in this repository.
+
 ## What This Project Does
 
 `agent-planforge` is a lightweight planning layer for the earliest engineering phase of a project.
@@ -48,6 +52,15 @@ This first version includes:
 - prompt exports for downstream agent execution
 - handoff manifest generation for staged or parallel downstream agents
 
+## Open Source Project Status
+
+This repository is public-facing and contribution-ready, but still early.
+
+- Core planning flow: usable
+- Stability and test coverage: in progress
+- Backlog for hardening work: `tasks/`
+- API and output compatibility: not yet guaranteed across minor revisions
+
 ## Quick Start
 
 Requirements:
@@ -87,6 +100,11 @@ This creates:
 
 ## Repository Structure
 
+- `.github/`
+- `CODE_OF_CONDUCT.md`
+- `CONTRIBUTING.md`
+- `LICENSE`
+- `SECURITY.md`
 - `playbooks/planning-and-scoping.md`
 - `models/planning-input.schema.json`
 - `models/planning-output.schema.json`
@@ -95,6 +113,7 @@ This creates:
 - `scripts/bootstrap-plan.js`
 - `examples/sample-input.json`
 - `templates/`
+- `tasks/`
 
 ## Design Principles
 
@@ -104,10 +123,30 @@ This creates:
 - keep generated artifacts editable by humans and agents
 - ask for missing information explicitly when confidence would otherwise be fake
 
+## Contributing
+
+Contribution guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For now, the most useful contributions are:
+
+- schema validation
+- automated tests
+- runner contract design
+- rerun and resume semantics
+- handoff policy refinement
+
+## Security
+
+Security reporting guidance lives in [SECURITY.md](SECURITY.md). Do not open a public issue for a suspected vulnerability affecting confidentiality, integrity, or access control.
+
+## Code Of Conduct
+
+Community expectations live in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+## License
+
+This project is licensed under the MIT license. See [LICENSE](LICENSE).
+
 ## Next Steps
 
-Likely next additions:
-
-- richer validation against the JSON schemas
-- prompt packs for agent-specific planning modes
-- richer handoff and agent coordination policies
+The remaining hardening work is tracked as task files in `tasks/`.

@@ -1,8 +1,15 @@
 {
   "name": "agent-planforge",
   "version": "0.1.0",
-  "private": true,
   "description": "Planning bootstrap for agentic architecture and task generation",
+  "license": "MIT",
+  "keywords": [
+    "agentic",
+    "planning",
+    "architecture",
+    "task-generation",
+    "bootstrap"
+  ],
   "scripts": {
     "plan:bootstrap": "node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/sample"
   },
