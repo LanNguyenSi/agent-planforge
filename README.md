@@ -37,6 +37,7 @@ This first version includes:
 
 - a planning playbook
 - an external planner ruleset in `config/planner-config.json`
+- a config schema in `models/planner-config.schema.json`
 - JSON schemas for planning input and output
 - a Node CLI that bootstraps planning artifacts from a JSON input file
 - gap detection for missing planning context
@@ -57,6 +58,15 @@ node scripts/bootstrap-plan.js \
   --outdir out/sample
 ```
 
+Optional override:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample-custom \
+  --config examples/planner-config.override.json
+```
+
 This creates:
 
 - `out/sample/plan-output.json`
@@ -74,6 +84,7 @@ This creates:
 - `playbooks/planning-and-scoping.md`
 - `models/planning-input.schema.json`
 - `models/planning-output.schema.json`
+- `models/planner-config.schema.json`
 - `config/planner-config.json`
 - `scripts/bootstrap-plan.js`
 - `examples/sample-input.json`

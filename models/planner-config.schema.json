@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PlannerConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "defaultProfile",
+    "common",
+    "profiles",
+    "governanceDefaults"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "defaultProfile": {
+      "type": "string",
+      "enum": [
+        "startup",
+        "product",
+        "enterprise",
+        "platform"
+      ]
+    },
+    "common": {
+      "type": "object"
+    },
+    "profiles": {
+      "type": "object"
+    },
+    "governanceDefaults": {
+      "type": "object"
+    }
+  }
+}

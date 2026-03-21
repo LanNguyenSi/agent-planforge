@@ -1,0 +1,98 @@
+{
+  "version": "1.0-team-a",
+  "defaultProfile": "startup",
+  "common": {
+    "guidanceAreasBase": [
+      "project setup",
+      "architecture"
+    ],
+    "guidanceAreasByPhase": {
+      "phase_0": [
+        "documentation"
+      ],
+      "phase_1": [
+        "development workflow",
+        "testing strategy",
+        "documentation"
+      ],
+      "phase_2": [
+        "development workflow",
+        "testing strategy",
+        "documentation",
+        "production readiness"
+      ],
+      "phase_3": [
+        "development workflow",
+        "testing strategy",
+        "documentation",
+        "production readiness",
+        "security and governance"
+      ]
+    },
+    "artifactsBase": [
+      "project-charter.md",
+      "architecture-overview.md",
+      "adrs/",
+      "tasks/"
+    ],
+    "artifactsByPhase": {
+      "phase_2": [
+        "runbook baseline"
+      ],
+      "phase_3": [
+        "runbook baseline",
+        "service ownership record"
+      ]
+    }
+  },
+  "profiles": {
+    "startup": {
+      "guidanceAreaAdditionsByPhase": {
+        "phase_1": [
+          "lean scope control",
+          "founder feedback loop"
+        ]
+      },
+      "artifactAdditionsByPhase": {
+        "phase_1": [
+          "decision log"
+        ]
+      },
+      "intakePolicy": {
+        "nfrPriority": "low",
+        "nfrBlocking": false
+      }
+    },
+    "product": {
+      "guidanceAreaAdditionsByPhase": {},
+      "artifactAdditionsByPhase": {},
+      "intakePolicy": {
+        "nfrPriority": "medium",
+        "nfrBlocking": true
+      }
+    },
+    "enterprise": {
+      "guidanceAreaAdditionsByPhase": {},
+      "artifactAdditionsByPhase": {},
+      "intakePolicy": {
+        "nfrPriority": "high",
+        "nfrBlocking": true
+      }
+    },
+    "platform": {
+      "guidanceAreaAdditionsByPhase": {},
+      "artifactAdditionsByPhase": {},
+      "intakePolicy": {
+        "nfrPriority": "high",
+        "nfrBlocking": true
+      }
+    }
+  },
+  "governanceDefaults": {
+    "accessReviewCadence": "Quarterly",
+    "productionAccessCadence": "Quarterly",
+    "administrativeAccessCadence": "Monthly",
+    "thirdPartyAccessCadence": "Quarterly",
+    "breakGlassCadence": "After every use"
+  }
+}

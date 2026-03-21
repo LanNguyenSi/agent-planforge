@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 function parseArgs(argv) {
-  const args = { input: "", outdir: "" };
+  const args = { input: "", outdir: "", config: "" };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--input") {
@@ -12,6 +12,9 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg === "--outdir") {
       args.outdir = argv[i + 1] || "";
+      i += 1;
+    } else if (arg === "--config") {
+      args.config = argv[i + 1] || "";
       i += 1;
     }
   }
@@ -26,8 +29,60 @@ function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-function loadPlannerConfig(repoRoot) {
-  return readJson(path.join(repoRoot, "config/planner-config.json"));
+function configPath(repoRoot, overridePath) {
+  return overridePath
+    ? path.resolve(repoRoot, overridePath)
+    : path.join(repoRoot, "config/planner-config.json");
+}
+
+function validatePlannerConfig(config) {
+  const profileNames = ["startup", "product", "enterprise", "platform"];
+  const phases = ["phase_0", "phase_1", "phase_2", "phase_3"];
+  const priorities = ["high", "medium", "low"];
+
+  function assert(condition, message) {
+    if (!condition) {
+      throw new Error(`Invalid planner config: ${message}`);
+    }
+  }
+
+  assert(config && typeof config === "object", "config root must be an object");
+  assert(typeof config.version === "string" && config.version.length > 0, "`version` must be a non-empty string");
+  assert(profileNames.includes(config.defaultProfile), "`defaultProfile` must be one of startup, product, enterprise, platform");
+  assert(config.common && typeof config.common === "object", "`common` must be present");
+  assert(Array.isArray(config.common.guidanceAreasBase), "`common.guidanceAreasBase` must be an array");
+  assert(config.common.guidanceAreasByPhase && typeof config.common.guidanceAreasByPhase === "object", "`common.guidanceAreasByPhase` must be present");
+  assert(Array.isArray(config.common.artifactsBase), "`common.artifactsBase` must be an array");
+  assert(config.common.artifactsByPhase && typeof config.common.artifactsByPhase === "object", "`common.artifactsByPhase` must be present");
+  assert(config.profiles && typeof config.profiles === "object", "`profiles` must be present");
+  assert(config.governanceDefaults && typeof config.governanceDefaults === "object", "`governanceDefaults` must be present");
+
+  phases.forEach((phase) => {
+    const guidance = config.common.guidanceAreasByPhase[phase];
+    if (guidance !== undefined) {
+      assert(Array.isArray(guidance), `common.guidanceAreasByPhase.${phase} must be an array when present`);
+    }
+    const artifacts = config.common.artifactsByPhase[phase];
+    if (artifacts !== undefined) {
+      assert(Array.isArray(artifacts), `common.artifactsByPhase.${phase} must be an array when present`);
+    }
+  });
+
+  profileNames.forEach((profileName) => {
+    const profile = config.profiles[profileName];
+    assert(profile && typeof profile === "object", `profiles.${profileName} must be present`);
+    const intakePolicy = profile.intakePolicy;
+    assert(intakePolicy && typeof intakePolicy === "object", `profiles.${profileName}.intakePolicy must be present`);
+    assert(priorities.includes(intakePolicy.nfrPriority), `profiles.${profileName}.intakePolicy.nfrPriority must be high, medium, or low`);
+    assert(typeof intakePolicy.nfrBlocking === "boolean", `profiles.${profileName}.intakePolicy.nfrBlocking must be boolean`);
+  });
+}
+
+function loadPlannerConfig(repoRoot, overridePath) {
+  const resolvedPath = configPath(repoRoot, overridePath);
+  const config = readJson(resolvedPath);
+  validatePlannerConfig(config);
+  return config;
 }
 
 function ensureDir(dirPath) {
@@ -967,12 +1022,12 @@ function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
 function main() {
   const args = parseArgs(process.argv);
   if (!args.input || !args.outdir) {
-    console.error("Usage: node scripts/bootstrap-plan.js --input <file> --outdir <dir>");
+    console.error("Usage: node scripts/bootstrap-plan.js --input <file> --outdir <dir> [--config <file>]");
     process.exit(1);
   }
 
   const repoRoot = process.cwd();
-  const config = loadPlannerConfig(repoRoot);
+  const config = loadPlannerConfig(repoRoot, args.config);
   const input = readJson(path.resolve(repoRoot, args.input));
   const output = buildOutput(input, config);
   const outdir = path.resolve(repoRoot, args.outdir);
