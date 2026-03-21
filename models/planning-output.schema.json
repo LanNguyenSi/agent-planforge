@@ -7,6 +7,7 @@
     "projectName",
     "intakeCompleteness",
     "missingInformation",
+    "intakeQuestions",
     "followUpQuestions",
     "phase",
     "phaseRationale",
@@ -39,6 +40,49 @@
       "type": "array",
       "items": {
         "type": "string"
+      }
+    },
+    "intakeQuestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "priority",
+          "question",
+          "reason",
+          "affects",
+          "blocking"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "question": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "affects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocking": {
+            "type": "boolean"
+          }
+        }
       }
     },
     "followUpQuestions": {

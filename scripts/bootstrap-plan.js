@@ -61,39 +61,102 @@ function inferPath(phase) {
 
 function intakeSignals(input) {
   const missingInformation = [];
-  const followUpQuestions = [];
+  const intakeQuestions = [];
+
+  function addQuestion(id, priority, question, reason, affects, blocking, missingLabel) {
+    if (missingLabel) {
+      missingInformation.push(missingLabel);
+    }
+    intakeQuestions.push({
+      id,
+      priority,
+      question,
+      reason,
+      affects,
+      blocking
+    });
+  }
 
   if (!input.summary || input.summary.trim().length < 20) {
-    missingInformation.push("Problem statement is too short to guide architecture confidently.");
-    followUpQuestions.push("What exact problem does the product solve, and what does success look like?");
+    addQuestion(
+      "Q-001",
+      "high",
+      "What exact problem does the product solve, and what does success look like?",
+      "The current problem statement is too thin to guide architecture or task slicing confidently.",
+      ["architecture choice", "task prioritization", "acceptance criteria"],
+      true,
+      "Problem statement is too short to guide architecture confidently."
+    );
   }
 
   if (!input.targetUsers || input.targetUsers.length === 0) {
-    missingInformation.push("Target users are missing.");
-    followUpQuestions.push("Who are the primary users or operators of the system?");
+    addQuestion(
+      "Q-002",
+      "high",
+      "Who are the primary users or operators of the system?",
+      "User roles influence access model, UX shape, and operational assumptions.",
+      ["authorization model", "interface scope", "service ownership"],
+      true,
+      "Target users are missing."
+    );
   }
 
   if (!input.coreFeatures || input.coreFeatures.length === 0) {
-    missingInformation.push("Core features are missing.");
-    followUpQuestions.push("What are the first must-have capabilities for the product?");
+    addQuestion(
+      "Q-003",
+      "high",
+      "What are the first must-have capabilities for the product?",
+      "Without clear core features, the planner cannot produce a trustworthy backlog.",
+      ["task slicing", "delivery waves", "architecture option scoring"],
+      true,
+      "Core features are missing."
+    );
   }
 
   if (!input.constraints || input.constraints.length === 0) {
-    missingInformation.push("Constraints are missing.");
-    followUpQuestions.push("What constraints matter most right now: time, budget, technology, compliance, or team capability?");
+    addQuestion(
+      "Q-004",
+      "high",
+      "What constraints matter most right now: time, budget, technology, compliance, or team capability?",
+      "Constraints shape architecture tradeoffs and what can realistically ship first.",
+      ["architecture recommendation", "scope control", "delivery plan"],
+      true,
+      "Constraints are missing."
+    );
   }
 
   if (!input.nonFunctionalRequirements || input.nonFunctionalRequirements.length === 0) {
-    missingInformation.push("Non-functional requirements are not defined.");
-    followUpQuestions.push("What non-functional expectations matter most: performance, availability, security, auditability, or scalability?");
+    addQuestion(
+      "Q-005",
+      "medium",
+      "What non-functional expectations matter most: performance, availability, security, auditability, or scalability?",
+      "Non-functional requirements influence architecture scoring and production readiness.",
+      ["architecture scoring", "production readiness", "quality tasks"],
+      true,
+      "Non-functional requirements are not defined."
+    );
   }
 
   if ((input.integrations || []).length === 0) {
-    followUpQuestions.push("Are there external integrations, identity providers, or messaging systems the product must rely on?");
+    addQuestion(
+      "Q-006",
+      "medium",
+      "Are there external integrations, identity providers, or messaging systems the product must rely on?",
+      "Integrations change failure modes, security assumptions, and delivery scope.",
+      ["integration strategy", "risk list", "delivery waves"],
+      false
+    );
   }
 
   if (input.dataSensitivity === "high" || input.dataSensitivity === "regulated") {
-    followUpQuestions.push("What specific sensitive or regulated data types will the system handle?");
+    addQuestion(
+      "Q-007",
+      "medium",
+      "What specific sensitive or regulated data types will the system handle?",
+      "The current data sensitivity is high, but the exact data classes are not yet explicit.",
+      ["governance artifacts", "security controls", "compliance posture"],
+      false
+    );
   }
 
   let intakeCompleteness = "complete";
@@ -106,7 +169,8 @@ function intakeSignals(input) {
   return {
     intakeCompleteness,
     missingInformation,
-    followUpQuestions
+    intakeQuestions,
+    followUpQuestions: intakeQuestions.map((item) => item.question)
   };
 }
 
@@ -590,6 +654,7 @@ function buildOutput(input) {
     projectName: input.projectName,
     intakeCompleteness: intake.intakeCompleteness,
     missingInformation: intake.missingInformation,
+    intakeQuestions: intake.intakeQuestions,
     followUpQuestions: intake.followUpQuestions,
     phase,
     phaseRationale: phaseRationale(input, phase),
@@ -662,6 +727,34 @@ ${toMarkdownList(output.followUpQuestions)}
 
 ${toMarkdownList(output.openQuestions)}
 `;
+}
+
+function renderIntakeQuestionnaire(repoRoot, input, output) {
+  const questions = output.intakeQuestions.length
+    ? output.intakeQuestions.map((item) => {
+        return `### ${item.id} (${item.priority}${item.blocking ? ", blocker" : ""})
+
+Question: ${item.question}
+
+Why it matters:
+- ${item.reason}
+
+Affected decisions:
+${toMarkdownList(item.affects)}`;
+      }).join("\n\n")
+    : "No additional questions are required for the current planning input.";
+
+  const nextStep = output.intakeCompleteness === "complete"
+    ? "The current input is sufficient for initial planning. Review the generated plan and refine any optional questions as needed."
+    : "Answer the high-priority questions first, then rerun the planner before relying on the backlog and architecture recommendation.";
+
+  return renderTemplate(repoRoot, "templates/intake-questionnaire-template.md", {
+    projectName: input.projectName,
+    intakeCompleteness: output.intakeCompleteness,
+    summary: "This questionnaire captures the missing or still ambiguous inputs that most affect planning quality.",
+    questions,
+    nextStep
+  });
 }
 
 function renderArchitectureOverview(input, output) {
@@ -905,6 +998,7 @@ function main() {
 
   ensureDir(outdir);
   writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
+  writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(repoRoot, input, output));
   writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
   writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
   writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));

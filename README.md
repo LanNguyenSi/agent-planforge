@@ -57,6 +57,7 @@ node scripts/bootstrap-plan.js \
 This creates:
 
 - `out/sample/plan-output.json`
+- `out/sample/intake-questionnaire.md`
 - `out/sample/project-charter.md`
 - `out/sample/architecture-overview.md`
 - `out/sample/delivery-plan.md`
