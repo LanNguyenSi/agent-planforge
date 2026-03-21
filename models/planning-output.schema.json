@@ -14,6 +14,8 @@
     "architectureRecommendation",
     "adrCandidates",
     "tasks",
+    "executionWaves",
+    "dependencyGraph",
     "risks",
     "openQuestions"
   ],
@@ -117,7 +119,9 @@
           "title",
           "category",
           "priority",
-          "summary"
+          "summary",
+          "wave",
+          "dependsOn"
         ],
         "properties": {
           "id": {
@@ -138,6 +142,95 @@
             ]
           },
           "summary": {
+            "type": "string"
+          },
+          "wave": {
+            "type": "string"
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "deliveryPhase": {
+            "type": "string",
+            "enum": [
+              "foundation",
+              "implementation",
+              "hardening",
+              "launch"
+            ]
+          }
+        }
+      }
+    },
+    "executionWaves": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "goal",
+          "taskIds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "taskIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "dependencyGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edges",
+        "criticalPathTaskIds"
+      ],
+      "properties": {
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to",
+              "reason"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "criticalPathTaskIds": {
+          "type": "array",
+          "items": {
             "type": "string"
           }
         }

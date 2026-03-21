@@ -21,7 +21,8 @@ it produces a first planning package:
 - project charter
 - architecture overview
 - initial ADR candidate
-- task backlog
+- task backlog with dependencies
+- delivery plan with execution waves
 - machine-readable planning output
 - phase rationale and recommended artifacts
 - explicit guidance areas beyond the local planning playbook
@@ -55,6 +56,7 @@ This creates:
 - `out/sample/plan-output.json`
 - `out/sample/project-charter.md`
 - `out/sample/architecture-overview.md`
+- `out/sample/delivery-plan.md`
 - `out/sample/adrs/ADR-001-initial-architecture.md`
 - `out/sample/tasks/`
 

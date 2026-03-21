@@ -203,63 +203,213 @@ function adrCandidates(input, architecture) {
   return adrs;
 }
 
+function makeTask(id, title, category, priority, summary, wave, dependsOn, deliveryPhase) {
+  return {
+    id,
+    title,
+    category,
+    priority,
+    summary,
+    wave,
+    dependsOn,
+    blocks: [],
+    deliveryPhase
+  };
+}
+
+function connectBlocks(tasks) {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  tasks.forEach((task) => {
+    task.dependsOn.forEach((dependencyId) => {
+      const dependency = byId.get(dependencyId);
+      if (dependency) {
+        dependency.blocks.push(task.id);
+      }
+    });
+  });
+  return tasks;
+}
+
 function buildTasks(input, phase) {
   const tasks = [
-    {
-      id: "001",
-      title: "Write project charter and architecture baseline",
-      category: "foundation",
-      priority: "P0",
-      summary: "Capture the product scope, users, constraints, architecture shape, and open questions."
-    },
-    {
-      id: "002",
-      title: "Set up repository and delivery baseline",
-      category: "foundation",
-      priority: "P0",
-      summary: "Create the repository structure, quality checks, and basic documentation needed for implementation."
-    }
+    makeTask(
+      "001",
+      "Write project charter and architecture baseline",
+      "foundation",
+      "P0",
+      "Capture the product scope, users, constraints, architecture shape, and open questions.",
+      "wave-1",
+      [],
+      "foundation"
+    ),
+    makeTask(
+      "002",
+      "Set up repository and delivery baseline",
+      "foundation",
+      "P0",
+      "Create the repository structure, quality checks, and basic documentation needed for implementation.",
+      "wave-1",
+      ["001"],
+      "foundation"
+    )
   ];
 
   input.coreFeatures.forEach((feature, index) => {
-    tasks.push({
-      id: String(index + 3).padStart(3, "0"),
-      title: `Implement ${feature}`,
-      category: "feature",
-      priority: index < 2 ? "P0" : "P1",
-      summary: `Design and implement the capability for: ${feature}.`
-    });
+    const taskId = String(index + 3).padStart(3, "0");
+    const lower = feature.toLowerCase();
+    const dependsOn = ["001", "002"];
+
+    if (/audit/.test(lower)) {
+      dependsOn.push("004");
+    }
+    if (/dashboard/.test(lower)) {
+      dependsOn.push("004");
+    }
+
+    tasks.push(
+      makeTask(
+        taskId,
+        `Implement ${feature}`,
+        "feature",
+        index < 2 ? "P0" : "P1",
+        `Design and implement the capability for: ${feature}.`,
+        index < 2 ? "wave-2" : "wave-3",
+        Array.from(new Set(dependsOn)),
+        "implementation"
+      )
+    );
   });
 
-  tasks.push({
-    id: String(tasks.length + 1).padStart(3, "0"),
-    title: "Add integration and error-handling coverage",
-    category: "quality",
-    priority: "P1",
-    summary: "Verify the critical path, failure handling, and integration boundaries with tests."
-  });
+  const featureTaskIds = tasks.filter((task) => task.category === "feature").map((task) => task.id);
+
+  tasks.push(
+    makeTask(
+      String(tasks.length + 1).padStart(3, "0"),
+      "Add integration and error-handling coverage",
+      "quality",
+      "P1",
+      "Verify the critical path, failure handling, and integration boundaries with tests.",
+      "wave-4",
+      featureTaskIds,
+      "hardening"
+    )
+  );
 
   if (phase === "phase_2" || phase === "phase_3") {
-    tasks.push({
-      id: String(tasks.length + 1).padStart(3, "0"),
-      title: "Prepare production readiness baseline",
-      category: "operations",
-      priority: "P0",
-      summary: "Add observability, rollback notes, deployment verification, and runbook basics."
-    });
+    tasks.push(
+      makeTask(
+        String(tasks.length + 1).padStart(3, "0"),
+        "Prepare production readiness baseline",
+        "operations",
+        "P0",
+        "Add observability, rollback notes, deployment verification, and runbook basics.",
+        "wave-4",
+        ["002"],
+        "launch"
+      )
+    );
   }
 
   if (phase === "phase_3") {
-    tasks.push({
-      id: String(tasks.length + 1).padStart(3, "0"),
-      title: "Establish enterprise governance artifacts",
-      category: "governance",
-      priority: "P0",
-      summary: "Create service ownership, data classification, access review, and exception tracking artifacts."
-    });
+    tasks.push(
+      makeTask(
+        String(tasks.length + 1).padStart(3, "0"),
+        "Establish enterprise governance artifacts",
+        "governance",
+        "P0",
+        "Create service ownership, data classification, access review, and exception tracking artifacts.",
+        "wave-2",
+        ["001"],
+        "foundation"
+      )
+    );
   }
 
-  return tasks;
+  return connectBlocks(tasks);
+}
+
+function executionWaves(tasks) {
+  const waves = [
+    {
+      id: "wave-1",
+      goal: "Lock scope, assumptions, and engineering baseline.",
+      taskIds: tasks.filter((task) => task.wave === "wave-1").map((task) => task.id)
+    },
+    {
+      id: "wave-2",
+      goal: "Deliver the first critical capabilities and required controls.",
+      taskIds: tasks.filter((task) => task.wave === "wave-2").map((task) => task.id)
+    },
+    {
+      id: "wave-3",
+      goal: "Expand feature coverage once the core path is in place.",
+      taskIds: tasks.filter((task) => task.wave === "wave-3").map((task) => task.id)
+    },
+    {
+      id: "wave-4",
+      goal: "Harden, verify, and prepare the system for release.",
+      taskIds: tasks.filter((task) => task.wave === "wave-4").map((task) => task.id)
+    }
+  ];
+
+  return waves.filter((wave) => wave.taskIds.length > 0);
+}
+
+function dependencyGraph(tasks) {
+  const edges = [];
+  tasks.forEach((task) => {
+    task.dependsOn.forEach((dependencyId) => {
+      edges.push({
+        from: dependencyId,
+        to: task.id,
+        reason: `${task.id} depends on ${dependencyId} for prerequisite scope, code, or control readiness.`
+      });
+    });
+  });
+
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const memo = new Map();
+
+  function depth(taskId) {
+    if (memo.has(taskId)) {
+      return memo.get(taskId);
+    }
+    const task = byId.get(taskId);
+    if (!task || task.dependsOn.length === 0) {
+      memo.set(taskId, 1);
+      return 1;
+    }
+    const value = 1 + Math.max(...task.dependsOn.map(depth));
+    memo.set(taskId, value);
+    return value;
+  }
+
+  let currentId = "";
+  let currentDepth = 0;
+  tasks.forEach((task) => {
+    const taskDepth = depth(task.id);
+    if (taskDepth > currentDepth) {
+      currentDepth = taskDepth;
+      currentId = task.id;
+    }
+  });
+
+  const criticalPathTaskIds = [];
+  while (currentId) {
+    criticalPathTaskIds.unshift(currentId);
+    const task = byId.get(currentId);
+    if (!task || task.dependsOn.length === 0) {
+      break;
+    }
+    currentId = task.dependsOn
+      .slice()
+      .sort((left, right) => depth(right) - depth(left))[0];
+  }
+
+  return {
+    edges,
+    criticalPathTaskIds
+  };
 }
 
 function buildRisks(input, phase) {
@@ -280,6 +430,7 @@ function buildOutput(input) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
   const architecture = architectureRecommendation(input, phase);
+  const tasks = buildTasks(input, phase);
   return {
     projectName: input.projectName,
     phase,
@@ -290,7 +441,9 @@ function buildOutput(input) {
     recommendedArtifacts: recommendedArtifacts(phase),
     architectureRecommendation: architecture,
     adrCandidates: adrCandidates(input, architecture),
-    tasks: buildTasks(input, phase),
+    tasks,
+    executionWaves: executionWaves(tasks),
+    dependencyGraph: dependencyGraph(tasks),
     risks: buildRisks(input, phase),
     openQuestions: input.openQuestions || []
   };
@@ -371,6 +524,34 @@ ${toMarkdownList(output.risks)}
 `;
 }
 
+function renderDeliveryPlan(output) {
+  const waveSections = output.executionWaves.map((wave) => {
+    const lines = wave.taskIds.map((taskId) => {
+      const task = output.tasks.find((candidate) => candidate.id === taskId);
+      return `- ${task.id} ${task.title}`;
+    });
+    return `## ${wave.id}\n\n${wave.goal}\n\n${lines.join("\n")}`;
+  }).join("\n\n");
+
+  const edges = output.dependencyGraph.edges.map((edge) => `- ${edge.from} -> ${edge.to}`).join("\n") || "- None";
+  const criticalPath = output.dependencyGraph.criticalPathTaskIds.join(" -> ") || "None";
+
+  return `# Delivery Plan
+
+## Execution Waves
+
+${waveSections}
+
+## Dependency Edges
+
+${edges}
+
+## Critical Path
+
+${criticalPath}
+`;
+}
+
 function renderAdr(adr) {
   return `# ${adr.id}: ${adr.title}
 
@@ -390,6 +571,22 @@ ${task.category}
 ## Priority
 
 ${task.priority}
+
+## Wave
+
+${task.wave}
+
+## Delivery Phase
+
+${task.deliveryPhase}
+
+## Depends On
+
+${toMarkdownList(task.dependsOn)}
+
+## Blocks
+
+${toMarkdownList(task.blocks)}
 
 ## Summary
 
@@ -413,6 +610,7 @@ function main() {
   writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
   writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
   writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
+  writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
 
   output.adrCandidates.forEach((adr, index) => {
     const filename = `${String(index + 1).padStart(3, "0")}-${adr.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`;

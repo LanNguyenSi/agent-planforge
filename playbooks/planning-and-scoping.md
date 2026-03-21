@@ -79,6 +79,13 @@ Break work into:
 - enterprise-only controls when required
 
 Tasks should be independently understandable and reviewable.
+Tasks should also express:
+
+- what must happen first
+- what can happen in parallel
+- what blocks release readiness
+
+Prefer small dependency chains over a single giant sequence.
 
 ### 7. Preserve Uncertainty
 
