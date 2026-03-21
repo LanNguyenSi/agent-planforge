@@ -25,6 +25,7 @@ it produces a first planning package:
 - initial ADR candidate
 - task backlog with dependencies
 - delivery plan with execution waves
+- prompt pack for downstream agents
 - machine-readable planning output
 - phase rationale and recommended artifacts
 - explicit guidance areas beyond the local planning playbook
@@ -43,6 +44,7 @@ This first version includes:
 - gap detection for missing planning context
 - reusable markdown templates for generated planning artifacts
 - profile-aware planning modes for startup, product, enterprise, and platform work
+- prompt exports for downstream agent execution
 
 ## Quick Start
 
@@ -74,6 +76,7 @@ This creates:
 - `out/sample/project-charter.md`
 - `out/sample/architecture-overview.md`
 - `out/sample/delivery-plan.md`
+- `out/sample/prompts/`
 - `out/sample/adrs/ADR-001-initial-architecture.md`
 - `out/sample/tasks/`
 - `out/sample/governance/` for enterprise-path starter docs when relevant

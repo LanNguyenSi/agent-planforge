@@ -22,6 +22,7 @@
     "tasks",
     "executionWaves",
     "dependencyGraph",
+    "promptExports",
     "risks",
     "openQuestions"
   ],
@@ -387,6 +388,33 @@
         "criticalPathTaskIds": {
           "type": "array",
           "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "promptExports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "purpose",
+          "path"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "path": {
             "type": "string"
           }
         }

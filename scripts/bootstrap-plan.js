@@ -700,6 +700,7 @@ function buildOutput(input, config) {
     tasks,
     executionWaves: executionWaves(tasks),
     dependencyGraph: dependencyGraph(tasks),
+    promptExports: [],
     risks: buildRisks(input, phase),
     openQuestions: input.openQuestions || []
   };
@@ -994,6 +995,122 @@ function renderExceptionRegister(repoRoot, input) {
   });
 }
 
+function renderArchitecturePrompt(repoRoot, input, output) {
+  const options = output.architectureOptions.map((option) => {
+    return `- ${option.id}: ${option.name} (${option.shape})
+  Summary: ${option.summary}
+  Scores: delivery=${option.scores.deliverySpeed}, ops=${option.scores.operationalSimplicity}, scale=${option.scores.scalabilityHeadroom}, governance=${option.scores.governanceFit}`;
+  }).join("\n");
+
+  return renderTemplate(repoRoot, "templates/architecture-prompt-template.md", {
+    projectName: input.projectName,
+    summary: input.summary,
+    plannerProfile: output.plannerProfile,
+    phase: output.phase,
+    path: output.path,
+    recommendedArchitecture: output.architectureRecommendation.summary,
+    architectureOptions: options,
+    risks: toMarkdownList(output.risks),
+    openQuestions: toMarkdownList(output.openQuestions)
+  });
+}
+
+function renderExecutionPrompt(repoRoot, input, output) {
+  const wave = output.executionWaves[0];
+  const tasks = wave
+    ? wave.taskIds.map((taskId) => {
+        const task = output.tasks.find((candidate) => candidate.id === taskId);
+        return `- ${task.id} ${task.title} (${task.priority})
+  Depends on: ${task.dependsOn.length ? task.dependsOn.join(", ") : "none"}`;
+      }).join("\n")
+    : "- No tasks available";
+
+  return renderTemplate(repoRoot, "templates/execution-prompt-template.md", {
+    projectName: input.projectName,
+    plannerProfile: output.plannerProfile,
+    phase: output.phase,
+    waveId: wave ? wave.id : "none",
+    waveGoal: wave ? wave.goal : "No wave selected",
+    criticalPath: output.dependencyGraph.criticalPathTaskIds.join(" -> ") || "None",
+    tasks,
+    constraints: toMarkdownList(input.constraints),
+    openQuestions: toMarkdownList(output.openQuestions)
+  });
+}
+
+function renderGovernancePrompt(repoRoot, input, output) {
+  return renderTemplate(repoRoot, "templates/governance-prompt-template.md", {
+    projectName: input.projectName,
+    plannerProfile: output.plannerProfile,
+    phase: output.phase,
+    dataSensitivity: input.dataSensitivity || "low",
+    enterpriseRequirements: toMarkdownList(input.enterpriseRequirements || []),
+    artifacts: toMarkdownList([
+      "service ownership",
+      "data classification matrix",
+      "access review plan",
+      "exception register"
+    ]),
+    risks: toMarkdownList(output.risks),
+    openQuestions: toMarkdownList(output.openQuestions)
+  });
+}
+
+function renderIntakeFollowupPrompt(repoRoot, input, output) {
+  const questions = output.intakeQuestions.map((item) => {
+    return `- ${item.id} (${item.priority}${item.blocking ? ", blocker" : ""}): ${item.question}
+  Why: ${item.reason}`;
+  }).join("\n");
+
+  return renderTemplate(repoRoot, "templates/intake-followup-prompt-template.md", {
+    projectName: input.projectName,
+    intakeCompleteness: output.intakeCompleteness,
+    questions
+  });
+}
+
+function writePromptExports(repoRoot, input, output, outdir) {
+  const promptExports = [];
+
+  writeFile(path.join(outdir, "prompts", "architecture-analysis.md"), renderArchitecturePrompt(repoRoot, input, output));
+  promptExports.push({
+    id: "architecture-analysis",
+    title: "Architecture Analysis",
+    purpose: "Refine or challenge the recommended architecture using the generated options and risks.",
+    path: "prompts/architecture-analysis.md"
+  });
+
+  writeFile(path.join(outdir, "prompts", "execution-next-wave.md"), renderExecutionPrompt(repoRoot, input, output));
+  promptExports.push({
+    id: "execution-next-wave",
+    title: "Execution Next Wave",
+    purpose: "Guide an implementation agent through the next delivery wave and its dependencies.",
+    path: "prompts/execution-next-wave.md"
+  });
+
+  if (output.intakeCompleteness !== "complete") {
+    writeFile(path.join(outdir, "prompts", "intake-followup.md"), renderIntakeFollowupPrompt(repoRoot, input, output));
+    promptExports.push({
+      id: "intake-followup",
+      title: "Intake Follow-Up",
+      purpose: "Clarify blocking or high-value missing planning inputs before deeper execution.",
+      path: "prompts/intake-followup.md"
+    });
+  }
+
+  if (output.path === "enterprise") {
+    writeFile(path.join(outdir, "prompts", "governance-setup.md"), renderGovernancePrompt(repoRoot, input, output));
+    promptExports.push({
+      id: "governance-setup",
+      title: "Governance Setup",
+      purpose: "Guide a governance or security-focused agent through the required control artifacts.",
+      path: "prompts/governance-setup.md"
+    });
+  }
+
+  output.promptExports = promptExports;
+}
+
 function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
   output.adrCandidates.forEach((adr, index) => {
     const filename = `${String(index + 1).padStart(3, "0")}-${adr.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`;
@@ -1033,6 +1150,7 @@ function main() {
   const outdir = path.resolve(repoRoot, args.outdir);
 
   ensureDir(outdir);
+  writePromptExports(repoRoot, input, output, outdir);
   writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
   writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(repoRoot, input, output));
   writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
