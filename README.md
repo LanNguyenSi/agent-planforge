@@ -38,6 +38,7 @@ This first version includes:
 - JSON schemas for planning input and output
 - a Node CLI that bootstraps planning artifacts from a JSON input file
 - gap detection for missing planning context
+- reusable markdown templates for generated planning artifacts
 
 ## Quick Start
 
@@ -61,6 +62,8 @@ This creates:
 - `out/sample/delivery-plan.md`
 - `out/sample/adrs/ADR-001-initial-architecture.md`
 - `out/sample/tasks/`
+- `out/sample/governance/` for enterprise-path starter docs when relevant
+- `out/sample/runbooks/` for production-oriented starter runbooks when relevant
 
 ## Repository Structure
 
@@ -69,6 +72,7 @@ This creates:
 - `models/planning-output.schema.json`
 - `scripts/bootstrap-plan.js`
 - `examples/sample-input.json`
+- `templates/`
 
 ## Design Principles
 

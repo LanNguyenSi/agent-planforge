@@ -22,8 +22,19 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function renderTemplate(repoRoot, relativeTemplatePath, values) {
+  const template = readText(path.join(repoRoot, relativeTemplatePath));
+  return Object.entries(values).reduce((content, [key, value]) => {
+    return content.replaceAll(`{{${key}}}`, value);
+  }, template);
 }
 
 function inferPhase(input) {
@@ -743,45 +754,141 @@ ${criticalPath}
 }
 
 function renderAdr(adr) {
-  return `# ${adr.id}: ${adr.title}
-
-## Decision
-
-${adr.decision}
-`;
+  return adr;
 }
 
 function renderTask(task) {
-  return `# Task ${task.id}: ${task.title}
+  return task;
+}
 
-## Category
+function renderAdrDocument(repoRoot, input, adr) {
+  return renderTemplate(repoRoot, "templates/adr-template.md", {
+    id: adr.id,
+    title: adr.title,
+    context: `Project: ${input.projectName}\n\nSummary: ${input.summary}`,
+    decision: adr.decision,
+    positiveConsequences: "- Faster alignment on a high-leverage decision.\n- Better reviewability for future changes.",
+    negativeConsequences: "- This decision may need revision as requirements sharpen.",
+    followUp: "- Validate this ADR during the first implementation wave.\n- Update if significant scope or risk assumptions change."
+  });
+}
 
-${task.category}
+function renderTaskDocument(repoRoot, task) {
+  return renderTemplate(repoRoot, "templates/task-template.md", {
+    id: task.id,
+    title: task.title,
+    category: task.category,
+    priority: task.priority,
+    wave: task.wave,
+    deliveryPhase: task.deliveryPhase,
+    dependsOn: toMarkdownList(task.dependsOn),
+    blocks: toMarkdownList(task.blocks),
+    summary: task.summary,
+    implementationNotes: "- Start from the dependency chain above.\n- Keep scope small and independently reviewable.\n- Update tests and docs with the change."
+  });
+}
 
-## Priority
+function renderRunbookBaseline(repoRoot, input, output) {
+  return renderTemplate(repoRoot, "templates/runbook-template.md", {
+    title: `${input.projectName} Release Readiness`,
+    purpose: "Guide a basic release verification and rollback-oriented watch period for the first production-capable versions.",
+    signals: "- Deployment pipeline result\n- Error rate and latency dashboards\n- Health checks for critical paths",
+    preconditions: `- Latest plan phase: ${output.phase}\n- Release owner assigned\n- Rollback path understood`,
+    procedure: "1. Confirm deployment completed successfully.\n2. Verify critical health and smoke checks.\n3. Watch error and latency signals.\n4. Confirm the highest-value user path still works.\n5. Escalate immediately if the agreed rollback trigger is hit.",
+    rollbackOrEscalation: "- Roll back to the last known-good release if critical signals regress.\n- Notify the release owner and affected stakeholders.\n- Capture key evidence before restarting or re-deploying.",
+    evidence: "- Deployment identifier\n- Dashboard screenshots or links\n- Notes about anomalies and actions taken"
+  });
+}
 
-${task.priority}
+function renderServiceOwnership(repoRoot, input) {
+  return renderTemplate(repoRoot, "templates/service-ownership-template.md", {
+    projectName: input.projectName,
+    purpose: input.summary,
+    businessCriticality: input.dataSensitivity === "regulated" ? "Critical" : "High",
+    serviceOwner: "TBD",
+    backupOwner: "TBD",
+    productOwner: "TBD",
+    platformOwner: "TBD",
+    securityOwner: "TBD",
+    dependencies: toMarkdownList(input.integrations || []),
+    serviceExpectation: "TBD",
+    supportPath: "TBD",
+    deploymentOwner: "TBD",
+    rollbackOwner: "TBD",
+    dataClasses: input.dataSensitivity || "low",
+    privilegedOperations: "Define admin, approval, and data export actions.",
+    accessReviewCadence: "Quarterly or before major release milestones.",
+    runbooks: "runbooks/release-readiness.md",
+    dashboards: "TBD",
+    alerts: "TBD"
+  });
+}
 
-## Wave
+function renderDataClassification(repoRoot, input) {
+  const sensitivity = input.dataSensitivity || "low";
+  return renderTemplate(repoRoot, "templates/data-classification-matrix.md", {
+    publicExamples: "Marketing copy, public documentation",
+    internalExamples: "Internal configuration, planning notes",
+    confidentialExamples: sensitivity === "high" || sensitivity === "regulated" ? "Customer records, approval metadata" : "Business workflow data",
+    restrictedExamples: sensitivity === "regulated" ? "Regulated personal data, credentials, financial records" : "Secrets, privileged tokens",
+    notes: `Data sensitivity from planning input: ${sensitivity}. Refine this matrix before implementation if new regulated or customer data classes appear.`
+  });
+}
 
-${task.wave}
+function renderAccessReview(repoRoot, input) {
+  return renderTemplate(repoRoot, "templates/access-review-template.md", {
+    projectName: input.projectName,
+    systemsInScope: input.projectName,
+    environmentsInScope: "staging, production",
+    humanRoles: "engineering, operations, security, support",
+    machineIdentities: "application runtime, CI/CD, background workers",
+    productionAccessCadence: "Quarterly",
+    administrativeAccessCadence: "Monthly",
+    thirdPartyAccessCadence: "Quarterly",
+    breakGlassCadence: "After every use and quarterly at minimum",
+    primaryOwner: "TBD",
+    backupOwner: "TBD",
+    reviewCriteria: "- Least privilege still valid\n- Departed users removed\n- Temporary access expired\n- Privileged access justified"
+  });
+}
 
-## Delivery Phase
+function renderExceptionRegister(repoRoot, input) {
+  return renderTemplate(repoRoot, "templates/exception-register-template.md", {
+    projectName: input.projectName,
+    exampleControl: "Formal access review process",
+    exampleException: "Temporary manual review until the first production release",
+    exampleBusinessReason: "The team is still in early delivery and has not automated identity workflows yet.",
+    exampleRiskLevel: "Medium",
+    exampleCompensatingControls: "Manual reviewer sign-off and documented changes",
+    exampleOwner: "TBD",
+    exampleApprover: "TBD",
+    notes: "Replace the seed example with real exceptions only when a control gap is consciously accepted."
+  });
+}
 
-${task.deliveryPhase}
+function writeTemplateArtifacts(repoRoot, input, output, outdir) {
+  output.adrCandidates.forEach((adr, index) => {
+    const filename = `${String(index + 1).padStart(3, "0")}-${adr.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`;
+    writeFile(path.join(outdir, "adrs", filename), renderAdrDocument(repoRoot, input, adr));
+  });
 
-## Depends On
+  output.tasks.forEach((task) => {
+    writeFile(
+      path.join(outdir, "tasks", `${task.id}-${task.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`),
+      renderTaskDocument(repoRoot, task)
+    );
+  });
 
-${toMarkdownList(task.dependsOn)}
+  if (output.phase === "phase_2" || output.phase === "phase_3") {
+    writeFile(path.join(outdir, "runbooks", "release-readiness.md"), renderRunbookBaseline(repoRoot, input, output));
+  }
 
-## Blocks
-
-${toMarkdownList(task.blocks)}
-
-## Summary
-
-${task.summary}
-`;
+  if (output.path === "enterprise") {
+    writeFile(path.join(outdir, "governance", "service-ownership.md"), renderServiceOwnership(repoRoot, input));
+    writeFile(path.join(outdir, "governance", "data-classification-matrix.md"), renderDataClassification(repoRoot, input));
+    writeFile(path.join(outdir, "governance", "access-review-plan.md"), renderAccessReview(repoRoot, input));
+    writeFile(path.join(outdir, "governance", "exception-register.md"), renderExceptionRegister(repoRoot, input));
+  }
 }
 
 function main() {
@@ -801,15 +908,7 @@ function main() {
   writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
   writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
   writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
-
-  output.adrCandidates.forEach((adr, index) => {
-    const filename = `${String(index + 1).padStart(3, "0")}-${adr.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`;
-    writeFile(path.join(outdir, "adrs", filename), renderAdr(adr));
-  });
-
-  output.tasks.forEach((task) => {
-    writeFile(path.join(outdir, "tasks", `${task.id}-${task.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`), renderTask(task));
-  });
+  writeTemplateArtifacts(repoRoot, input, output, outdir);
 
   console.log(`Generated planning artifacts in ${outdir}`);
 }
