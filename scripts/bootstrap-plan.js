@@ -48,6 +48,57 @@ function inferPath(phase) {
   return phase === "phase_3" ? "enterprise" : "core";
 }
 
+function intakeSignals(input) {
+  const missingInformation = [];
+  const followUpQuestions = [];
+
+  if (!input.summary || input.summary.trim().length < 20) {
+    missingInformation.push("Problem statement is too short to guide architecture confidently.");
+    followUpQuestions.push("What exact problem does the product solve, and what does success look like?");
+  }
+
+  if (!input.targetUsers || input.targetUsers.length === 0) {
+    missingInformation.push("Target users are missing.");
+    followUpQuestions.push("Who are the primary users or operators of the system?");
+  }
+
+  if (!input.coreFeatures || input.coreFeatures.length === 0) {
+    missingInformation.push("Core features are missing.");
+    followUpQuestions.push("What are the first must-have capabilities for the product?");
+  }
+
+  if (!input.constraints || input.constraints.length === 0) {
+    missingInformation.push("Constraints are missing.");
+    followUpQuestions.push("What constraints matter most right now: time, budget, technology, compliance, or team capability?");
+  }
+
+  if (!input.nonFunctionalRequirements || input.nonFunctionalRequirements.length === 0) {
+    missingInformation.push("Non-functional requirements are not defined.");
+    followUpQuestions.push("What non-functional expectations matter most: performance, availability, security, auditability, or scalability?");
+  }
+
+  if ((input.integrations || []).length === 0) {
+    followUpQuestions.push("Are there external integrations, identity providers, or messaging systems the product must rely on?");
+  }
+
+  if (input.dataSensitivity === "high" || input.dataSensitivity === "regulated") {
+    followUpQuestions.push("What specific sensitive or regulated data types will the system handle?");
+  }
+
+  let intakeCompleteness = "complete";
+  if (missingInformation.length > 0 && missingInformation.length < 3) {
+    intakeCompleteness = "partial";
+  } else if (missingInformation.length >= 3) {
+    intakeCompleteness = "insufficient";
+  }
+
+  return {
+    intakeCompleteness,
+    missingInformation,
+    followUpQuestions
+  };
+}
+
 function phaseRationale(input, phase) {
   const reasons = [];
 
@@ -334,16 +385,27 @@ function buildTasks(input, phase) {
     )
   ];
 
+  const featureTaskIndex = new Map();
+
+  input.coreFeatures.forEach((feature, index) => {
+    const taskId = String(index + 3).padStart(3, "0");
+    featureTaskIndex.set(feature.toLowerCase(), taskId);
+  });
+
+  const approvalTaskId = Array.from(featureTaskIndex.entries()).find(([featureName]) =>
+    /approval|request/.test(featureName)
+  )?.[1];
+
   input.coreFeatures.forEach((feature, index) => {
     const taskId = String(index + 3).padStart(3, "0");
     const lower = feature.toLowerCase();
     const dependsOn = ["001", "002"];
 
-    if (/audit/.test(lower)) {
-      dependsOn.push("004");
+    if (/audit/.test(lower) && approvalTaskId && approvalTaskId !== taskId) {
+      dependsOn.push(approvalTaskId);
     }
-    if (/dashboard/.test(lower)) {
-      dependsOn.push("004");
+    if (/dashboard/.test(lower) && approvalTaskId && approvalTaskId !== taskId) {
+      dependsOn.push(approvalTaskId);
     }
 
     tasks.push(
@@ -509,11 +571,15 @@ function buildRisks(input, phase) {
 function buildOutput(input) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
+  const intake = intakeSignals(input);
   const options = architectureOptions(input, phase);
   const architecture = architectureRecommendation(options, phase);
   const tasks = buildTasks(input, phase);
   return {
     projectName: input.projectName,
+    intakeCompleteness: intake.intakeCompleteness,
+    missingInformation: intake.missingInformation,
+    followUpQuestions: intake.followUpQuestions,
     phase,
     phaseRationale: phaseRationale(input, phase),
     path: pathName,
@@ -568,9 +634,18 @@ ${toMarkdownList(input.nonFunctionalRequirements || [])}
 
 ## Delivery Context
 
+- Intake completeness: ${output.intakeCompleteness}
 - Phase: ${output.phase}
 - Path: ${output.path}
 - Data sensitivity: ${input.dataSensitivity || "low"}
+
+## Missing Information
+
+${toMarkdownList(output.missingInformation)}
+
+## Follow-Up Questions
+
+${toMarkdownList(output.followUpQuestions)}
 
 ## Open Questions
 

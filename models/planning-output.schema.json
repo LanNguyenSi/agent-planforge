@@ -5,6 +5,9 @@
   "additionalProperties": false,
   "required": [
     "projectName",
+    "intakeCompleteness",
+    "missingInformation",
+    "followUpQuestions",
     "phase",
     "phaseRationale",
     "path",
@@ -23,6 +26,26 @@
   "properties": {
     "projectName": {
       "type": "string"
+    },
+    "intakeCompleteness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "insufficient"
+      ]
+    },
+    "missingInformation": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "followUpQuestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "phase": {
       "type": "string",

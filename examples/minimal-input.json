@@ -1,0 +1,11 @@
+{
+  "projectName": "Ops Console",
+  "summary": "Internal ops tool.",
+  "targetUsers": [
+    "operations team"
+  ],
+  "coreFeatures": [
+    "dashboard"
+  ],
+  "constraints": []
+}

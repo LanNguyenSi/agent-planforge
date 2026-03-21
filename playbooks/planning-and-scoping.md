@@ -24,6 +24,7 @@ Extract and restate:
 - known unknowns
 
 If the input is vague, do not invent certainty. Preserve open questions.
+If key planning inputs are missing, emit targeted follow-up questions before pretending the plan is complete.
 
 ### 2. Infer Delivery Context
 
@@ -102,6 +103,7 @@ Every plan should include:
 - open questions
 - explicit risks
 - assumptions that may invalidate the plan
+- missing information that should be clarified before implementation starts
 
 ## Anti-Patterns
 

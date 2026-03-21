@@ -18,6 +18,7 @@ Given rough input such as:
 
 it produces a first planning package:
 
+- intake completeness and targeted follow-up questions
 - project charter
 - architecture overview with scored options
 - initial ADR candidate
@@ -36,6 +37,7 @@ This first version includes:
 - a planning playbook
 - JSON schemas for planning input and output
 - a Node CLI that bootstraps planning artifacts from a JSON input file
+- gap detection for missing planning context
 
 ## Quick Start
 
@@ -74,6 +76,7 @@ This creates:
 - default to the smallest architecture that satisfies current risk
 - expose open questions and risks instead of pretending certainty
 - keep generated artifacts editable by humans and agents
+- ask for missing information explicitly when confidence would otherwise be fake
 
 ## Next Steps
 
@@ -81,5 +84,4 @@ Likely next additions:
 
 - richer validation against the JSON schemas
 - prompt packs for agent-specific planning modes
-- architecture option scoring
 - optional enterprise artifact generation
