@@ -36,6 +36,7 @@ The point is not perfect planning. The point is a repeatable and reviewable star
 This first version includes:
 
 - a planning playbook
+- an external planner ruleset in `config/planner-config.json`
 - JSON schemas for planning input and output
 - a Node CLI that bootstraps planning artifacts from a JSON input file
 - gap detection for missing planning context
@@ -73,6 +74,7 @@ This creates:
 - `playbooks/planning-and-scoping.md`
 - `models/planning-input.schema.json`
 - `models/planning-output.schema.json`
+- `config/planner-config.json`
 - `scripts/bootstrap-plan.js`
 - `examples/sample-input.json`
 - `templates/`

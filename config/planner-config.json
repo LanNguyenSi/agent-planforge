@@ -1,0 +1,132 @@
+{
+  "version": "1.0",
+  "defaultProfile": "product",
+  "common": {
+    "guidanceAreasBase": [
+      "project setup",
+      "architecture"
+    ],
+    "guidanceAreasByPhase": {
+      "phase_0": [
+        "documentation"
+      ],
+      "phase_1": [
+        "development workflow",
+        "testing strategy",
+        "quality assurance",
+        "documentation"
+      ],
+      "phase_2": [
+        "development workflow",
+        "testing strategy",
+        "quality assurance",
+        "documentation",
+        "production readiness",
+        "incident readiness"
+      ],
+      "phase_3": [
+        "development workflow",
+        "testing strategy",
+        "quality assurance",
+        "documentation",
+        "production readiness",
+        "security and governance",
+        "change management and incidents"
+      ]
+    },
+    "artifactsBase": [
+      "project-charter.md",
+      "architecture-overview.md",
+      "adrs/",
+      "tasks/"
+    ],
+    "artifactsByPhase": {
+      "phase_2": [
+        "runbook baseline"
+      ],
+      "phase_3": [
+        "runbook baseline",
+        "service ownership record",
+        "data classification matrix",
+        "access review plan",
+        "exception register"
+      ]
+    }
+  },
+  "profiles": {
+    "startup": {
+      "guidanceAreaAdditionsByPhase": {
+        "phase_1": [
+          "lean scope control"
+        ]
+      },
+      "artifactAdditionsByPhase": {},
+      "intakePolicy": {
+        "nfrPriority": "medium",
+        "nfrBlocking": false
+      }
+    },
+    "product": {
+      "guidanceAreaAdditionsByPhase": {},
+      "artifactAdditionsByPhase": {},
+      "intakePolicy": {
+        "nfrPriority": "medium",
+        "nfrBlocking": true
+      }
+    },
+    "enterprise": {
+      "guidanceAreaAdditionsByPhase": {
+        "phase_3": [
+          "control evidence"
+        ]
+      },
+      "artifactAdditionsByPhase": {
+        "phase_3": [
+          "compliance evidence mapping"
+        ]
+      },
+      "intakePolicy": {
+        "nfrPriority": "high",
+        "nfrBlocking": true
+      }
+    },
+    "platform": {
+      "guidanceAreaAdditionsByPhase": {
+        "phase_1": [
+          "service reliability",
+          "platform operating model"
+        ],
+        "phase_2": [
+          "service reliability",
+          "platform operating model"
+        ],
+        "phase_3": [
+          "service reliability",
+          "platform operating model"
+        ]
+      },
+      "artifactAdditionsByPhase": {
+        "phase_1": [
+          "platform readiness notes"
+        ],
+        "phase_2": [
+          "platform readiness notes"
+        ],
+        "phase_3": [
+          "platform readiness notes"
+        ]
+      },
+      "intakePolicy": {
+        "nfrPriority": "high",
+        "nfrBlocking": true
+      }
+    }
+  },
+  "governanceDefaults": {
+    "accessReviewCadence": "Quarterly or before major release milestones.",
+    "productionAccessCadence": "Quarterly",
+    "administrativeAccessCadence": "Monthly",
+    "thirdPartyAccessCadence": "Quarterly",
+    "breakGlassCadence": "After every use and quarterly at minimum"
+  }
+}

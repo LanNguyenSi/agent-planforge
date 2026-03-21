@@ -26,6 +26,10 @@ function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
+function loadPlannerConfig(repoRoot) {
+  return readJson(path.join(repoRoot, "config/planner-config.json"));
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -59,14 +63,18 @@ function inferPath(phase) {
   return phase === "phase_3" ? "enterprise" : "core";
 }
 
-function plannerProfile(input) {
-  return input.plannerProfile || "product";
+function plannerProfile(input, config) {
+  return input.plannerProfile || config.defaultProfile || "product";
 }
 
-function intakeSignals(input) {
+function intakeSignals(input, config) {
   const missingInformation = [];
   const intakeQuestions = [];
-  const profile = plannerProfile(input);
+  const profile = plannerProfile(input, config);
+  const intakePolicy = (config.profiles[profile] && config.profiles[profile].intakePolicy) || {
+    nfrPriority: "medium",
+    nfrBlocking: true
+  };
 
   function addQuestion(id, priority, question, reason, affects, blocking, missingLabel) {
     if (missingLabel) {
@@ -133,11 +141,11 @@ function intakeSignals(input) {
   if (!input.nonFunctionalRequirements || input.nonFunctionalRequirements.length === 0) {
     addQuestion(
       "Q-005",
-      profile === "platform" || profile === "enterprise" ? "high" : "medium",
+      intakePolicy.nfrPriority,
       "What non-functional expectations matter most: performance, availability, security, auditability, or scalability?",
       "Non-functional requirements influence architecture scoring and production readiness.",
       ["architecture scoring", "production readiness", "quality tasks"],
-      profile !== "startup",
+      intakePolicy.nfrBlocking,
       "Non-functional requirements are not defined."
     );
   }
@@ -208,83 +216,28 @@ function recommendedPlaybooks(phase) {
   ];
 }
 
-function recommendedGuidanceAreas(phase, profile) {
-  const areas = [
-    "project setup",
-    "architecture"
-  ];
+function recommendedGuidanceAreas(phase, profile, config) {
+  const base = config.common.guidanceAreasBase || [];
+  const byPhase = (config.common.guidanceAreasByPhase && config.common.guidanceAreasByPhase[phase]) || [];
+  const profileAdditions =
+    (config.profiles[profile] &&
+      config.profiles[profile].guidanceAreaAdditionsByPhase &&
+      config.profiles[profile].guidanceAreaAdditionsByPhase[phase]) ||
+    [];
 
-  if (phase === "phase_0") {
-    return areas.concat([
-      "documentation"
-    ]);
-  }
-  if (phase === "phase_1") {
-    const phaseOneAreas = [
-      "development workflow",
-      "testing strategy",
-      "quality assurance",
-      "documentation"
-    ];
-    if (profile === "platform") {
-      phaseOneAreas.push("service reliability");
-      phaseOneAreas.push("platform operating model");
-    }
-    return areas.concat(phaseOneAreas);
-  }
-  if (phase === "phase_2") {
-    const phaseTwoAreas = [
-      "development workflow",
-      "testing strategy",
-      "quality assurance",
-      "documentation",
-      "production readiness",
-      "incident readiness"
-    ];
-    if (profile === "platform") {
-      phaseTwoAreas.push("service reliability");
-    }
-    return areas.concat(phaseTwoAreas);
-  }
-  const phaseThreeAreas = [
-    "development workflow",
-    "testing strategy",
-    "quality assurance",
-    "documentation",
-    "production readiness",
-    "security and governance",
-    "change management and incidents"
-  ];
-  if (profile === "platform") {
-    phaseThreeAreas.push("platform operating model");
-  }
-  return areas.concat(phaseThreeAreas);
+  return Array.from(new Set(base.concat(byPhase, profileAdditions)));
 }
 
-function recommendedArtifacts(phase, profile) {
-  const artifacts = [
-    "project-charter.md",
-    "architecture-overview.md",
-    "adrs/",
-    "tasks/"
-  ];
+function recommendedArtifacts(phase, profile, config) {
+  const base = config.common.artifactsBase || [];
+  const byPhase = (config.common.artifactsByPhase && config.common.artifactsByPhase[phase]) || [];
+  const profileAdditions =
+    (config.profiles[profile] &&
+      config.profiles[profile].artifactAdditionsByPhase &&
+      config.profiles[profile].artifactAdditionsByPhase[phase]) ||
+    [];
 
-  if (phase === "phase_2" || phase === "phase_3") {
-    artifacts.push("runbook baseline");
-  }
-
-  if (phase === "phase_3") {
-    artifacts.push("service ownership record");
-    artifacts.push("data classification matrix");
-    artifacts.push("access review plan");
-    artifacts.push("exception register");
-  }
-
-  if (profile === "platform") {
-    artifacts.push("platform readiness notes");
-  }
-
-  return artifacts;
+  return Array.from(new Set(base.concat(byPhase, profileAdditions)));
 }
 
 function architectureOptions(input, phase) {
@@ -665,11 +618,11 @@ function buildRisks(input, phase) {
   return risks;
 }
 
-function buildOutput(input) {
+function buildOutput(input, config) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
-  const profile = plannerProfile(input);
-  const intake = intakeSignals(input);
+  const profile = plannerProfile(input, config);
+  const intake = intakeSignals(input, config);
   const options = architectureOptions(input, phase);
   const architecture = architectureRecommendation(options, phase);
   const tasks = buildTasks(input, phase);
@@ -684,8 +637,8 @@ function buildOutput(input) {
     phaseRationale: phaseRationale(input, phase),
     path: pathName,
     recommendedPlaybooks: recommendedPlaybooks(phase),
-    recommendedGuidanceAreas: recommendedGuidanceAreas(phase, profile),
-    recommendedArtifacts: recommendedArtifacts(phase, profile),
+    recommendedGuidanceAreas: recommendedGuidanceAreas(phase, profile, config),
+    recommendedArtifacts: recommendedArtifacts(phase, profile, config),
     architectureOptions: options,
     architectureRecommendation: architecture,
     adrCandidates: adrCandidates(input, architecture),
@@ -918,7 +871,8 @@ function renderRunbookBaseline(repoRoot, input, output) {
   });
 }
 
-function renderServiceOwnership(repoRoot, input) {
+function renderServiceOwnership(repoRoot, input, config) {
+  const governanceDefaults = config.governanceDefaults || {};
   return renderTemplate(repoRoot, "templates/service-ownership-template.md", {
     projectName: input.projectName,
     purpose: input.summary,
@@ -935,7 +889,7 @@ function renderServiceOwnership(repoRoot, input) {
     rollbackOwner: "TBD",
     dataClasses: input.dataSensitivity || "low",
     privilegedOperations: "Define admin, approval, and data export actions.",
-    accessReviewCadence: "Quarterly or before major release milestones.",
+    accessReviewCadence: governanceDefaults.accessReviewCadence || "Quarterly or before major release milestones.",
     runbooks: "runbooks/release-readiness.md",
     dashboards: "TBD",
     alerts: "TBD"
@@ -953,17 +907,18 @@ function renderDataClassification(repoRoot, input) {
   });
 }
 
-function renderAccessReview(repoRoot, input) {
+function renderAccessReview(repoRoot, input, config) {
+  const governanceDefaults = config.governanceDefaults || {};
   return renderTemplate(repoRoot, "templates/access-review-template.md", {
     projectName: input.projectName,
     systemsInScope: input.projectName,
     environmentsInScope: "staging, production",
     humanRoles: "engineering, operations, security, support",
     machineIdentities: "application runtime, CI/CD, background workers",
-    productionAccessCadence: "Quarterly",
-    administrativeAccessCadence: "Monthly",
-    thirdPartyAccessCadence: "Quarterly",
-    breakGlassCadence: "After every use and quarterly at minimum",
+    productionAccessCadence: governanceDefaults.productionAccessCadence || "Quarterly",
+    administrativeAccessCadence: governanceDefaults.administrativeAccessCadence || "Monthly",
+    thirdPartyAccessCadence: governanceDefaults.thirdPartyAccessCadence || "Quarterly",
+    breakGlassCadence: governanceDefaults.breakGlassCadence || "After every use and quarterly at minimum",
     primaryOwner: "TBD",
     backupOwner: "TBD",
     reviewCriteria: "- Least privilege still valid\n- Departed users removed\n- Temporary access expired\n- Privileged access justified"
@@ -984,7 +939,7 @@ function renderExceptionRegister(repoRoot, input) {
   });
 }
 
-function writeTemplateArtifacts(repoRoot, input, output, outdir) {
+function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
   output.adrCandidates.forEach((adr, index) => {
     const filename = `${String(index + 1).padStart(3, "0")}-${adr.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`;
     writeFile(path.join(outdir, "adrs", filename), renderAdrDocument(repoRoot, input, adr));
@@ -1002,9 +957,9 @@ function writeTemplateArtifacts(repoRoot, input, output, outdir) {
   }
 
   if (output.path === "enterprise") {
-    writeFile(path.join(outdir, "governance", "service-ownership.md"), renderServiceOwnership(repoRoot, input));
+    writeFile(path.join(outdir, "governance", "service-ownership.md"), renderServiceOwnership(repoRoot, input, config));
     writeFile(path.join(outdir, "governance", "data-classification-matrix.md"), renderDataClassification(repoRoot, input));
-    writeFile(path.join(outdir, "governance", "access-review-plan.md"), renderAccessReview(repoRoot, input));
+    writeFile(path.join(outdir, "governance", "access-review-plan.md"), renderAccessReview(repoRoot, input, config));
     writeFile(path.join(outdir, "governance", "exception-register.md"), renderExceptionRegister(repoRoot, input));
   }
 }
@@ -1017,8 +972,9 @@ function main() {
   }
 
   const repoRoot = process.cwd();
+  const config = loadPlannerConfig(repoRoot);
   const input = readJson(path.resolve(repoRoot, args.input));
-  const output = buildOutput(input);
+  const output = buildOutput(input, config);
   const outdir = path.resolve(repoRoot, args.outdir);
 
   ensureDir(outdir);
@@ -1027,7 +983,7 @@ function main() {
   writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
   writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
   writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
-  writeTemplateArtifacts(repoRoot, input, output, outdir);
+  writeTemplateArtifacts(repoRoot, input, output, outdir, config);
 
   console.log(`Generated planning artifacts in ${outdir}`);
 }
