@@ -139,33 +139,113 @@ function recommendedArtifacts(phase) {
   return artifacts;
 }
 
-function architectureRecommendation(input, phase) {
+function architectureOptions(input, phase) {
   const integrations = (input.integrations || []).length;
   const needsAsync =
     input.coreFeatures.some((feature) => /workflow|approval|notification|queue/i.test(feature)) ||
     integrations >= 3;
+  const enterpriseLike = phase === "phase_3";
 
-  const shape = needsAsync
-    ? "modular monolith with background jobs"
-    : "modular monolith";
+  const options = [
+    {
+      id: "option-a",
+      name: "Lean Modular Monolith",
+      shape: "modular monolith",
+      summary: "One deployable application with explicit domain modules and a single primary data store.",
+      scores: {
+        deliverySpeed: 5,
+        operationalSimplicity: 5,
+        scalabilityHeadroom: enterpriseLike ? 3 : 4,
+        governanceFit: enterpriseLike ? 3 : 4
+      },
+      strengths: [
+        "Fastest path to a coherent first release.",
+        "Lowest coordination and deployment overhead.",
+        "Strong fit for small teams."
+      ],
+      tradeoffs: [
+        "Harder to isolate workloads if scale diverges later.",
+        "Governance boundaries rely more on discipline than on topology."
+      ]
+    },
+    {
+      id: "option-b",
+      name: "Modular Monolith With Background Jobs",
+      shape: "modular monolith with background jobs",
+      summary: "Single primary deployable unit with explicit modules plus a worker path for async workflows and integrations.",
+      scores: {
+        deliverySpeed: 4,
+        operationalSimplicity: 4,
+        scalabilityHeadroom: 4,
+        governanceFit: enterpriseLike ? 4 : 4
+      },
+      strengths: [
+        "Balances fast delivery with explicit async workflow support.",
+        "Keeps the system operable without early service sprawl.",
+        "Supports clearer control points for integrations and audit workflows."
+      ],
+      tradeoffs: [
+        "Slightly more moving parts than a pure monolith.",
+        "Still requires later extraction if independent scaling becomes dominant."
+      ]
+    },
+    {
+      id: "option-c",
+      name: "Early Service Separation",
+      shape: "small service-oriented split",
+      summary: "Separate user-facing application, workflow engine, and integration boundary early for stronger isolation.",
+      scores: {
+        deliverySpeed: 2,
+        operationalSimplicity: 2,
+        scalabilityHeadroom: 5,
+        governanceFit: enterpriseLike ? 5 : 3
+      },
+      strengths: [
+        "Stronger hard boundaries for scaling and ownership.",
+        "Can align better with strict isolation or governance requirements."
+      ],
+      tradeoffs: [
+        "Higher delivery and operational cost from the start.",
+        "Adds distributed failure modes before the product is proven."
+      ]
+    }
+  ];
 
+  if (!needsAsync) {
+    options[1].scores.deliverySpeed = 3;
+    options[1].scores.operationalSimplicity = 3;
+    options[1].tradeoffs.push("Async worker infrastructure may be premature if workflows stay simple.");
+  }
+
+  return options;
+}
+
+function architectureRecommendation(options, phase) {
+  const sorted = options
+    .map((option) => ({
+      option,
+      total:
+        option.scores.deliverySpeed +
+        option.scores.operationalSimplicity +
+        option.scores.scalabilityHeadroom +
+        option.scores.governanceFit
+    }))
+    .sort((left, right) => right.total - left.total);
+
+  const recommendation = sorted[0].option;
   const reasons = [
-    "Keeps initial delivery and deployment simple.",
-    "Supports clear module boundaries without early distributed complexity.",
-    "Leaves room for later service extraction if scale or governance require it."
+    "This option offers the best balance between delivery speed and long-term maintainability.",
+    "It avoids premature distributed complexity while keeping room for future extraction."
   ];
 
   if (phase === "phase_3") {
-    reasons.push("Sensitive or enterprise-facing requirements justify stronger boundaries and auditability from the start.");
-  }
-
-  if (needsAsync) {
-    reasons.push("Async workflows are explicit enough to justify background processing early.");
+    reasons.push("It gives stronger support for governance and audit needs without forcing an early microservice split.");
   }
 
   return {
-    shape,
-    summary: `Start with a ${shape} and explicit domain boundaries.`,
+    optionId: recommendation.id,
+    shape: recommendation.shape,
+    summary: `Start with ${recommendation.shape} as the default architecture.`,
     reasons
   };
 }
@@ -429,7 +509,8 @@ function buildRisks(input, phase) {
 function buildOutput(input) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
-  const architecture = architectureRecommendation(input, phase);
+  const options = architectureOptions(input, phase);
+  const architecture = architectureRecommendation(options, phase);
   const tasks = buildTasks(input, phase);
   return {
     projectName: input.projectName,
@@ -439,6 +520,7 @@ function buildOutput(input) {
     recommendedPlaybooks: recommendedPlaybooks(phase),
     recommendedGuidanceAreas: recommendedGuidanceAreas(phase),
     recommendedArtifacts: recommendedArtifacts(phase),
+    architectureOptions: options,
     architectureRecommendation: architecture,
     adrCandidates: adrCandidates(input, architecture),
     tasks,
@@ -497,15 +579,48 @@ ${toMarkdownList(output.openQuestions)}
 }
 
 function renderArchitectureOverview(input, output) {
+  const options = output.architectureOptions.map((option) => {
+    const scores = [
+      `- Delivery speed: ${option.scores.deliverySpeed}/5`,
+      `- Operational simplicity: ${option.scores.operationalSimplicity}/5`,
+      `- Scalability headroom: ${option.scores.scalabilityHeadroom}/5`,
+      `- Governance fit: ${option.scores.governanceFit}/5`
+    ].join("\n");
+
+    return `## ${option.name}
+
+Shape: ${option.shape}
+
+${option.summary}
+
+### Scores
+
+${scores}
+
+### Strengths
+
+${toMarkdownList(option.strengths)}
+
+### Tradeoffs
+
+${toMarkdownList(option.tradeoffs)}`;
+  }).join("\n\n");
+
   return `# Architecture Overview: ${input.projectName}
 
 ## Recommended Starting Point
 
 ${output.architectureRecommendation.summary}
 
+Recommended option: ${output.architectureRecommendation.optionId}
+
 ## Reasons
 
 ${toMarkdownList(output.architectureRecommendation.reasons)}
+
+## Architecture Options
+
+${options}
 
 ## Likely Modules
 

@@ -58,6 +58,14 @@ Produce at least:
 - one more scalable but more complex option
 
 Then explain why one is the recommended starting point.
+Score the options against a small set of criteria, for example:
+
+- delivery speed
+- operational simplicity
+- scalability headroom
+- governance and audit fit
+
+The goal is not fake precision. The goal is to make the tradeoff visible.
 
 ### 5. Generate ADR Candidates
 

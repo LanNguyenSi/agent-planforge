@@ -19,7 +19,7 @@ Given rough input such as:
 it produces a first planning package:
 
 - project charter
-- architecture overview
+- architecture overview with scored options
 - initial ADR candidate
 - task backlog with dependencies
 - delivery plan with execution waves

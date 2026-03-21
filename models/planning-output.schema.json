@@ -11,6 +11,7 @@
     "recommendedPlaybooks",
     "recommendedGuidanceAreas",
     "recommendedArtifacts",
+    "architectureOptions",
     "architectureRecommendation",
     "adrCandidates",
     "tasks",
@@ -63,15 +64,93 @@
         "type": "string"
       }
     },
+    "architectureOptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "shape",
+          "summary",
+          "scores",
+          "strengths",
+          "tradeoffs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shape": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "scores": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "deliverySpeed",
+              "operationalSimplicity",
+              "scalabilityHeadroom",
+              "governanceFit"
+            ],
+            "properties": {
+              "deliverySpeed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "operationalSimplicity": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "scalabilityHeadroom": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "governanceFit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              }
+            }
+          },
+          "strengths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tradeoffs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
     "architectureRecommendation": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "optionId",
         "shape",
         "summary",
         "reasons"
       ],
       "properties": {
+        "optionId": {
+          "type": "string"
+        },
         "shape": {
           "type": "string"
         },
