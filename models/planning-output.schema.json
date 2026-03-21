@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PlanningOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projectName",
+    "phase",
+    "phaseRationale",
+    "path",
+    "recommendedPlaybooks",
+    "recommendedGuidanceAreas",
+    "recommendedArtifacts",
+    "architectureRecommendation",
+    "adrCandidates",
+    "tasks",
+    "risks",
+    "openQuestions"
+  ],
+  "properties": {
+    "projectName": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "phase_0",
+        "phase_1",
+        "phase_2",
+        "phase_3"
+      ]
+    },
+    "phaseRationale": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "path": {
+      "type": "string",
+      "enum": [
+        "core",
+        "enterprise"
+      ]
+    },
+    "recommendedPlaybooks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommendedGuidanceAreas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommendedArtifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "architectureRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "summary",
+        "reasons"
+      ],
+      "properties": {
+        "shape": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "adrCandidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "decision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "category",
+          "priority",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P0",
+              "P1",
+              "P2"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
