@@ -1,0 +1,38 @@
+{
+  "projectName": "Internal Delivery Platform",
+  "summary": "A shared internal platform that standardizes service bootstrapping, deployment workflows, environment configuration, and reliability guardrails for multiple engineering teams.",
+  "targetUsers": [
+    "application developers",
+    "platform engineers",
+    "operations team"
+  ],
+  "coreFeatures": [
+    "service scaffolding",
+    "deployment workflow automation",
+    "environment configuration management",
+    "release guardrails"
+  ],
+  "constraints": [
+    "must support multiple internal teams",
+    "must reduce operational variance across services",
+    "initial team is small but platform footprint will grow"
+  ],
+  "nonFunctionalRequirements": [
+    "high reliability",
+    "strong auditability for deployment actions",
+    "good self-service ergonomics"
+  ],
+  "integrations": [
+    "source control platform",
+    "CI/CD system",
+    "cloud runtime"
+  ],
+  "plannerProfile": "platform",
+  "dataSensitivity": "moderate",
+  "teamSize": 5,
+  "productionExpectedSoon": true,
+  "liveUsers": false,
+  "openQuestions": [
+    "Should the first release own deployment execution or only policy validation?"
+  ]
+}

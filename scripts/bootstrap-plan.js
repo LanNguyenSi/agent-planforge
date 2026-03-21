@@ -59,9 +59,14 @@ function inferPath(phase) {
   return phase === "phase_3" ? "enterprise" : "core";
 }
 
+function plannerProfile(input) {
+  return input.plannerProfile || "product";
+}
+
 function intakeSignals(input) {
   const missingInformation = [];
   const intakeQuestions = [];
+  const profile = plannerProfile(input);
 
   function addQuestion(id, priority, question, reason, affects, blocking, missingLabel) {
     if (missingLabel) {
@@ -128,11 +133,11 @@ function intakeSignals(input) {
   if (!input.nonFunctionalRequirements || input.nonFunctionalRequirements.length === 0) {
     addQuestion(
       "Q-005",
-      "medium",
+      profile === "platform" || profile === "enterprise" ? "high" : "medium",
       "What non-functional expectations matter most: performance, availability, security, auditability, or scalability?",
       "Non-functional requirements influence architecture scoring and production readiness.",
       ["architecture scoring", "production readiness", "quality tasks"],
-      true,
+      profile !== "startup",
       "Non-functional requirements are not defined."
     );
   }
@@ -203,7 +208,7 @@ function recommendedPlaybooks(phase) {
   ];
 }
 
-function recommendedGuidanceAreas(phase) {
+function recommendedGuidanceAreas(phase, profile) {
   const areas = [
     "project setup",
     "architecture"
@@ -215,24 +220,33 @@ function recommendedGuidanceAreas(phase) {
     ]);
   }
   if (phase === "phase_1") {
-    return areas.concat([
+    const phaseOneAreas = [
       "development workflow",
       "testing strategy",
       "quality assurance",
       "documentation"
-    ]);
+    ];
+    if (profile === "platform") {
+      phaseOneAreas.push("service reliability");
+      phaseOneAreas.push("platform operating model");
+    }
+    return areas.concat(phaseOneAreas);
   }
   if (phase === "phase_2") {
-    return areas.concat([
+    const phaseTwoAreas = [
       "development workflow",
       "testing strategy",
       "quality assurance",
       "documentation",
       "production readiness",
       "incident readiness"
-    ]);
+    ];
+    if (profile === "platform") {
+      phaseTwoAreas.push("service reliability");
+    }
+    return areas.concat(phaseTwoAreas);
   }
-  return areas.concat([
+  const phaseThreeAreas = [
     "development workflow",
     "testing strategy",
     "quality assurance",
@@ -240,10 +254,14 @@ function recommendedGuidanceAreas(phase) {
     "production readiness",
     "security and governance",
     "change management and incidents"
-  ]);
+  ];
+  if (profile === "platform") {
+    phaseThreeAreas.push("platform operating model");
+  }
+  return areas.concat(phaseThreeAreas);
 }
 
-function recommendedArtifacts(phase) {
+function recommendedArtifacts(phase, profile) {
   const artifacts = [
     "project-charter.md",
     "architecture-overview.md",
@@ -260,6 +278,10 @@ function recommendedArtifacts(phase) {
     artifacts.push("data classification matrix");
     artifacts.push("access review plan");
     artifacts.push("exception register");
+  }
+
+  if (profile === "platform") {
+    artifacts.push("platform readiness notes");
   }
 
   return artifacts;
@@ -646,12 +668,14 @@ function buildRisks(input, phase) {
 function buildOutput(input) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
+  const profile = plannerProfile(input);
   const intake = intakeSignals(input);
   const options = architectureOptions(input, phase);
   const architecture = architectureRecommendation(options, phase);
   const tasks = buildTasks(input, phase);
   return {
     projectName: input.projectName,
+    plannerProfile: profile,
     intakeCompleteness: intake.intakeCompleteness,
     missingInformation: intake.missingInformation,
     intakeQuestions: intake.intakeQuestions,
@@ -660,8 +684,8 @@ function buildOutput(input) {
     phaseRationale: phaseRationale(input, phase),
     path: pathName,
     recommendedPlaybooks: recommendedPlaybooks(phase),
-    recommendedGuidanceAreas: recommendedGuidanceAreas(phase),
-    recommendedArtifacts: recommendedArtifacts(phase),
+    recommendedGuidanceAreas: recommendedGuidanceAreas(phase, profile),
+    recommendedArtifacts: recommendedArtifacts(phase, profile),
     architectureOptions: options,
     architectureRecommendation: architecture,
     adrCandidates: adrCandidates(input, architecture),
@@ -710,6 +734,7 @@ ${toMarkdownList(input.nonFunctionalRequirements || [])}
 
 ## Delivery Context
 
+- Planner profile: ${output.plannerProfile}
 - Intake completeness: ${output.intakeCompleteness}
 - Phase: ${output.phase}
 - Path: ${output.path}

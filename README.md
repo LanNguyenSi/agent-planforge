@@ -15,6 +15,7 @@ Given rough input such as:
 - data sensitivity
 - integrations
 - timeline
+- planning profile
 
 it produces a first planning package:
 
@@ -39,6 +40,7 @@ This first version includes:
 - a Node CLI that bootstraps planning artifacts from a JSON input file
 - gap detection for missing planning context
 - reusable markdown templates for generated planning artifacts
+- profile-aware planning modes for startup, product, enterprise, and platform work
 
 ## Quick Start
 

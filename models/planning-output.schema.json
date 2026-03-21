@@ -5,6 +5,7 @@
   "additionalProperties": false,
   "required": [
     "projectName",
+    "plannerProfile",
     "intakeCompleteness",
     "missingInformation",
     "intakeQuestions",
@@ -27,6 +28,15 @@
   "properties": {
     "projectName": {
       "type": "string"
+    },
+    "plannerProfile": {
+      "type": "string",
+      "enum": [
+        "startup",
+        "product",
+        "enterprise",
+        "platform"
+      ]
     },
     "intakeCompleteness": {
       "type": "string",
