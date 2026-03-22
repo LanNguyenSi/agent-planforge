@@ -96,6 +96,11 @@
       "items": {
         "type": "string"
       }
+    },
+    "defaultBranch": {
+      "type": "string",
+      "description": "Default Git branch name (main, master, etc.). Auto-detected if not specified.",
+      "default": "main"
     }
   }
 }

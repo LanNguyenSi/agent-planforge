@@ -28,7 +28,8 @@
     "promptExports",
     "handoffManifest",
     "risks",
-    "openQuestions"
+    "openQuestions",
+    "defaultBranch"
   ],
   "properties": {
     "projectName": {
@@ -799,6 +800,10 @@
       "items": {
         "type": "string"
       }
+    },
+    "defaultBranch": {
+      "type": "string",
+      "description": "Default Git branch name (main, master, etc.)"
     }
   }
 }
