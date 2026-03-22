@@ -238,6 +238,197 @@
           "tests/responsive/mobile-api.test.md — Mobile API testing"
         ]
       }
+    },
+    "github-api": {
+      "keywords": ["github", "repository", "health", "ci", "status", "check", "pull request", "pr", "workflow", "actions"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/github/client.ts — GitHub API client with octokit",
+          "lib/github/types.ts — GitHub API types (Repository, PR, Check, Workflow)",
+          "lib/github/repos.ts — Repository health functions (CI status, open PRs)",
+          "lib/github/checks.ts — Check runs and check suites",
+          "lib/github/prs.ts — Pull request operations",
+          "lib/github/workflows.ts — GitHub Actions workflow runs",
+          "app/api/github/repos/route.ts — GET repositories with health status",
+          "app/api/github/repos/[owner]/[repo]/route.ts — GET single repo details",
+          "app/api/github/prs/route.ts — GET open pull requests",
+          "app/api/github/checks/route.ts — GET failing checks",
+          "components/RepoCard.tsx — Repository card with CI status badge",
+          "components/RepoList.tsx — Repository list component",
+          "components/PRCard.tsx — Pull request card",
+          "components/CheckStatus.tsx — Check run status indicator",
+          "tests/github/client.test.ts — API client tests with mocked octokit",
+          "tests/github/repos.test.ts — Repository health logic tests"
+        ],
+        "express-api": [
+          "src/github/client.ts — GitHub API client with octokit",
+          "src/github/types.ts — GitHub API types",
+          "src/github/service.ts — Business logic for repos, PRs, checks",
+          "src/routes/github.ts — Express router for GitHub endpoints",
+          "tests/github/service.test.ts — Service tests"
+        ],
+        "vite-spa": [
+          "src/lib/github/api.ts — GitHub API client",
+          "src/lib/github/types.ts — GitHub types",
+          "src/lib/github/store.ts — GitHub data state",
+          "src/components/RepoCard.tsx — Repository card",
+          "src/components/RepoList.tsx — Repository list",
+          "tests/lib/github/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/github/client.server.ts — GitHub API client (server-only)",
+          "app/lib/github/types.ts — GitHub types",
+          "app/routes/github.repos.tsx — Repos route with loader",
+          "app/routes/github.repo.$owner.$repo.tsx — Single repo route",
+          "app/components/RepoCard.tsx — Repository card",
+          "tests/lib/github/client.test.ts — Client tests"
+        ],
+        "nestjs-api": [
+          "src/github/github.module.ts — GitHub module",
+          "src/github/github.controller.ts — GitHub endpoints",
+          "src/github/github.service.ts — Business logic",
+          "src/github/octokit.provider.ts — Octokit DI provider",
+          "src/github/dto/repo.dto.ts — Repository DTOs",
+          "test/github/github.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "pipeline-monitoring": {
+      "keywords": ["pipeline", "workflow", "run", "history", "trend", "pass", "fail", "deployment", "build"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/pipeline/types.ts — Pipeline run types (Run, Status, Trend)",
+          "lib/pipeline/service.ts — Pipeline history service",
+          "lib/pipeline/analytics.ts — Pass/fail trend calculations",
+          "lib/pipeline/filters.ts — Filter pipelines by status, date, repo",
+          "app/api/pipeline/runs/route.ts — GET pipeline runs with filters",
+          "app/api/pipeline/stats/route.ts — GET pipeline statistics",
+          "app/api/pipeline/trends/route.ts — GET pass/fail trends over time",
+          "components/PipelineChart.tsx — Trend chart component (Recharts)",
+          "components/PipelineList.tsx — Pipeline run list",
+          "components/PipelineCard.tsx — Single pipeline run card",
+          "components/StatusBadge.tsx — Pipeline status indicator",
+          "tests/pipeline/analytics.test.ts — Trend calculation tests",
+          "tests/pipeline/filters.test.ts — Filter logic tests"
+        ],
+        "express-api": [
+          "src/pipeline/types.ts — Pipeline types",
+          "src/pipeline/service.ts — Pipeline business logic",
+          "src/pipeline/analytics.ts — Trend calculations",
+          "src/routes/pipeline.ts — Express router for pipeline endpoints",
+          "tests/pipeline/service.test.ts — Service tests"
+        ],
+        "vite-spa": [
+          "src/lib/pipeline/api.ts — Pipeline API client",
+          "src/lib/pipeline/types.ts — Pipeline types",
+          "src/lib/pipeline/store.ts — Pipeline state",
+          "src/components/PipelineChart.tsx — Trend chart",
+          "src/components/PipelineList.tsx — Run list",
+          "tests/lib/pipeline/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/pipeline/types.ts — Pipeline types",
+          "app/lib/pipeline/service.server.ts — Business logic",
+          "app/routes/pipeline.tsx — Pipeline route with loader",
+          "app/components/PipelineChart.tsx — Trend chart",
+          "tests/lib/pipeline/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/pipeline/pipeline.module.ts — Pipeline module",
+          "src/pipeline/pipeline.controller.ts — Pipeline endpoints",
+          "src/pipeline/pipeline.service.ts — Business logic",
+          "src/pipeline/dto/pipeline-run.dto.ts — DTOs",
+          "test/pipeline/pipeline.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "alert-system": {
+      "keywords": ["alert", "notification", "failure", "monitoring", "incident", "warn", "error"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/alerts/types.ts — Alert types (Alert, Severity, Status)",
+          "lib/alerts/service.ts — Alert CRUD service",
+          "lib/alerts/rules.ts — Alert rule engine (conditions, triggers)",
+          "lib/alerts/notifications.ts — Notification delivery (email, Slack, Discord)",
+          "app/api/alerts/route.ts — GET (list) + POST (create) alert endpoints",
+          "app/api/alerts/[id]/route.ts — GET/PUT/DELETE single alert",
+          "app/api/alerts/acknowledge/route.ts — POST acknowledge alert",
+          "app/api/alerts/rules/route.ts — GET/POST alert rules",
+          "components/AlertList.tsx — Alert list component",
+          "components/AlertCard.tsx — Single alert card",
+          "components/AlertBadge.tsx — Severity indicator",
+          "prisma/schema.prisma — Alert and AlertRule models",
+          "tests/alerts/rules.test.ts — Rule engine tests",
+          "tests/alerts/notifications.test.ts — Notification tests"
+        ],
+        "express-api": [
+          "src/alerts/types.ts — Alert types",
+          "src/alerts/service.ts — Alert business logic",
+          "src/alerts/rules.ts — Rule engine",
+          "src/routes/alerts.ts — Express router for alerts",
+          "tests/alerts/service.test.ts — Service tests"
+        ],
+        "vite-spa": [
+          "src/lib/alerts/api.ts — Alert API client",
+          "src/lib/alerts/types.ts — Alert types",
+          "src/lib/alerts/store.ts — Alert state",
+          "src/components/AlertList.tsx — Alert list",
+          "src/components/AlertCard.tsx — Alert card",
+          "tests/lib/alerts/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/alerts/types.ts — Alert types",
+          "app/lib/alerts/service.server.ts — Business logic",
+          "app/routes/alerts.tsx — Alerts route with loader/action",
+          "app/components/AlertList.tsx — Alert list",
+          "tests/lib/alerts/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/alerts/alerts.module.ts — Alerts module",
+          "src/alerts/alerts.controller.ts — Alert endpoints",
+          "src/alerts/alerts.service.ts — Business logic",
+          "src/alerts/dto/alert.dto.ts — Alert DTOs",
+          "test/alerts/alerts.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "realtime-polling": {
+      "keywords": ["real-time", "polling", "refresh", "interval", "live", "update", "auto-refresh"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/polling/usePolling.ts — React hook for interval-based polling",
+          "lib/polling/config.ts — Polling configuration (intervals, backoff)",
+          "lib/polling/types.ts — Polling types (PollConfig, PollState)",
+          "lib/polling/cache.ts — Client-side cache with stale-while-revalidate",
+          "components/RefreshIndicator.tsx — Visual polling indicator",
+          "components/AutoRefresh.tsx — Auto-refresh toggle component",
+          "tests/polling/usePolling.test.tsx — Hook tests with React Testing Library",
+          "tests/polling/cache.test.ts — Cache logic tests"
+        ],
+        "express-api": [
+          "src/polling/middleware.ts — Express middleware for cache headers",
+          "src/polling/config.ts — Server-side polling config",
+          "tests/polling/middleware.test.ts — Middleware tests"
+        ],
+        "vite-spa": [
+          "src/lib/polling/usePolling.ts — Polling hook",
+          "src/lib/polling/config.ts — Polling config",
+          "src/lib/polling/cache.ts — Cache layer",
+          "src/components/RefreshIndicator.tsx — Refresh indicator",
+          "tests/lib/polling/usePolling.test.tsx — Hook tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/polling/usePolling.ts — Polling hook",
+          "app/lib/polling/config.ts — Config",
+          "app/components/RefreshIndicator.tsx — Indicator",
+          "tests/lib/polling/usePolling.test.tsx — Hook tests"
+        ],
+        "nestjs-api": [
+          "src/polling/polling.interceptor.ts — Cache header interceptor",
+          "src/polling/polling.config.ts — Config",
+          "test/polling/polling.interceptor.spec.ts — Interceptor tests"
+        ]
+      }
     }
   }
 }
