@@ -124,13 +124,17 @@ function writeFile(targetPath, contents) {
   fs.writeFileSync(targetPath, contents, "utf8");
 }
 
-function slugify(value) {
-  return value
+function slugify(value, maxLength = null) {
+  let slug = value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .substring(0, 40)  // Limit to 40 characters
-    .replace(/-$/, "");  // Clean trailing dash after substring
+    .replace(/^-|-$/g, "");
+  
+  if (maxLength) {
+    slug = slug.substring(0, maxLength).replace(/-$/, "");
+  }
+  
+  return slug;
 }
 
 function renderTemplate(repoRoot, relativeTemplatePath, values) {
@@ -961,7 +965,7 @@ function featureFiles(feature, architectureShape, stackPatterns) {
   }
   
   // Fallback to generic pattern
-  const slug = slugify(feature);
+  const slug = slugify(feature, 40);  // Limit module names to 40 chars
   const files = [
     `src/modules/${slug}/index.ts`,
     `src/modules/${slug}/${slug}.service.ts`,
