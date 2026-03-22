@@ -1,4 +1,4 @@
-.PHONY: install dev build test lint format ci clean help
+.PHONY: install dev dev-docker docker-up docker-down build test lint format ci clean help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -12,8 +12,16 @@ help: ## Show this help message
 install: ## Install dependencies
 	npm ci
 
-dev: ## Start development server
+dev: ## Start development server (local)
 	npm run dev
+
+dev-docker: docker-up ## Start development server (Docker)
+
+docker-up: ## Start Docker development environment
+	docker compose -f docker-compose.dev.yml up --build
+
+docker-down: ## Stop Docker development environment
+	docker compose -f docker-compose.dev.yml down
 
 build: ## Build for production
 	npm run build
