@@ -51,6 +51,9 @@ This first version includes:
 - profile-aware planning modes for startup, product, enterprise, and platform work
 - prompt exports for downstream agent execution
 - handoff manifest generation for staged or parallel downstream agents
+- schema validation for input, config, and generated output
+- `.ai/` context export for downstream coding agents
+- playbook-aware charter and prompt references
 
 ## Open Source Project Status
 
@@ -91,12 +94,30 @@ This creates:
 - `out/sample/project-charter.md`
 - `out/sample/architecture-overview.md`
 - `out/sample/delivery-plan.md`
+- `out/sample/.ai/`
 - `out/sample/prompts/`
 - `out/sample/handoff-manifest.json`
 - `out/sample/adrs/ADR-001-initial-architecture.md`
 - `out/sample/tasks/`
 - `out/sample/governance/` for enterprise-path starter docs when relevant
 - `out/sample/runbooks/` for production-oriented starter runbooks when relevant
+
+Validation-only mode:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --validate-only
+```
+
+Concise summary mode:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample \
+  --summary
+```
 
 ## Repository Structure
 
@@ -129,8 +150,6 @@ Contribution guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For now, the most useful contributions are:
 
-- schema validation
-- automated tests
 - runner contract design
 - rerun and resume semantics
 - handoff policy refinement
@@ -150,3 +169,19 @@ This project is licensed under the MIT license. See [LICENSE](LICENSE).
 ## Next Steps
 
 The remaining hardening work is tracked as task files in `tasks/`.
+
+## Testing
+
+Run the automated suite with:
+
+```bash
+npm test
+```
+
+The tests cover:
+
+- golden-path planning for `sample`, `minimal`, and `platform` inputs
+- schema validation failures for bad input and bad config
+- phase and path inference
+- dependency graph and handoff manifest structure
+- playbook references and `.ai/` artifact generation

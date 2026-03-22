@@ -22,9 +22,17 @@ Useful command:
 node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/sample
 ```
 
+Automated checks:
+
+```bash
+npm test
+node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/sample --validate-only
+```
+
 Before opening a pull request:
 
 - run the planner against at least one example input
+- run `npm test`
 - check generated output for obvious regressions
 - run `git diff --check`
 - update documentation if behavior or outputs changed

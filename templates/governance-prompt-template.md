@@ -18,6 +18,10 @@ Establish the minimum governance baseline required for the current enterprise-or
 
 {{artifacts}}
 
+## Applicable Playbooks
+
+{{applicablePlaybooks}}
+
 ## Risks And Questions
 
 Risks:

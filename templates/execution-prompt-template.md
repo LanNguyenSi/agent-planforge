@@ -18,6 +18,10 @@ Turn the current plan into an implementation strategy for the next delivery wave
 
 {{tasks}}
 
+## Applicable Playbooks
+
+{{applicablePlaybooks}}
+
 ## Constraints And Questions
 
 Constraints:

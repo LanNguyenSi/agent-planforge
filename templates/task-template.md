@@ -28,6 +28,22 @@
 
 {{summary}}
 
+## Problem
+
+{{problem}}
+
+## Solution
+
+{{solution}}
+
+## Files To Create Or Modify
+
+{{files}}
+
+## Acceptance Criteria
+
+{{acceptanceCriteria}}
+
 ## Implementation Notes
 
 {{implementationNotes}}
