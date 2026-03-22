@@ -920,9 +920,19 @@ function matchPattern(feature, patterns) {
   
   for (const [patternName, pattern] of Object.entries(patterns)) {
     const keywords = pattern.keywords || [];
-    const matchCount = keywords.filter(keyword => lower.includes(keyword)).length;
+    let matchCount = keywords.filter(keyword => lower.includes(keyword)).length;
     
     if (matchCount > 0) {
+      // Boost score if primary keyword appears at start of feature text
+      // e.g., "alert system" → "alert" at start = +10 bonus for alert-system pattern
+      const primaryKeyword = keywords[0];  // First keyword is usually primary
+      const wordsInFeature = lower.split(/\s+/);
+      const firstWord = wordsInFeature[0] || '';
+      
+      if (firstWord === primaryKeyword || firstWord.startsWith(primaryKeyword)) {
+        matchCount += 10;  // Strong boost for primary keyword at start
+      }
+      
       matches.push({ patternName, pattern, matchCount });
     }
   }
