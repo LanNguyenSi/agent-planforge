@@ -138,6 +138,17 @@ node scripts/bootstrap-plan.js \
   --resume-from out/sample
 ```
 
+Skip npm install (useful for CI or when package.json not generated):
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample \
+  --no-install
+```
+
+**Note:** By default, if a `package.json` file exists in the output directory after generation, `bootstrap-plan` will run `npm install` to generate `package-lock.json`. This ensures projects are CI-ready. Use `--no-install` to skip this step.
+
 This creates:
 
 - `out/sample/plan-output.json`

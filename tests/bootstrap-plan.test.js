@@ -12,7 +12,9 @@ function tempDir(prefix) {
 }
 
 function runPlanner(args, options = {}) {
-  return spawnSync("node", [scriptPath, ...args], {
+  // Always add --no-install for fast tests
+  const argsWithNoInstall = args.includes("--no-install") ? args : [...args, "--no-install"];
+  return spawnSync("node", [scriptPath, ...argsWithNoInstall], {
     cwd: repoRoot,
     encoding: "utf8",
     input: options.input
