@@ -2589,6 +2589,20 @@ function writeMakefile(repoRoot, outdir) {
   writeFile(path.join(outdir, "Makefile"), makefileContent);
 }
 
+function writeDockerFiles(repoRoot, outdir) {
+  const dockerComposePath = path.join(repoRoot, "templates", "docker-compose.dev.yml.template");
+  const dockerfilePath = path.join(repoRoot, "templates", "Dockerfile.dev.template");
+  const dockerignorePath = path.join(repoRoot, "templates", ".dockerignore.template");
+  
+  const dockerComposeContent = readText(dockerComposePath, "docker-compose.dev.yml.template");
+  const dockerfileContent = readText(dockerfilePath, "Dockerfile.dev.template");
+  const dockerignoreContent = readText(dockerignorePath, ".dockerignore.template");
+  
+  writeFile(path.join(outdir, "docker-compose.dev.yml"), dockerComposeContent);
+  writeFile(path.join(outdir, "Dockerfile.dev"), dockerfileContent);
+  writeFile(path.join(outdir, ".dockerignore"), dockerignoreContent);
+}
+
 function runNpmInstall(outdir) {
   const packageJsonPath = path.join(outdir, "package.json");
   
@@ -2693,6 +2707,7 @@ function main() {
     writeOperationalArtifacts(input, output, outdir, rerunReport);
     writeTemplateArtifacts(repoRoot, input, output, outdir, config);
     writeMakefile(repoRoot, outdir);
+    writeDockerFiles(repoRoot, outdir);
     preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
 
     if (args.install) {
