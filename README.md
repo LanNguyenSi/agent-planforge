@@ -2,7 +2,7 @@
 
 Planning bootstrap for AI agents that need to turn rough requirements into a first architecture, initial ADR candidates, and an implementation backlog.
 
-Status: WIP. The core planning flow works, but the project is still being hardened. Open implementation work is tracked in `tasks/`.
+Status: Production-ready. All planned hardening tasks complete. Open enhancements tracked as GitHub Issues.
 
 `agent-planforge` is open source under the MIT license. Contribution, security reporting, and community expectations are documented in this repository.
 
