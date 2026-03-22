@@ -343,7 +343,7 @@
       }
     },
     "alert-system": {
-      "keywords": ["alert", "notification", "failure", "monitoring", "incident", "warn", "error"],
+      "keywords": ["alert", "alerting", "notification", "incident", "monitoring", "warn", "error", "severity", "acknowledge", "on-call", "pagerduty", "slack", "webhook", "trigger", "rule"],
       "files": {
         "nextjs-fullstack": [
           "lib/alerts/types.ts — Alert types (Alert, Severity, Status)",
