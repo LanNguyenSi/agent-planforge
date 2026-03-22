@@ -2576,6 +2576,12 @@ function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
   }
 }
 
+function writeMakefile(repoRoot, outdir) {
+  const templatePath = path.join(repoRoot, "templates", "Makefile.template");
+  const makefileContent = readText(templatePath, "Makefile.template");
+  writeFile(path.join(outdir, "Makefile"), makefileContent);
+}
+
 function printSummary(output, outdir, validateOnly) {
   const firstWave = output.executionWaves[0];
   const firstWaveTasks = firstWave
@@ -2656,6 +2662,7 @@ function main() {
     writeAiArtifacts(input, output, outdir);
     writeOperationalArtifacts(input, output, outdir, rerunReport);
     writeTemplateArtifacts(repoRoot, input, output, outdir, config);
+    writeMakefile(repoRoot, outdir);
     preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
 
     if (args.summary) {
