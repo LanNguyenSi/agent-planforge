@@ -2603,6 +2603,17 @@ function writeDockerFiles(repoRoot, outdir) {
   writeFile(path.join(outdir, ".dockerignore"), dockerignoreContent);
 }
 
+function writePreCommitHooks(repoRoot, outdir) {
+  const huskyPreCommitPath = path.join(repoRoot, "templates", ".husky-pre-commit.template");
+  const lintStagedConfigPath = path.join(repoRoot, "templates", "lint-staged.config.js.template");
+  
+  const huskyPreCommitContent = readText(huskyPreCommitPath, ".husky-pre-commit.template");
+  const lintStagedConfigContent = readText(lintStagedConfigPath, "lint-staged.config.js.template");
+  
+  writeFile(path.join(outdir, ".husky-pre-commit"), huskyPreCommitContent);
+  writeFile(path.join(outdir, "lint-staged.config.js"), lintStagedConfigContent);
+}
+
 function runNpmInstall(outdir) {
   const packageJsonPath = path.join(outdir, "package.json");
   
@@ -2708,6 +2719,7 @@ function main() {
     writeTemplateArtifacts(repoRoot, input, output, outdir, config);
     writeMakefile(repoRoot, outdir);
     writeDockerFiles(repoRoot, outdir);
+    writePreCommitHooks(repoRoot, outdir);
     preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
 
     if (args.install) {
