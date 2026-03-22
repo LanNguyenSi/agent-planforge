@@ -16,6 +16,55 @@
           "tests/auth/jwt.test.ts — Token generation + verification tests",
           "tests/auth/password.test.ts — Hash + verify tests",
           "tests/auth/validation.test.ts — Zod schema tests"
+        ],
+        "express-api": [
+          "src/auth/jwt.ts — Token generation + verification (jsonwebtoken)",
+          "src/auth/password.ts — bcrypt hashing + verification",
+          "src/auth/middleware.ts — Express auth middleware",
+          "src/auth/validation.ts — Zod schemas (RegisterInput, LoginInput)",
+          "src/auth/service.ts — User registration + login business logic",
+          "src/routes/auth.ts — Express router with /register, /login, /me",
+          "src/models/user.ts — User model (Sequelize/TypeORM/Prisma)",
+          "tests/auth/jwt.test.ts — Token generation + verification tests",
+          "tests/auth/routes.test.ts — API endpoint tests",
+          "tests/auth/service.test.ts — Business logic tests"
+        ],
+        "vite-spa": [
+          "src/lib/auth/jwt.ts — Token storage + validation",
+          "src/lib/auth/api.ts — Auth API client (login, register, refresh)",
+          "src/lib/auth/context.tsx — React Auth Context",
+          "src/lib/auth/hooks.ts — useAuth, useUser hooks",
+          "src/components/LoginForm.tsx — Login form component",
+          "src/components/RegisterForm.tsx — Registration form component",
+          "src/pages/Login.tsx — Login page",
+          "src/pages/Register.tsx — Registration page",
+          "tests/lib/auth/api.test.ts — API client tests",
+          "tests/components/LoginForm.test.tsx — Component tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/auth/jwt.server.ts — Token generation + verification (server-only)",
+          "app/lib/auth/password.server.ts — bcrypt hashing + verification",
+          "app/lib/auth/session.server.ts — Cookie-based sessions",
+          "app/lib/auth/validation.ts — Zod schemas (RegisterInput, LoginInput)",
+          "app/routes/auth.register.tsx — Registration route with action",
+          "app/routes/auth.login.tsx — Login route with action",
+          "app/routes/auth.logout.tsx — Logout route with action",
+          "app/models/user.server.ts — User model (Prisma)",
+          "tests/lib/auth/jwt.test.ts — Token tests",
+          "tests/routes/auth.test.ts — Route loader/action tests"
+        ],
+        "nestjs-api": [
+          "src/auth/auth.module.ts — NestJS auth module",
+          "src/auth/auth.controller.ts — Auth endpoints (register, login, me)",
+          "src/auth/auth.service.ts — Auth business logic",
+          "src/auth/jwt.strategy.ts — Passport JWT strategy",
+          "src/auth/jwt-auth.guard.ts — Auth guard for protected routes",
+          "src/auth/dto/register.dto.ts — Registration DTO with class-validator",
+          "src/auth/dto/login.dto.ts — Login DTO",
+          "src/users/users.module.ts — Users module",
+          "src/users/user.entity.ts — User entity (TypeORM)",
+          "test/auth/auth.service.spec.ts — Service tests",
+          "test/auth/auth.controller.spec.ts — Controller tests"
         ]
       }
     },
@@ -33,6 +82,43 @@
           "prisma/schema.prisma — Widget model with type, config, position",
           "tests/widgets/types.test.ts — Zod schema validation tests",
           "tests/widgets/service.test.ts — CRUD operation tests"
+        ],
+        "express-api": [
+          "src/widgets/types.ts — Widget interfaces + Zod schemas",
+          "src/widgets/service.ts — CRUD business logic",
+          "src/routes/widgets.ts — Express router for CRUD + reorder",
+          "src/models/widget.ts — Widget model",
+          "tests/widgets/routes.test.ts — API endpoint tests",
+          "tests/widgets/service.test.ts — Business logic tests"
+        ],
+        "vite-spa": [
+          "src/lib/widgets/api.ts — Widget API client",
+          "src/lib/widgets/types.ts — Widget interfaces",
+          "src/lib/widgets/store.ts — Widget state management (Zustand/Redux)",
+          "src/components/WidgetGrid.tsx — Dashboard grid component",
+          "src/components/Widget.tsx — Individual widget component",
+          "src/pages/Dashboard.tsx — Dashboard page",
+          "tests/lib/widgets/api.test.ts — API client tests",
+          "tests/components/WidgetGrid.test.tsx — Component tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/widgets/types.ts — Widget interfaces + Zod schemas",
+          "app/lib/widgets/service.server.ts — CRUD business logic (server)",
+          "app/routes/dashboard.tsx — Dashboard route with loader",
+          "app/routes/api.widgets.tsx — API route for CRUD",
+          "app/components/WidgetGrid.tsx — Grid component",
+          "app/models/widget.server.ts — Widget model (Prisma)",
+          "tests/lib/widgets/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/widgets/widgets.module.ts — NestJS widgets module",
+          "src/widgets/widgets.controller.ts — CRUD endpoints",
+          "src/widgets/widgets.service.ts — Business logic",
+          "src/widgets/dto/create-widget.dto.ts — Create DTO",
+          "src/widgets/dto/update-widget.dto.ts — Update DTO",
+          "src/widgets/widget.entity.ts — Widget entity",
+          "test/widgets/widgets.service.spec.ts — Service tests",
+          "test/widgets/widgets.controller.spec.ts — Controller tests"
         ]
       }
     },
@@ -48,6 +134,39 @@
           "components/Chat.tsx — Chat UI component",
           "tests/ai/types.test.ts — Zod schema tests",
           "tests/ai/context.test.ts — Context formatting tests"
+        ],
+        "express-api": [
+          "src/ai/types.ts — ChatMessage, Context interfaces",
+          "src/ai/context.ts — Context formatting helper",
+          "src/ai/service.ts — OpenAI API integration",
+          "src/routes/chat.ts — Express router for /chat, /chat/clear",
+          "tests/ai/service.test.ts — OpenAI integration tests",
+          "tests/ai/routes.test.ts — API endpoint tests"
+        ],
+        "vite-spa": [
+          "src/lib/ai/api.ts — Chat API client",
+          "src/lib/ai/types.ts — ChatMessage interfaces",
+          "src/lib/ai/store.ts — Chat state management",
+          "src/components/Chat.tsx — Chat UI component",
+          "src/components/ChatMessage.tsx — Message component",
+          "tests/lib/ai/api.test.ts — API client tests",
+          "tests/components/Chat.test.tsx — Component tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/ai/types.ts — ChatMessage, Context interfaces",
+          "app/lib/ai/context.ts — Context formatting",
+          "app/lib/ai/service.server.ts — OpenAI integration (server)",
+          "app/routes/api.chat.tsx — Chat API route",
+          "app/components/Chat.tsx — Chat component",
+          "tests/lib/ai/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/chat/chat.module.ts — NestJS chat module",
+          "src/chat/chat.controller.ts — Chat endpoints",
+          "src/chat/chat.service.ts — OpenAI integration",
+          "src/chat/dto/chat-message.dto.ts — Message DTO",
+          "test/chat/chat.service.spec.ts — Service tests",
+          "test/chat/chat.controller.spec.ts — Controller tests"
         ]
       }
     },
@@ -61,6 +180,36 @@
           "app/settings/page.tsx — Settings UI page",
           "prisma/schema.prisma — Settings model with theme, notifications, etc",
           "tests/settings/types.test.ts — Zod schema validation tests"
+        ],
+        "express-api": [
+          "src/settings/types.ts — Settings interfaces",
+          "src/settings/service.ts — Business logic",
+          "src/routes/settings.ts — GET + PUT endpoints",
+          "src/models/settings.ts — Settings model",
+          "tests/settings/routes.test.ts — API tests"
+        ],
+        "vite-spa": [
+          "src/lib/settings/api.ts — Settings API client",
+          "src/lib/settings/types.ts — Settings interfaces",
+          "src/lib/settings/store.ts — Settings state",
+          "src/pages/Settings.tsx — Settings page",
+          "src/components/SettingsForm.tsx — Form component",
+          "tests/lib/settings/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/settings/types.ts — Settings interfaces",
+          "app/lib/settings/service.server.ts — Business logic",
+          "app/routes/settings.tsx — Settings route with loader/action",
+          "app/models/settings.server.ts — Settings model",
+          "tests/lib/settings/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/settings/settings.module.ts — Settings module",
+          "src/settings/settings.controller.ts — GET + PUT endpoints",
+          "src/settings/settings.service.ts — Business logic",
+          "src/settings/dto/update-settings.dto.ts — Update DTO",
+          "src/settings/settings.entity.ts — Settings entity",
+          "test/settings/settings.service.spec.ts — Service tests"
         ]
       }
     },
@@ -70,6 +219,23 @@
         "nextjs-fullstack": [
           "RESPONSIVE.md — Responsive design documentation",
           "tests/responsive/viewport.test.md — Manual testing checklist"
+        ],
+        "express-api": [
+          "RESPONSIVE.md — API mobile considerations",
+          "tests/responsive/mobile-api.test.md — Mobile API testing"
+        ],
+        "vite-spa": [
+          "RESPONSIVE.md — Responsive design guide",
+          "src/styles/breakpoints.ts — Breakpoint constants",
+          "tests/responsive/viewport.test.md — Manual testing checklist"
+        ],
+        "remix-fullstack": [
+          "RESPONSIVE.md — Responsive design documentation",
+          "tests/responsive/viewport.test.md — Manual testing checklist"
+        ],
+        "nestjs-api": [
+          "RESPONSIVE.md — API mobile considerations",
+          "tests/responsive/mobile-api.test.md — Mobile API testing"
         ]
       }
     }
