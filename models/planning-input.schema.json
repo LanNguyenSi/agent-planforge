@@ -74,8 +74,19 @@
       "default": "low"
     },
     "teamSize": {
-      "type": "integer",
-      "minimum": 1
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Team size as number of people"
+        },
+        {
+          "type": "string",
+          "enum": ["solo", "small", "medium", "large", "enterprise"],
+          "description": "Team size as descriptor"
+        }
+      ],
+      "description": "Team size (number or descriptor: solo/small/medium/large/enterprise)"
     },
     "productionExpectedSoon": {
       "type": "boolean",
