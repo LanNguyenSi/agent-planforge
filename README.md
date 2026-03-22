@@ -2,8 +2,6 @@
 
 Planning bootstrap for AI agents that need to turn rough requirements into a first architecture, initial ADR candidates, and an implementation backlog.
 
-Status: WIP. The core planning flow works, but the project is still being hardened. Open implementation work is tracked in `tasks/`.
-
 `agent-planforge` is open source under the MIT license. Contribution, security reporting, and community expectations are documented in this repository.
 
 ## What This Project Does
@@ -55,14 +53,14 @@ This first version includes:
 - `.ai/` context export for downstream coding agents
 - playbook-aware charter and prompt references
 
-## Open Source Project Status
+## Project Status
 
-This repository is public-facing and contribution-ready, but still early.
-
-- Core planning flow: usable
-- Stability and test coverage: in progress
-- Backlog for hardening work: `tasks/`
-- API and output compatibility: not yet guaranteed across minor revisions
+- Core planning flow: stable
+- Schema validation: implemented (ajv)
+- Test coverage: automated (CI with Node 18 + 20)
+- .ai/ context generation: implemented
+- Playbook integration: implemented
+- Remaining enhancements tracked in `tasks/`
 
 ## Quick Start
 
