@@ -897,7 +897,57 @@ function inferTechStack(input) {
   return "application stack to be confirmed";
 }
 
-function featureFiles(feature, architectureShape) {
+function loadStackPatterns(repoRoot) {
+  try {
+    return readJson(path.join(repoRoot, "config", "stack-patterns.json"));
+  } catch (error) {
+    return { patterns: {} };
+  }
+}
+
+function matchPattern(feature, patterns) {
+  const lower = feature.toLowerCase();
+  
+  for (const [patternName, pattern] of Object.entries(patterns)) {
+    const keywords = pattern.keywords || [];
+    const matchCount = keywords.filter(keyword => lower.includes(keyword)).length;
+    
+    if (matchCount > 0) {
+      return { patternName, pattern, matchCount };
+    }
+  }
+  
+  return null;
+}
+
+function featureFiles(feature, architectureShape, stackPatterns) {
+  // Try to match a known pattern
+  if (stackPatterns && stackPatterns.patterns) {
+    const match = matchPattern(feature, stackPatterns.patterns);
+    
+    if (match && match.pattern.files) {
+      // Check if we have files for this architecture shape
+      const shapeKey = architectureShape.replace(/\s+/g, '-').toLowerCase();
+      
+      // Try exact match first
+      if (match.pattern.files[shapeKey]) {
+        return match.pattern.files[shapeKey];
+      }
+      
+      // Try nextjs-fullstack for Next.js related shapes
+      if (/next|fullstack/.test(shapeKey) && match.pattern.files['nextjs-fullstack']) {
+        return match.pattern.files['nextjs-fullstack'];
+      }
+      
+      // Fall back to first available shape
+      const firstShape = Object.keys(match.pattern.files)[0];
+      if (firstShape) {
+        return match.pattern.files[firstShape];
+      }
+    }
+  }
+  
+  // Fallback to generic pattern
   const slug = slugify(feature);
   const files = [
     `src/modules/${slug}/index.ts`,
@@ -973,7 +1023,7 @@ function connectBlocks(tasks) {
   return tasks;
 }
 
-function buildTasks(input, phase, architecture) {
+function buildTasks(input, phase, architecture, stackPatterns) {
   const tasks = [
     makeTask({
       id: "001",
@@ -1064,7 +1114,7 @@ function buildTasks(input, phase, architecture) {
         summary: `Design and implement the capability for: ${feature}.`,
         problem: `The product cannot satisfy its initial scope until ${feature} exists as a reviewable, testable capability.`,
         solution: `Add a focused module for ${feature} that matches the recommended ${architecture.shape} and keeps integration boundaries explicit.`,
-        files: featureFiles(feature, architecture.shape),
+        files: featureFiles(feature, architecture.shape, stackPatterns),
         acceptanceCriteria: acceptanceCriteriaForFeature(feature),
         implementationNotes: [
           "Start from domain rules and access constraints before UI or transport details.",
@@ -1280,7 +1330,8 @@ function buildOutput(input, config, playbookContext, repoRoot, inputMetadata) {
   const intake = intakeSignals(input, config);
   const options = architectureOptions(input, phase);
   const architecture = architectureRecommendation(options, phase);
-  const tasks = buildTasks(input, phase, architecture);
+  const stackPatterns = loadStackPatterns(repoRoot);
+  const tasks = buildTasks(input, phase, architecture, stackPatterns);
 
   return {
     projectName: input.projectName,
