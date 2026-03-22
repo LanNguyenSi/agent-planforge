@@ -1,0 +1,77 @@
+{
+  "patterns": {
+    "authentication-jwt": {
+      "keywords": ["authentication", "jwt", "auth", "login", "register"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/auth/jwt.ts — Token generation + verification (jsonwebtoken)",
+          "lib/auth/password.ts — bcrypt hashing + verification",
+          "lib/auth/middleware.ts — withAuth() HOF for protected routes",
+          "lib/auth/validation.ts — Zod schemas (RegisterInput, LoginInput)",
+          "lib/auth/service.ts — User registration + login business logic",
+          "app/api/auth/register/route.ts — POST registration endpoint",
+          "app/api/auth/login/route.ts — POST login endpoint",
+          "app/api/auth/me/route.ts — GET current user (protected)",
+          "prisma/schema.prisma — User model with email, password, name",
+          "tests/auth/jwt.test.ts — Token generation + verification tests",
+          "tests/auth/password.test.ts — Hash + verify tests",
+          "tests/auth/validation.test.ts — Zod schema tests"
+        ]
+      }
+    },
+    "dashboard-widgets": {
+      "keywords": ["dashboard", "widget", "configurable", "personalized"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/widgets/types.ts — Widget interfaces + Zod schemas",
+          "lib/widgets/service.ts — CRUD operations for widgets",
+          "app/api/widgets/route.ts — GET (list) + POST (create) endpoints",
+          "app/api/widgets/[id]/route.ts — GET/PUT/DELETE single widget",
+          "app/api/widgets/reorder/route.ts — POST endpoint for position updates",
+          "app/dashboard/page.tsx — Dashboard UI with grid layout",
+          "components/WidgetGrid.tsx — Responsive grid component",
+          "prisma/schema.prisma — Widget model with type, config, position",
+          "tests/widgets/types.test.ts — Zod schema validation tests",
+          "tests/widgets/service.test.ts — CRUD operation tests"
+        ]
+      }
+    },
+    "ai-assistant": {
+      "keywords": ["ai", "chat", "assistant", "openai", "context"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/ai/types.ts — ChatMessage, DashboardContext interfaces + Zod schemas",
+          "lib/ai/context.ts — formatContextForAI() helper",
+          "lib/ai/service.ts — OpenAI API integration",
+          "app/api/chat/route.ts — POST chat endpoint",
+          "app/api/chat/clear/route.ts — DELETE chat history endpoint",
+          "components/Chat.tsx — Chat UI component",
+          "tests/ai/types.test.ts — Zod schema tests",
+          "tests/ai/context.test.ts — Context formatting tests"
+        ]
+      }
+    },
+    "settings-preferences": {
+      "keywords": ["settings", "preferences", "user profile", "configuration"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/settings/types.ts — Settings interface + Zod schema",
+          "lib/settings/service.ts — Get + update settings logic",
+          "app/api/settings/route.ts — GET + PUT settings endpoints",
+          "app/settings/page.tsx — Settings UI page",
+          "prisma/schema.prisma — Settings model with theme, notifications, etc",
+          "tests/settings/types.test.ts — Zod schema validation tests"
+        ]
+      }
+    },
+    "responsive-design": {
+      "keywords": ["responsive", "mobile", "desktop", "breakpoints"],
+      "files": {
+        "nextjs-fullstack": [
+          "RESPONSIVE.md — Responsive design documentation",
+          "tests/responsive/viewport.test.md — Manual testing checklist"
+        ]
+      }
+    }
+  }
+}
