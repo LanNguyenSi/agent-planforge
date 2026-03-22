@@ -907,17 +907,25 @@ function loadStackPatterns(repoRoot) {
 
 function matchPattern(feature, patterns) {
   const lower = feature.toLowerCase();
+  const matches = [];
   
   for (const [patternName, pattern] of Object.entries(patterns)) {
     const keywords = pattern.keywords || [];
     const matchCount = keywords.filter(keyword => lower.includes(keyword)).length;
     
     if (matchCount > 0) {
-      return { patternName, pattern, matchCount };
+      matches.push({ patternName, pattern, matchCount });
     }
   }
   
-  return null;
+  if (matches.length === 0) {
+    return null;
+  }
+  
+  // Sort by matchCount descending (best match first)
+  matches.sort((a, b) => b.matchCount - a.matchCount);
+  
+  return matches[0];
 }
 
 function featureFiles(feature, architectureShape, stackPatterns) {
