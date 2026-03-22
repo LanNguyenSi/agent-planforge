@@ -125,7 +125,12 @@ function writeFile(targetPath, contents) {
 }
 
 function slugify(value) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .substring(0, 40)  // Limit to 40 characters
+    .replace(/-$/, "");  // Clean trailing dash after substring
 }
 
 function renderTemplate(repoRoot, relativeTemplatePath, values) {
