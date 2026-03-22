@@ -29,7 +29,8 @@ function parseArgs(argv) {
     rerunFrom: "",
     help: false,
     summary: false,
-    validateOnly: false
+    validateOnly: false,
+    install: true
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -59,6 +60,10 @@ function parseArgs(argv) {
       args.summary = true;
     } else if (arg === "--validate-only") {
       args.validateOnly = true;
+    } else if (arg === "--install") {
+      args.install = true;
+    } else if (arg === "--no-install") {
+      args.install = false;
     } else {
       throw new CliError(`Unknown argument: ${arg}`, EXIT_CODES.USAGE, [usageText()]);
     }
@@ -78,6 +83,8 @@ function usageText() {
     "  --rerun-from <dir>   Compare against a previous run and emit rerun metadata",
     "  --summary            Print a concise planning summary",
     "  --validate-only      Validate input, config, and generated output without writing files",
+    "  --install            Run npm install after generation (default: true)",
+    "  --no-install         Skip npm install after generation",
     "  --help, -h           Show this help"
   ].join("\n");
 }
@@ -2582,6 +2589,29 @@ function writeMakefile(repoRoot, outdir) {
   writeFile(path.join(outdir, "Makefile"), makefileContent);
 }
 
+function runNpmInstall(outdir) {
+  const packageJsonPath = path.join(outdir, "package.json");
+  
+  // Only run npm install if package.json exists
+  if (!fs.existsSync(packageJsonPath)) {
+    return;
+  }
+  
+  const { execSync } = require("child_process");
+  
+  console.log("Running npm install to generate package-lock.json...");
+  
+  try {
+    execSync("npm install", {
+      cwd: outdir,
+      stdio: "inherit"
+    });
+    console.log("✓ package-lock.json generated successfully");
+  } catch (error) {
+    console.error("Warning: npm install failed. Run manually in output directory.");
+  }
+}
+
 function printSummary(output, outdir, validateOnly) {
   const firstWave = output.executionWaves[0];
   const firstWaveTasks = firstWave
@@ -2664,6 +2694,10 @@ function main() {
     writeTemplateArtifacts(repoRoot, input, output, outdir, config);
     writeMakefile(repoRoot, outdir);
     preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
+
+    if (args.install) {
+      runNpmInstall(outdir);
+    }
 
     if (args.summary) {
       printSummary(output, outdir, false);
