@@ -1,4 +1,4 @@
-.PHONY: install dev dev-docker docker-up docker-down build test lint format ci clean help
+.PHONY: install hooks dev dev-docker docker-up docker-down build test lint format ci clean help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -11,6 +11,11 @@ help: ## Show this help message
 
 install: ## Install dependencies
 	npm ci
+
+hooks: ## Set up Git pre-commit hooks (Husky + lint-staged)
+	npx husky init
+	cp .husky-pre-commit .husky/pre-commit
+	chmod +x .husky/pre-commit
 
 dev: ## Start development server (local)
 	npm run dev
