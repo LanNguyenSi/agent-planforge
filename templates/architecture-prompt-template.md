@@ -18,6 +18,10 @@ Validate and refine the recommended architecture for this project.
 
 {{architectureOptions}}
 
+## Applicable Playbooks
+
+{{applicablePlaybooks}}
+
 ## Risks And Open Questions
 
 Risks:

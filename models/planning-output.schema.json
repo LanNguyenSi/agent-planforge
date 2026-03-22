@@ -278,6 +278,11 @@
           "category",
           "priority",
           "summary",
+          "problem",
+          "solution",
+          "files",
+          "acceptanceCriteria",
+          "implementationNotes",
           "wave",
           "dependsOn"
         ],
@@ -301,6 +306,30 @@
           },
           "summary": {
             "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "solution": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "implementationNotes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "wave": {
             "type": "string"

@@ -2,11 +2,36 @@
 
 const fs = require("fs");
 const path = require("path");
+const Ajv2020 = require("ajv/dist/2020");
+
+const EXIT_CODES = {
+  USAGE: 1,
+  VALIDATION: 2,
+  RUNTIME: 3
+};
+
+class CliError extends Error {
+  constructor(message, exitCode, details = []) {
+    super(message);
+    this.name = "CliError";
+    this.exitCode = exitCode;
+    this.details = details;
+  }
+}
 
 function parseArgs(argv) {
-  const args = { input: "", outdir: "", config: "" };
+  const args = {
+    input: "",
+    outdir: "",
+    config: "",
+    help: false,
+    summary: false,
+    validateOnly: false
+  };
+
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
+
     if (arg === "--input") {
       args.input = argv[i + 1] || "";
       i += 1;
@@ -16,17 +41,89 @@ function parseArgs(argv) {
     } else if (arg === "--config") {
       args.config = argv[i + 1] || "";
       i += 1;
+    } else if (arg === "--help" || arg === "-h") {
+      args.help = true;
+    } else if (arg === "--summary") {
+      args.summary = true;
+    } else if (arg === "--validate-only") {
+      args.validateOnly = true;
+    } else {
+      throw new CliError(`Unknown argument: ${arg}`, EXIT_CODES.USAGE, [usageText()]);
     }
   }
+
   return args;
 }
 
-function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+function usageText() {
+  return [
+    "Usage: node scripts/bootstrap-plan.js --input <file> --outdir <dir> [options]",
+    "",
+    "Options:",
+    "  --config <file>      Override planner config JSON file",
+    "  --summary            Print a concise planning summary",
+    "  --validate-only      Validate input, config, and generated output without writing files",
+    "  --help, -h           Show this help"
+  ].join("\n");
 }
 
-function readText(filePath) {
-  return fs.readFileSync(filePath, "utf8");
+function readText(filePath, label = filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    throw new CliError(`Unable to read ${label}: ${error.message}`, EXIT_CODES.RUNTIME);
+  }
+}
+
+function readJson(filePath, label = filePath) {
+  try {
+    return JSON.parse(readText(filePath, label));
+  } catch (error) {
+    if (error instanceof CliError) {
+      throw error;
+    }
+    throw new CliError(`Invalid JSON in ${label}: ${error.message}`, EXIT_CODES.VALIDATION);
+  }
+}
+
+function ensureDir(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function writeFile(targetPath, contents) {
+  ensureDir(path.dirname(targetPath));
+  fs.writeFileSync(targetPath, contents, "utf8");
+}
+
+function slugify(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function renderTemplate(repoRoot, relativeTemplatePath, values) {
+  const template = readText(path.join(repoRoot, relativeTemplatePath), relativeTemplatePath);
+  return Object.entries(values).reduce((content, [key, value]) => {
+    return content.replaceAll(`{{${key}}}`, value);
+  }, template);
+}
+
+function formatSchemaErrors(errors) {
+  return (errors || []).map((error) => {
+    const location = error.instancePath || "/";
+    return `${location} ${error.message}`;
+  });
+}
+
+function validateWithSchema(repoRoot, relativeSchemaPath, value, label) {
+  const schema = readJson(path.join(repoRoot, relativeSchemaPath), relativeSchemaPath);
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strict: false
+  });
+  const validate = ajv.compile(schema);
+
+  if (!validate(value)) {
+    throw new CliError(`Schema validation failed for ${label}.`, EXIT_CODES.VALIDATION, formatSchemaErrors(validate.errors));
+  }
 }
 
 function configPath(repoRoot, overridePath) {
@@ -35,14 +132,14 @@ function configPath(repoRoot, overridePath) {
     : path.join(repoRoot, "config/planner-config.json");
 }
 
-function validatePlannerConfig(config) {
+function validatePlannerConfigStructure(config) {
   const profileNames = ["startup", "product", "enterprise", "platform"];
   const phases = ["phase_0", "phase_1", "phase_2", "phase_3"];
   const priorities = ["high", "medium", "low"];
 
   function assert(condition, message) {
     if (!condition) {
-      throw new Error(`Invalid planner config: ${message}`);
+      throw new CliError(`Invalid planner config: ${message}`, EXIT_CODES.VALIDATION);
     }
   }
 
@@ -80,24 +177,44 @@ function validatePlannerConfig(config) {
 
 function loadPlannerConfig(repoRoot, overridePath) {
   const resolvedPath = configPath(repoRoot, overridePath);
-  const config = readJson(resolvedPath);
-  validatePlannerConfig(config);
+  const config = readJson(resolvedPath, resolvedPath);
+  validateWithSchema(repoRoot, "models/planner-config.schema.json", config, "planner config");
+  validatePlannerConfigStructure(config);
   return config;
 }
 
-function ensureDir(dirPath) {
-  fs.mkdirSync(dirPath, { recursive: true });
+function loadPlanningInput(repoRoot, inputPath) {
+  const resolvedPath = path.resolve(repoRoot, inputPath);
+  const input = readJson(resolvedPath, resolvedPath);
+  validateWithSchema(repoRoot, "models/planning-input.schema.json", input, "planning input");
+  return input;
 }
 
-function slugify(value) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function loadPlaybookContext(repoRoot) {
+  const configuredRoot = process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT
+    ? path.resolve(process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT)
+    : path.resolve(repoRoot, "../agent-engineering-playbook");
+  const externalModelPath = path.join(configuredRoot, "models", "adoption-model.json");
+  const bundledModelPath = path.join(repoRoot, "models", "playbook-adoption-model.json");
+
+  if (fs.existsSync(externalModelPath)) {
+    return {
+      root: configuredRoot,
+      model: readJson(externalModelPath, externalModelPath)
+    };
+  }
+
+  return {
+    root: "",
+    model: readJson(bundledModelPath, bundledModelPath)
+  };
 }
 
-function renderTemplate(repoRoot, relativeTemplatePath, values) {
-  const template = readText(path.join(repoRoot, relativeTemplatePath));
-  return Object.entries(values).reduce((content, [key, value]) => {
-    return content.replaceAll(`{{${key}}}`, value);
-  }, template);
+function resolvePlaybookPath(playbookContext, relativePath) {
+  if (playbookContext.root) {
+    return path.join(playbookContext.root, relativePath);
+  }
+  return path.join("agent-engineering-playbook", relativePath);
 }
 
 function inferPhase(input) {
@@ -269,10 +386,26 @@ function phaseRationale(input, phase) {
   return reasons;
 }
 
-function recommendedPlaybooks(phase) {
-  return [
-    "playbooks/planning-and-scoping.md"
-  ];
+function recommendedPlaybooks(phase, pathName, playbookContext, repoRoot) {
+  const mandatory = [];
+  const adoptionModel = playbookContext.model || {};
+  const corePhases = (((adoptionModel.paths || {}).core || {}).mandatory_playbooks_by_phase) || {};
+  const enterprisePhases = (((adoptionModel.paths || {}).enterprise || {}).mandatory_playbooks_by_phase) || {};
+  const baselinePhase = phase === "phase_3" ? "phase_2" : phase;
+
+  mandatory.push(path.join(repoRoot, "playbooks", "planning-and-scoping.md"));
+
+  (corePhases[baselinePhase] || []).forEach((relativePath) => {
+    mandatory.push(resolvePlaybookPath(playbookContext, relativePath));
+  });
+
+  if (pathName === "enterprise") {
+    (enterprisePhases.phase_3 || []).forEach((relativePath) => {
+      mandatory.push(resolvePlaybookPath(playbookContext, relativePath));
+    });
+  }
+
+  return Array.from(new Set(mandatory));
 }
 
 function recommendedGuidanceAreas(phase, profile, config) {
@@ -443,17 +576,84 @@ function adrCandidates(input, architecture) {
   return adrs;
 }
 
-function makeTask(id, title, category, priority, summary, wave, dependsOn, deliveryPhase) {
+function inferTechStack(input) {
+  const constraints = (input.constraints || []).join(" ").toLowerCase();
+  const features = (input.coreFeatures || []).join(" ").toLowerCase();
+
+  if (/typescript/.test(constraints)) {
+    if (/dashboard|web|portal|admin/.test(features)) {
+      return "TypeScript web application";
+    }
+    return "TypeScript service stack";
+  }
+
+  if (/python/.test(constraints)) {
+    return "Python application";
+  }
+
+  return "application stack to be confirmed";
+}
+
+function featureFiles(feature, architectureShape) {
+  const slug = slugify(feature);
+  const files = [
+    `src/modules/${slug}/index.ts`,
+    `src/modules/${slug}/${slug}.service.ts`,
+    `src/modules/${slug}/${slug}.repository.ts`,
+    `tests/integration/${slug}.test.js`
+  ];
+
+  if (/dashboard|admin|form|portal/.test(feature.toLowerCase())) {
+    files.unshift(`src/routes/${slug}.ts`);
+  }
+
+  if (/approval|workflow|notification|queue/.test(feature.toLowerCase()) || /background jobs/.test(architectureShape)) {
+    files.push(`src/jobs/${slug}.job.ts`);
+  }
+
+  if (/audit|review|approval/.test(feature.toLowerCase())) {
+    files.push("src/modules/audit/audit-log.ts");
+  }
+
+  return Array.from(new Set(files));
+}
+
+function acceptanceCriteriaForFeature(feature) {
+  const lower = feature.toLowerCase();
+  const checks = [
+    `The ${feature} capability is available through the intended application surface.`,
+    `Core validation, error handling, and persistence for ${feature} are covered by tests.`
+  ];
+
+  if (/approval|request/.test(lower)) {
+    checks.push("Role-based approval transitions and audit visibility are explicit.");
+  }
+  if (/audit/.test(lower)) {
+    checks.push("Audit records capture actor, action, and timestamp without silent mutation.");
+  }
+  if (/dashboard/.test(lower)) {
+    checks.push("The dashboard surfaces the highest-value operational information without exposing unauthorized data.");
+  }
+
+  return checks;
+}
+
+function makeTask(task) {
   return {
-    id,
-    title,
-    category,
-    priority,
-    summary,
-    wave,
-    dependsOn,
+    id: task.id,
+    title: task.title,
+    category: task.category,
+    priority: task.priority,
+    summary: task.summary,
+    problem: task.problem,
+    solution: task.solution,
+    files: task.files,
+    acceptanceCriteria: task.acceptanceCriteria,
+    implementationNotes: task.implementationNotes,
+    wave: task.wave,
+    dependsOn: task.dependsOn,
     blocks: [],
-    deliveryPhase
+    deliveryPhase: task.deliveryPhase
   };
 }
 
@@ -470,32 +670,67 @@ function connectBlocks(tasks) {
   return tasks;
 }
 
-function buildTasks(input, phase) {
+function buildTasks(input, phase, architecture) {
   const tasks = [
-    makeTask(
-      "001",
-      "Write project charter and architecture baseline",
-      "foundation",
-      "P0",
-      "Capture the product scope, users, constraints, architecture shape, and open questions.",
-      "wave-1",
-      [],
-      "foundation"
-    ),
-    makeTask(
-      "002",
-      "Set up repository and delivery baseline",
-      "foundation",
-      "P0",
-      "Create the repository structure, quality checks, and basic documentation needed for implementation.",
-      "wave-1",
-      ["001"],
-      "foundation"
-    )
+    makeTask({
+      id: "001",
+      title: "Write project charter and architecture baseline",
+      category: "foundation",
+      priority: "P0",
+      summary: "Capture the product scope, users, constraints, architecture shape, and open questions.",
+      problem: "The project starts from rough requirements and needs a shared baseline before implementation can be reviewed or sequenced safely.",
+      solution: "Create the charter, architecture overview, and first ADRs so later execution work inherits explicit assumptions instead of guesswork.",
+      files: [
+        "project-charter.md",
+        "architecture-overview.md",
+        "adrs/001-initial-architecture-shape.md",
+        "adrs/002-primary-data-store.md"
+      ],
+      acceptanceCriteria: [
+        "The charter captures summary, users, features, constraints, and unresolved questions.",
+        "The architecture overview names a recommended starting shape and its tradeoffs.",
+        "Initial ADRs exist for the highest-leverage early decisions."
+      ],
+      implementationNotes: [
+        "Use the recommended architecture as the default, not as a final truth claim.",
+        "Keep open questions visible so downstream agents know what may still change.",
+        "Reference the applicable playbooks directly in the generated charter."
+      ],
+      wave: "wave-1",
+      dependsOn: [],
+      deliveryPhase: "foundation"
+    }),
+    makeTask({
+      id: "002",
+      title: "Set up repository and delivery baseline",
+      category: "foundation",
+      priority: "P0",
+      summary: "Create the repository structure, quality checks, and basic documentation needed for implementation.",
+      problem: "Execution work will fragment quickly if the repository, quality gates, and documentation expectations are not defined up front.",
+      solution: "Establish the test path, delivery workflow expectations, and starter documentation before feature branches accumulate drift.",
+      files: [
+        "package.json",
+        "README.md",
+        "tests/",
+        ".github/workflows/"
+      ],
+      acceptanceCriteria: [
+        "A repeatable local test command exists for the project baseline.",
+        "Core delivery expectations are documented for humans and agents.",
+        "The repository has enough structure that the first implementation wave can begin without setup churn."
+      ],
+      implementationNotes: [
+        "Keep the baseline minimal but reviewable.",
+        "Prefer a small number of reliable checks over aspirational tooling that nobody runs.",
+        "Align branch and review behavior with the development workflow playbook."
+      ],
+      wave: "wave-1",
+      dependsOn: ["001"],
+      deliveryPhase: "foundation"
+    })
   ];
 
   const featureTaskIndex = new Map();
-
   input.coreFeatures.forEach((feature, index) => {
     const taskId = String(index + 3).padStart(3, "0");
     featureTaskIndex.set(feature.toLowerCase(), taskId);
@@ -518,61 +753,119 @@ function buildTasks(input, phase) {
     }
 
     tasks.push(
-      makeTask(
-        taskId,
-        `Implement ${feature}`,
-        "feature",
-        index < 2 ? "P0" : "P1",
-        `Design and implement the capability for: ${feature}.`,
-        index < 2 ? "wave-2" : "wave-3",
-        Array.from(new Set(dependsOn)),
-        "implementation"
-      )
+      makeTask({
+        id: taskId,
+        title: `Implement ${feature}`,
+        category: "feature",
+        priority: index < 2 ? "P0" : "P1",
+        summary: `Design and implement the capability for: ${feature}.`,
+        problem: `The product cannot satisfy its initial scope until ${feature} exists as a reviewable, testable capability.`,
+        solution: `Add a focused module for ${feature} that matches the recommended ${architecture.shape} and keeps integration boundaries explicit.`,
+        files: featureFiles(feature, architecture.shape),
+        acceptanceCriteria: acceptanceCriteriaForFeature(feature),
+        implementationNotes: [
+          "Start from domain rules and access constraints before UI or transport details.",
+          "Keep module boundaries explicit so later extraction remains possible if the system grows.",
+          "Update docs and tests in the same change instead of leaving them for cleanup."
+        ],
+        wave: index < 2 ? "wave-2" : "wave-3",
+        dependsOn: Array.from(new Set(dependsOn)),
+        deliveryPhase: "implementation"
+      })
     );
   });
 
   const featureTaskIds = tasks.filter((task) => task.category === "feature").map((task) => task.id);
 
   tasks.push(
-    makeTask(
-      String(tasks.length + 1).padStart(3, "0"),
-      "Add integration and error-handling coverage",
-      "quality",
-      "P1",
-      "Verify the critical path, failure handling, and integration boundaries with tests.",
-      "wave-4",
-      featureTaskIds,
-      "hardening"
-    )
+    makeTask({
+      id: String(tasks.length + 1).padStart(3, "0"),
+      title: "Add integration and error-handling coverage",
+      category: "quality",
+      priority: "P1",
+      summary: "Verify the critical path, failure handling, and integration boundaries with tests.",
+      problem: "The initial implementation backlog leaves room for silent regressions unless critical-path and error-path coverage are added deliberately.",
+      solution: "Add end-to-end and integration-focused verification around the user path, external boundaries, and failure handling assumptions.",
+      files: [
+        "tests/integration/critical-path.test.js",
+        "tests/integration/error-handling.test.js",
+        "tests/contract/integrations.test.js"
+      ],
+      acceptanceCriteria: [
+        "Critical path behavior is exercised through automated tests.",
+        "Integration and error paths fail loudly instead of degrading silently.",
+        "Known edge cases from the first release plan are captured in test coverage."
+      ],
+      implementationNotes: [
+        "Bias toward tests that exercise contracts and failure semantics, not only happy-path rendering.",
+        "Keep fixtures readable so future backlog work can extend them safely."
+      ],
+      wave: "wave-4",
+      dependsOn: featureTaskIds,
+      deliveryPhase: "hardening"
+    })
   );
 
   if (phase === "phase_2" || phase === "phase_3") {
     tasks.push(
-      makeTask(
-        String(tasks.length + 1).padStart(3, "0"),
-        "Prepare production readiness baseline",
-        "operations",
-        "P0",
-        "Add observability, rollback notes, deployment verification, and runbook basics.",
-        "wave-4",
-        ["002"],
-        "launch"
-      )
+      makeTask({
+        id: String(tasks.length + 1).padStart(3, "0"),
+        title: "Prepare production readiness baseline",
+        category: "operations",
+        priority: "P0",
+        summary: "Add observability, rollback notes, deployment verification, and runbook basics.",
+        problem: "Production-oriented work is risky without explicit release, rollback, and observability expectations.",
+        solution: "Create runbook, release checks, and baseline operational documentation before launch pressure forces shortcuts.",
+        files: [
+          "runbooks/release-readiness.md",
+          "docs/observability.md",
+          "deploy/"
+        ],
+        acceptanceCriteria: [
+          "Release ownership and rollback expectations are documented.",
+          "Critical health signals and verification steps are written down.",
+          "Production readiness work is visible before the first live rollout."
+        ],
+        implementationNotes: [
+          "Keep the first runbook concrete and biased toward the highest-value verification steps.",
+          "Tie release checks back to the architecture and integration risks."
+        ],
+        wave: "wave-4",
+        dependsOn: ["002"],
+        deliveryPhase: "launch"
+      })
     );
   }
 
   if (phase === "phase_3") {
     tasks.push(
-      makeTask(
-        String(tasks.length + 1).padStart(3, "0"),
-        "Establish enterprise governance artifacts",
-        "governance",
-        "P0",
-        "Create service ownership, data classification, access review, and exception tracking artifacts.",
-        "wave-2",
-        ["001"],
-        "foundation"
-      )
+      makeTask({
+        id: String(tasks.length + 1).padStart(3, "0"),
+        title: "Establish enterprise governance artifacts",
+        category: "governance",
+        priority: "P0",
+        summary: "Create service ownership, data classification, access review, and exception tracking artifacts.",
+        problem: "Enterprise-path delivery cannot rely on implied ownership or undocumented controls when audits and sensitive data are in scope.",
+        solution: "Generate the minimum control artifacts early and assign real owners, cadences, and review points.",
+        files: [
+          "governance/service-ownership.md",
+          "governance/data-classification-matrix.md",
+          "governance/access-review-plan.md",
+          "governance/exception-register.md"
+        ],
+        acceptanceCriteria: [
+          "The governance artifact set exists and is aligned with the phase and data sensitivity.",
+          "Ownership and review cadence are explicit enough for downstream teams to act on.",
+          "Known control gaps are documented instead of being left implicit."
+        ],
+        implementationNotes: [
+          "Keep the first version lean, but do not leave owner fields hidden behind process debt.",
+          "Use the security and change-management playbooks as direct references."
+        ],
+        wave: "wave-2",
+        dependsOn: ["001"],
+        deliveryPhase: "foundation"
+      })
     );
   }
 
@@ -677,14 +970,15 @@ function buildRisks(input, phase) {
   return risks;
 }
 
-function buildOutput(input, config) {
+function buildOutput(input, config, playbookContext, repoRoot) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
   const profile = plannerProfile(input, config);
   const intake = intakeSignals(input, config);
   const options = architectureOptions(input, phase);
   const architecture = architectureRecommendation(options, phase);
-  const tasks = buildTasks(input, phase);
+  const tasks = buildTasks(input, phase, architecture);
+
   return {
     projectName: input.projectName,
     plannerProfile: profile,
@@ -695,7 +989,7 @@ function buildOutput(input, config) {
     phase,
     phaseRationale: phaseRationale(input, phase),
     path: pathName,
-    recommendedPlaybooks: recommendedPlaybooks(phase),
+    recommendedPlaybooks: recommendedPlaybooks(phase, pathName, playbookContext, repoRoot),
     recommendedGuidanceAreas: recommendedGuidanceAreas(phase, profile, config),
     recommendedArtifacts: recommendedArtifacts(phase, profile, config),
     architectureOptions: options,
@@ -718,9 +1012,11 @@ function toMarkdownList(items) {
   return items.map((item) => `- ${item}`).join("\n");
 }
 
-function writeFile(targetPath, contents) {
-  ensureDir(path.dirname(targetPath));
-  fs.writeFileSync(targetPath, contents, "utf8");
+function toChecklist(items) {
+  if (!items.length) {
+    return "- [ ] None";
+  }
+  return items.map((item) => `- [ ] ${item}`).join("\n");
 }
 
 function renderProjectCharter(input, output) {
@@ -753,6 +1049,10 @@ ${toMarkdownList(input.nonFunctionalRequirements || [])}
 - Phase: ${output.phase}
 - Path: ${output.path}
 - Data sensitivity: ${input.dataSensitivity || "low"}
+
+## Applicable Playbooks
+
+${toMarkdownList(output.recommendedPlaybooks)}
 
 ## Missing Information
 
@@ -836,6 +1136,10 @@ Recommended option: ${output.architectureRecommendation.optionId}
 
 ${toMarkdownList(output.architectureRecommendation.reasons)}
 
+## Applicable Playbooks
+
+${toMarkdownList(output.recommendedPlaybooks)}
+
 ## Architecture Options
 
 ${options}
@@ -885,14 +1189,6 @@ ${criticalPath}
 `;
 }
 
-function renderAdr(adr) {
-  return adr;
-}
-
-function renderTask(task) {
-  return task;
-}
-
 function renderAdrDocument(repoRoot, input, adr) {
   return renderTemplate(repoRoot, "templates/adr-template.md", {
     id: adr.id,
@@ -916,7 +1212,11 @@ function renderTaskDocument(repoRoot, task) {
     dependsOn: toMarkdownList(task.dependsOn),
     blocks: toMarkdownList(task.blocks),
     summary: task.summary,
-    implementationNotes: "- Start from the dependency chain above.\n- Keep scope small and independently reviewable.\n- Update tests and docs with the change."
+    problem: task.problem,
+    solution: task.solution,
+    files: toMarkdownList(task.files),
+    acceptanceCriteria: toChecklist(task.acceptanceCriteria),
+    implementationNotes: toMarkdownList(task.implementationNotes)
   });
 }
 
@@ -1024,7 +1324,8 @@ function renderArchitecturePrompt(repoRoot, input, output) {
     recommendedArchitecture: output.architectureRecommendation.summary,
     architectureOptions: options,
     risks: toMarkdownList(output.risks),
-    openQuestions: toMarkdownList(output.openQuestions)
+    openQuestions: toMarkdownList(output.openQuestions),
+    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
   });
 }
 
@@ -1047,7 +1348,8 @@ function renderExecutionPrompt(repoRoot, input, output) {
     criticalPath: output.dependencyGraph.criticalPathTaskIds.join(" -> ") || "None",
     tasks,
     constraints: toMarkdownList(input.constraints),
-    openQuestions: toMarkdownList(output.openQuestions)
+    openQuestions: toMarkdownList(output.openQuestions),
+    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
   });
 }
 
@@ -1065,7 +1367,8 @@ function renderGovernancePrompt(repoRoot, input, output) {
       "exception register"
     ]),
     risks: toMarkdownList(output.risks),
-    openQuestions: toMarkdownList(output.openQuestions)
+    openQuestions: toMarkdownList(output.openQuestions),
+    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
   });
 }
 
@@ -1078,50 +1381,50 @@ function renderIntakeFollowupPrompt(repoRoot, input, output) {
   return renderTemplate(repoRoot, "templates/intake-followup-prompt-template.md", {
     projectName: input.projectName,
     intakeCompleteness: output.intakeCompleteness,
-    questions
+    questions,
+    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
   });
 }
 
-function writePromptExports(repoRoot, input, output, outdir) {
-  const promptExports = [];
-
-  writeFile(path.join(outdir, "prompts", "architecture-analysis.md"), renderArchitecturePrompt(repoRoot, input, output));
-  promptExports.push({
-    id: "architecture-analysis",
-    title: "Architecture Analysis",
-    purpose: "Refine or challenge the recommended architecture using the generated options and risks.",
-    path: "prompts/architecture-analysis.md"
-  });
-
-  writeFile(path.join(outdir, "prompts", "execution-next-wave.md"), renderExecutionPrompt(repoRoot, input, output));
-  promptExports.push({
-    id: "execution-next-wave",
-    title: "Execution Next Wave",
-    purpose: "Guide an implementation agent through the next delivery wave and its dependencies.",
-    path: "prompts/execution-next-wave.md"
-  });
+function buildPromptArtifacts(repoRoot, input, output) {
+  const promptArtifacts = [
+    {
+      id: "architecture-analysis",
+      title: "Architecture Analysis",
+      purpose: "Refine or challenge the recommended architecture using the generated options and risks.",
+      path: "prompts/architecture-analysis.md",
+      contents: renderArchitecturePrompt(repoRoot, input, output)
+    },
+    {
+      id: "execution-next-wave",
+      title: "Execution Next Wave",
+      purpose: "Guide an implementation agent through the next delivery wave and its dependencies.",
+      path: "prompts/execution-next-wave.md",
+      contents: renderExecutionPrompt(repoRoot, input, output)
+    }
+  ];
 
   if (output.intakeCompleteness !== "complete") {
-    writeFile(path.join(outdir, "prompts", "intake-followup.md"), renderIntakeFollowupPrompt(repoRoot, input, output));
-    promptExports.push({
+    promptArtifacts.push({
       id: "intake-followup",
       title: "Intake Follow-Up",
       purpose: "Clarify blocking or high-value missing planning inputs before deeper execution.",
-      path: "prompts/intake-followup.md"
+      path: "prompts/intake-followup.md",
+      contents: renderIntakeFollowupPrompt(repoRoot, input, output)
     });
   }
 
   if (output.path === "enterprise") {
-    writeFile(path.join(outdir, "prompts", "governance-setup.md"), renderGovernancePrompt(repoRoot, input, output));
-    promptExports.push({
+    promptArtifacts.push({
       id: "governance-setup",
       title: "Governance Setup",
       purpose: "Guide a governance or security-focused agent through the required control artifacts.",
-      path: "prompts/governance-setup.md"
+      path: "prompts/governance-setup.md",
+      contents: renderGovernancePrompt(repoRoot, input, output)
     });
   }
 
-  output.promptExports = promptExports;
+  return promptArtifacts;
 }
 
 function buildHandoffManifest(input, output) {
@@ -1154,6 +1457,7 @@ function buildHandoffManifest(input, output) {
             "plan-output.json",
             "intake-questionnaire.md",
             "project-charter.md",
+            ".ai/TASKS.md",
             intakePrompt.path
           ],
           writes: [
@@ -1189,6 +1493,7 @@ function buildHandoffManifest(input, output) {
           reads: [
             "plan-output.json",
             "architecture-overview.md",
+            ".ai/ARCHITECTURE.md",
             "delivery-plan.md",
             architecturePrompt.path
           ],
@@ -1222,6 +1527,7 @@ function buildHandoffManifest(input, output) {
           promptPath: governancePrompt.path,
           reads: [
             "plan-output.json",
+            ".ai/AGENTS.md",
             governancePrompt.path,
             "governance/service-ownership.md",
             "governance/data-classification-matrix.md",
@@ -1275,6 +1581,7 @@ function buildHandoffManifest(input, output) {
           reads: [
             "plan-output.json",
             "delivery-plan.md",
+            ".ai/TASKS.md",
             executionPrompt.path
           ].concat(waveTaskPaths),
           writes: [
@@ -1295,8 +1602,12 @@ function buildHandoffManifest(input, output) {
     "plan-output.json",
     "project-charter.md",
     "architecture-overview.md",
-    "delivery-plan.md"
-  ];
+    "delivery-plan.md",
+    ".ai/AGENTS.md",
+    ".ai/ARCHITECTURE.md",
+    ".ai/TASKS.md",
+    ".ai/DECISIONS.md"
+  ].concat(output.recommendedPlaybooks);
 
   if (output.intakeCompleteness !== "complete") {
     manifestArtifacts.push("intake-questionnaire.md");
@@ -1325,6 +1636,137 @@ function buildHandoffManifest(input, output) {
   };
 }
 
+function renderAiAgents(input, output) {
+  return `# AGENTS
+
+## Roles
+
+- Planning lead: maintains the plan, validates architecture assumptions, and reruns planning when inputs materially change.
+- Architecture reviewer: challenges module boundaries, scaling assumptions, and integration risks before implementation expands.
+- Implementation lead: executes one reviewable task at a time and updates tests and docs with each change.
+- Human owner: remains accountable for review, release, and acceptance of agent-generated work.
+${output.path === "enterprise" ? "- Governance lead: owns control artifacts, access review cadence, and exception tracking for enterprise-path work." : ""}
+
+## Workflow
+
+1. Read \`.ai/ARCHITECTURE.md\`, \`.ai/TASKS.md\`, and the current prompt export before changing code.
+2. Follow the applicable playbooks listed below for workflow, testing, documentation, and governance expectations.
+3. Keep diffs small, update tests with the change, and avoid bundling unrelated work.
+4. Escalate blockers or scope changes instead of silently improvising around them.
+
+## Applicable Playbooks
+
+${toMarkdownList(output.recommendedPlaybooks)}
+
+## Change Rules
+
+- Preserve backward compatibility unless a breaking change is explicitly accepted.
+- Update docs and ADRs when architectural assumptions shift.
+- Treat prompts and generated artifacts as review inputs, not as permission to skip engineering judgment.
+
+## Project Context
+
+- Project: ${input.projectName}
+- Planner profile: ${output.plannerProfile}
+- Phase: ${output.phase}
+- Path: ${output.path}
+`;
+}
+
+function renderAiArchitecture(input, output) {
+  const modules = [
+    "user-facing application surface",
+    "domain and business logic modules",
+    "persistence and integration boundary"
+  ];
+
+  if (/background jobs/.test(output.architectureRecommendation.shape)) {
+    modules.push("background job processing path");
+  }
+
+  return `# ARCHITECTURE
+
+## Summary
+
+${input.summary}
+
+## Recommended Shape
+
+- ${output.architectureRecommendation.summary}
+- Tech stack hint: ${inferTechStack(input)}
+- Phase: ${output.phase}
+- Path: ${output.path}
+
+## Key Modules
+
+${toMarkdownList(modules)}
+
+## Integrations
+
+${toMarkdownList(input.integrations || [])}
+
+## Risks
+
+${toMarkdownList(output.risks)}
+
+## Playbook References
+
+${toMarkdownList(output.recommendedPlaybooks)}
+`;
+}
+
+function renderAiTasks(output) {
+  const waveSections = output.executionWaves.map((wave) => {
+    const tasks = wave.taskIds.map((taskId) => {
+      const task = output.tasks.find((candidate) => candidate.id === taskId);
+      return `### ${task.id} ${task.title}
+
+- Priority: ${task.priority}
+- Category: ${task.category}
+- Depends on: ${task.dependsOn.length ? task.dependsOn.join(", ") : "none"}
+- Summary: ${task.summary}`;
+    }).join("\n\n");
+
+    return `## ${wave.id}\n\n${wave.goal}\n\n${tasks}`;
+  }).join("\n\n");
+
+  return `# TASKS
+
+## Critical Path
+
+${output.dependencyGraph.criticalPathTaskIds.join(" -> ") || "None"}
+
+${waveSections}
+`;
+}
+
+function renderAiDecisions(output) {
+  const decisions = output.adrCandidates.map((adr, index) => {
+    return `## ${adr.id}: ${adr.title}
+
+- Decision: ${adr.decision}
+- Full ADR: ../${adrDocumentPath(index, adr)}`;
+  }).join("\n\n");
+
+  return `# DECISIONS
+
+${decisions}
+`;
+}
+
+function writePromptArtifacts(promptArtifacts, outdir) {
+  promptArtifacts.forEach((artifact) => {
+    writeFile(path.join(outdir, artifact.path), artifact.contents);
+  });
+}
+
+function writeAiArtifacts(input, output, outdir) {
+  writeFile(path.join(outdir, ".ai", "AGENTS.md"), renderAiAgents(input, output));
+  writeFile(path.join(outdir, ".ai", "ARCHITECTURE.md"), renderAiArchitecture(input, output));
+  writeFile(path.join(outdir, ".ai", "TASKS.md"), renderAiTasks(output));
+  writeFile(path.join(outdir, ".ai", "DECISIONS.md"), renderAiDecisions(output));
+}
+
 function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
   output.adrCandidates.forEach((adr, index) => {
     const filename = `${String(index + 1).padStart(3, "0")}-${slugify(adr.title)}.md`;
@@ -1350,31 +1792,93 @@ function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
   }
 }
 
+function printSummary(output, outdir, validateOnly) {
+  const firstWave = output.executionWaves[0];
+  const firstWaveTasks = firstWave
+    ? firstWave.taskIds
+        .map((taskId) => output.tasks.find((task) => task.id === taskId))
+        .filter(Boolean)
+        .map((task) => `${task.id} ${task.title}`)
+        .join("; ")
+    : "none";
+
+  console.log([
+    `Project: ${output.projectName}`,
+    `Phase: ${output.phase}`,
+    `Path: ${output.path}`,
+    `Profile: ${output.plannerProfile}`,
+    `Architecture: ${output.architectureRecommendation.shape}`,
+    `Wave 1: ${firstWaveTasks}`,
+    `Playbooks: ${output.recommendedPlaybooks.length}`,
+    validateOnly ? "Validation: success" : `Output: ${outdir}`
+  ].join("\n"));
+}
+
 function main() {
-  const args = parseArgs(process.argv);
-  if (!args.input || !args.outdir) {
-    console.error("Usage: node scripts/bootstrap-plan.js --input <file> --outdir <dir> [--config <file>]");
-    process.exit(1);
+  try {
+    const args = parseArgs(process.argv);
+
+    if (args.help) {
+      console.log(usageText());
+      return;
+    }
+
+    if (!args.input) {
+      throw new CliError("Missing required argument: --input <file>", EXIT_CODES.USAGE, [usageText()]);
+    }
+
+    if (!args.outdir && !args.validateOnly) {
+      throw new CliError("Missing required argument: --outdir <dir>", EXIT_CODES.USAGE, [usageText()]);
+    }
+
+    const repoRoot = process.cwd();
+    const playbookContext = loadPlaybookContext(repoRoot);
+    const config = loadPlannerConfig(repoRoot, args.config);
+    const input = loadPlanningInput(repoRoot, args.input);
+    const output = buildOutput(input, config, playbookContext, repoRoot);
+    const promptArtifacts = buildPromptArtifacts(repoRoot, input, output);
+
+    output.promptExports = promptArtifacts.map(({ contents, ...metadata }) => metadata);
+    output.handoffManifest = buildHandoffManifest(input, output);
+
+    validateWithSchema(repoRoot, "models/planning-output.schema.json", output, "generated planning output");
+
+    if (args.validateOnly) {
+      if (args.summary) {
+        printSummary(output, "", true);
+      } else {
+        console.log("Validation succeeded for input, config, and generated planning output.");
+      }
+      return;
+    }
+
+    const outdir = path.resolve(repoRoot, args.outdir);
+    ensureDir(outdir);
+    writePromptArtifacts(promptArtifacts, outdir);
+    writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
+    writeFile(path.join(outdir, "handoff-manifest.json"), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
+    writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(repoRoot, input, output));
+    writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
+    writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
+    writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
+    writeAiArtifacts(input, output, outdir);
+    writeTemplateArtifacts(repoRoot, input, output, outdir, config);
+
+    if (args.summary) {
+      printSummary(output, outdir, false);
+    } else {
+      console.log(`Generated planning artifacts in ${outdir}`);
+    }
+  } catch (error) {
+    if (error instanceof CliError) {
+      console.error(error.message);
+      error.details.forEach((detail) => console.error(`- ${detail}`));
+      process.exit(error.exitCode);
+    }
+
+    console.error(`Planner failed: ${error.message}`);
+    process.exit(EXIT_CODES.RUNTIME);
   }
-
-  const repoRoot = process.cwd();
-  const config = loadPlannerConfig(repoRoot, args.config);
-  const input = readJson(path.resolve(repoRoot, args.input));
-  const output = buildOutput(input, config);
-  const outdir = path.resolve(repoRoot, args.outdir);
-
-  ensureDir(outdir);
-  writePromptExports(repoRoot, input, output, outdir);
-  output.handoffManifest = buildHandoffManifest(input, output);
-  writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
-  writeFile(path.join(outdir, "handoff-manifest.json"), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
-  writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(repoRoot, input, output));
-  writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
-  writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
-  writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
-  writeTemplateArtifacts(repoRoot, input, output, outdir, config);
-
-  console.log(`Generated planning artifacts in ${outdir}`);
 }
 
 main();

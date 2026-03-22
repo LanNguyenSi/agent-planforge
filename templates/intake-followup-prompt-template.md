@@ -14,6 +14,10 @@ Clarify the missing planning inputs before deeper architecture and task executio
 
 {{questions}}
 
+## Applicable Playbooks
+
+{{applicablePlaybooks}}
+
 ## Expected Output
 
 - concise answers to each question
