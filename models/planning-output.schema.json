@@ -5,6 +5,9 @@
   "additionalProperties": false,
   "required": [
     "projectName",
+    "inputFormat",
+    "inputParsing",
+    "inputSnapshot",
     "plannerProfile",
     "intakeCompleteness",
     "missingInformation",
@@ -30,6 +33,36 @@
   "properties": {
     "projectName": {
       "type": "string"
+    },
+    "inputFormat": {
+      "type": "string",
+      "enum": [
+        "json",
+        "text",
+        "markdown"
+      ]
+    },
+    "inputParsing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "structuredInputSource",
+        "parserWarnings"
+      ],
+      "properties": {
+        "structuredInputSource": {
+          "type": "string"
+        },
+        "parserWarnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "inputSnapshot": {
+      "type": "object"
     },
     "plannerProfile": {
       "type": "string",
@@ -456,6 +489,8 @@
       "required": [
         "version",
         "summary",
+        "policySummary",
+        "runnerContractPath",
         "coordinationStrategy",
         "recommendedArchitectureOptionId",
         "recommendedArchitectureShape",
@@ -468,6 +503,12 @@
           "type": "string"
         },
         "summary": {
+          "type": "string"
+        },
+        "policySummary": {
+          "type": "string"
+        },
+        "runnerContractPath": {
           "type": "string"
         },
         "coordinationStrategy": {
@@ -542,7 +583,12 @@
               "executionMode",
               "dependsOn",
               "parallelGroup",
-              "agentAssignments"
+              "agentAssignments",
+              "dependencyPolicy",
+              "blockerPolicy",
+              "approvalGate",
+              "profilePolicy",
+              "statusFiles"
             ],
             "properties": {
               "id": {
@@ -569,6 +615,125 @@
               },
               "parallelGroup": {
                 "type": "string"
+              },
+              "dependencyPolicy": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "hard",
+                  "soft"
+                ],
+                "properties": {
+                  "hard": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "soft": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "blockerPolicy": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "onBlocked",
+                  "escalationTarget",
+                  "maxAutoRetries"
+                ],
+                "properties": {
+                  "onBlocked": {
+                    "type": "string"
+                  },
+                  "escalationTarget": {
+                    "type": "string"
+                  },
+                  "maxAutoRetries": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "approvalGate": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "required",
+                  "approvers",
+                  "reason"
+                ],
+                "properties": {
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "approvers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              },
+              "profilePolicy": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "plannerProfile",
+                  "maxParallelAgents",
+                  "autoContinue",
+                  "reviewRequired"
+                ],
+                "properties": {
+                  "plannerProfile": {
+                    "type": "string",
+                    "enum": [
+                      "startup",
+                      "product",
+                      "enterprise",
+                      "platform"
+                    ]
+                  },
+                  "maxParallelAgents": {
+                    "type": "integer"
+                  },
+                  "autoContinue": {
+                    "type": "boolean"
+                  },
+                  "reviewRequired": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "statusFiles": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "input",
+                  "status",
+                  "result",
+                  "blockers"
+                ],
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": "string"
+                  },
+                  "blockers": {
+                    "type": "string"
+                  }
+                }
               },
               "agentAssignments": {
                 "type": "array",

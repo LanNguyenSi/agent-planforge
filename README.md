@@ -31,9 +31,12 @@ it produces a first planning package:
 - delivery plan with execution waves
 - prompt pack for downstream agents
 - multi-agent handoff manifest for orchestrated follow-on work
+- runner contract and per-step status templates
+- rerun and resume metadata
 - machine-readable planning output
 - phase rationale and recommended artifacts
 - explicit guidance areas beyond the local planning playbook
+- downstream exports for ScaffoldKit, DevReview, and `.ai/`
 
 The point is not perfect planning. The point is a repeatable and reviewable starting point.
 
@@ -43,9 +46,9 @@ This first version includes:
 
 - a planning playbook
 - an external planner ruleset in `config/planner-config.json`
-- a config schema in `models/planner-config.schema.json`
+- partial config override merge semantics
 - JSON schemas for planning input and output
-- a Node CLI that bootstraps planning artifacts from a JSON input file
+- a Node CLI that bootstraps planning artifacts from JSON, text, or markdown input
 - gap detection for missing planning context
 - reusable markdown templates for generated planning artifacts
 - profile-aware planning modes for startup, product, enterprise, and platform work
@@ -54,15 +57,16 @@ This first version includes:
 - schema validation for input, config, and generated output
 - `.ai/` context export for downstream coding agents
 - playbook-aware charter and prompt references
+- runner contract, rerun/resume reporting, and integration exports
 
 ## Open Source Project Status
 
 This repository is public-facing and contribution-ready, but still early.
 
 - Core planning flow: usable
-- Schema validation: implemented (ajv)
-- Test coverage: automated (CI with Node 18 + 20)
-- .ai/ context generation: implemented
+- Schema validation: implemented
+- Test coverage: automated
+- `.ai/` context generation: implemented
 - Playbook integration: implemented
 - Remaining enhancements tracked in `tasks/`
 - API and output compatibility: not yet guaranteed across minor revisions
@@ -81,6 +85,15 @@ node scripts/bootstrap-plan.js \
   --outdir out/sample
 ```
 
+Markdown input:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.md \
+  --format markdown \
+  --outdir out/sample-md
+```
+
 Optional override:
 
 ```bash
@@ -89,21 +102,6 @@ node scripts/bootstrap-plan.js \
   --outdir out/sample-custom \
   --config examples/planner-config.override.json
 ```
-
-This creates:
-
-- `out/sample/plan-output.json`
-- `out/sample/intake-questionnaire.md`
-- `out/sample/project-charter.md`
-- `out/sample/architecture-overview.md`
-- `out/sample/delivery-plan.md`
-- `out/sample/.ai/`
-- `out/sample/prompts/`
-- `out/sample/handoff-manifest.json`
-- `out/sample/adrs/ADR-001-initial-architecture.md`
-- `out/sample/tasks/`
-- `out/sample/governance/` for enterprise-path starter docs when relevant
-- `out/sample/runbooks/` for production-oriented starter runbooks when relevant
 
 Validation-only mode:
 
@@ -122,6 +120,46 @@ node scripts/bootstrap-plan.js \
   --summary
 ```
 
+Rerun with change tracking:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample-rerun \
+  --rerun-from out/sample
+```
+
+Resume while preserving runner state:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample-resume \
+  --resume-from out/sample
+```
+
+This creates:
+
+- `out/sample/plan-output.json`
+- `out/sample/structured-input.json`
+- `out/sample/intake-questionnaire.md`
+- `out/sample/project-charter.md`
+- `out/sample/architecture-overview.md`
+- `out/sample/delivery-plan.md`
+- `out/sample/runner-contract.json`
+- `out/sample/rerun-report.json`
+- `out/sample/rerun-summary.md`
+- `out/sample/scaffoldkit-input.json`
+- `out/sample/.devreview.json`
+- `out/sample/.ai/`
+- `out/sample/prompts/`
+- `out/sample/handoff-manifest.json`
+- `out/sample/runner/`
+- `out/sample/adrs/`
+- `out/sample/tasks/`
+- `out/sample/governance/` for enterprise-path starter docs when relevant
+- `out/sample/runbooks/` for production-oriented starter runbooks when relevant
+
 ## Repository Structure
 
 - `.github/`
@@ -129,13 +167,15 @@ node scripts/bootstrap-plan.js \
 - `CONTRIBUTING.md`
 - `LICENSE`
 - `SECURITY.md`
-- `playbooks/planning-and-scoping.md`
+- `config/planner-config.json`
+- `docs/operational-workflow.md`
+- `examples/sample-input.json`
+- `examples/sample-input.md`
 - `models/planning-input.schema.json`
 - `models/planning-output.schema.json`
 - `models/planner-config.schema.json`
-- `config/planner-config.json`
+- `playbooks/planning-and-scoping.md`
 - `scripts/bootstrap-plan.js`
-- `examples/sample-input.json`
 - `templates/`
 - `tasks/`
 
@@ -147,15 +187,39 @@ node scripts/bootstrap-plan.js \
 - keep generated artifacts editable by humans and agents
 - ask for missing information explicitly when confidence would otherwise be fake
 
+## Config Override Merge Semantics
+
+Planner config overrides are merged onto the base config instead of replacing it wholesale.
+
+Rules:
+
+- top-level scalars like `defaultProfile` replace the base value when provided
+- guidance and artifact arrays are merged as ordered unions
+- per-phase guidance and artifact maps merge by phase key, then union their arrays
+- profile `intakePolicy` merges by key
+- `governanceDefaults` merges by key
+
+Example:
+
+`examples/planner-config.override.json` overrides only a few fields. Running with `--config` keeps the base config and adds:
+
+- `founder feedback loop` to `startup.phase_1` guidance
+- `third-party risk review` to `common.guidanceAreasByPhase.phase_3`
+- a custom `breakGlassCadence`
+
+## Operational Workflow
+
+The end-to-end operating model for planning, handoff, review, and replanning is documented in [docs/operational-workflow.md](docs/operational-workflow.md).
+
 ## Contributing
 
 Contribution guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For now, the most useful contributions are:
 
-- runner contract design
-- rerun and resume semantics
-- handoff policy refinement
+- orchestration refinements
+- replanning semantics
+- downstream integration polish
 
 ## Security
 
@@ -171,7 +235,7 @@ This project is licensed under the MIT license. See [LICENSE](LICENSE).
 
 ## Next Steps
 
-The remaining hardening work is tracked as task files in `tasks/`.
+The initial hardening backlog is complete. Add new task files in `tasks/` when follow-on work needs to be tracked.
 
 ## Testing
 
@@ -183,8 +247,9 @@ npm test
 
 The tests cover:
 
-- golden-path planning for `sample`, `minimal`, and `platform` inputs
+- golden-path planning for `sample`, `minimal`, `platform`, and markdown inputs
 - schema validation failures for bad input and bad config
-- phase and path inference
-- dependency graph and handoff manifest structure
+- config merge behavior
+- rerun and resume metadata
+- dependency graph, runner contract, and handoff policy structure
 - playbook references and `.ai/` artifact generation
