@@ -1,0 +1,37 @@
+.PHONY: install dev build test lint format ci clean help
+
+# Default target
+.DEFAULT_GOAL := help
+
+help: ## Show this help message
+	@echo 'Usage: make [target]'
+	@echo ''
+	@echo 'Available targets:'
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+install: ## Install dependencies
+	npm ci
+
+dev: ## Start development server
+	npm run dev
+
+build: ## Build for production
+	npm run build
+
+test: ## Run tests
+	npm test
+
+lint: ## Run linting and type-checking
+	npm run lint
+	npm run type-check
+
+format: ## Format code
+	npm run format
+
+format-check: ## Check code formatting
+	npm run format:check
+
+ci: format-check lint test build ## Run all CI checks (format, lint, test, build)
+
+clean: ## Remove build artifacts and dependencies
+	rm -rf node_modules .next dist build coverage
