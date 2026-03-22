@@ -1310,7 +1310,8 @@ function buildOutput(input, config, playbookContext, repoRoot, inputMetadata) {
     promptExports: [],
     handoffManifest: {},
     risks: buildRisks(input, phase),
-    openQuestions: input.openQuestions || []
+    openQuestions: input.openQuestions || [],
+    defaultBranch: input.defaultBranch || "main"
   };
 }
 
@@ -2614,6 +2615,35 @@ function writePreCommitHooks(repoRoot, outdir) {
   writeFile(path.join(outdir, "lint-staged.config.js"), lintStagedConfigContent);
 }
 
+function writeBranchInfo(repoRoot, outdir, defaultBranch, autoDetected) {
+  const templatePath = path.join(repoRoot, "templates", "BRANCH_INFO.md.template");
+  let content = readText(templatePath, "BRANCH_INFO.md.template");
+  
+  // Simple template replacement (planforge doesn't use a template engine)
+  content = content.replace(/{{defaultBranch}}/g, defaultBranch);
+  content = content.replace(/{{#if autoDetected}}auto-detected from the repository{{else}}configured in the planning input{{\/if}}/g, 
+    autoDetected ? "auto-detected from the repository" : "configured in the planning input");
+  
+  writeFile(path.join(outdir, "BRANCH_INFO.md"), content);
+}
+
+function detectDefaultBranch(outdir) {
+  const { execSync } = require("child_process");
+  
+  try {
+    // Try to detect from existing .git
+    const branch = execSync("git symbolic-ref --short HEAD", {
+      cwd: outdir,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    return branch || "main";
+  } catch (error) {
+    // Not a git repo or no HEAD, default to main
+    return "main";
+  }
+}
+
 function runNpmInstall(outdir) {
   const packageJsonPath = path.join(outdir, "package.json");
   
@@ -2707,6 +2737,14 @@ function main() {
 
     const outdir = path.resolve(repoRoot, args.outdir);
     ensureDir(outdir);
+    
+    // Detect default branch if not specified in input
+    const autoDetected = !input.defaultBranch;
+    if (autoDetected) {
+      const detectedBranch = detectDefaultBranch(outdir);
+      output.defaultBranch = detectedBranch;
+    }
+    
     writePromptArtifacts(promptArtifacts, outdir);
     writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
     writeFile(path.join(outdir, "handoff-manifest.json"), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
@@ -2720,6 +2758,7 @@ function main() {
     writeMakefile(repoRoot, outdir);
     writeDockerFiles(repoRoot, outdir);
     writePreCommitHooks(repoRoot, outdir);
+    writeBranchInfo(repoRoot, outdir, output.defaultBranch, autoDetected);
     preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
 
     if (args.install) {
