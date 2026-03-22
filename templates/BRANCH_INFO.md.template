@@ -6,7 +6,7 @@ This project uses **{{defaultBranch}}** as the default branch.
 
 **Default Branch:** `{{defaultBranch}}`
 
-This branch name was {{#if autoDetected}}auto-detected from the repository{{else}}configured in the planning input{{/if}}.
+This branch name was {{detectionMethod}}.
 
 ## CI/CD Integration
 
