@@ -2678,10 +2678,13 @@ function writeBranchInfo(repoRoot, outdir, defaultBranch, autoDetected) {
   const templatePath = path.join(repoRoot, "templates", "BRANCH_INFO.md.template");
   let content = readText(templatePath, "BRANCH_INFO.md.template");
   
-  // Simple template replacement (planforge doesn't use a template engine)
+  // Simple template replacement with direct placeholders
+  const detectionMethod = autoDetected 
+    ? "auto-detected from the repository" 
+    : "configured in the planning input";
+  
   content = content.replace(/{{defaultBranch}}/g, defaultBranch);
-  content = content.replace(/{{#if autoDetected}}auto-detected from the repository{{else}}configured in the planning input{{\/if}}/g, 
-    autoDetected ? "auto-detected from the repository" : "configured in the planning input");
+  content = content.replace(/{{detectionMethod}}/g, detectionMethod);
   
   writeFile(path.join(outdir, "BRANCH_INFO.md"), content);
 }
