@@ -24,6 +24,9 @@ function parseArgs(argv) {
     input: "",
     outdir: "",
     config: "",
+    format: "json",
+    resumeFrom: "",
+    rerunFrom: "",
     help: false,
     summary: false,
     validateOnly: false
@@ -41,6 +44,15 @@ function parseArgs(argv) {
     } else if (arg === "--config") {
       args.config = argv[i + 1] || "";
       i += 1;
+    } else if (arg === "--format") {
+      args.format = argv[i + 1] || "";
+      i += 1;
+    } else if (arg === "--resume-from") {
+      args.resumeFrom = argv[i + 1] || "";
+      i += 1;
+    } else if (arg === "--rerun-from") {
+      args.rerunFrom = argv[i + 1] || "";
+      i += 1;
     } else if (arg === "--help" || arg === "-h") {
       args.help = true;
     } else if (arg === "--summary") {
@@ -57,10 +69,13 @@ function parseArgs(argv) {
 
 function usageText() {
   return [
-    "Usage: node scripts/bootstrap-plan.js --input <file> --outdir <dir> [options]",
+    "Usage: node scripts/bootstrap-plan.js --input <file|-> --outdir <dir> [options]",
     "",
     "Options:",
-    "  --config <file>      Override planner config JSON file",
+    "  --config <file>      Override planner config JSON file with merge semantics",
+    "  --format <type>      Input format: json, text, markdown",
+    "  --resume-from <dir>  Resume from a previous generated output directory or plan-output.json",
+    "  --rerun-from <dir>   Compare against a previous run and emit rerun metadata",
     "  --summary            Print a concise planning summary",
     "  --validate-only      Validate input, config, and generated output without writing files",
     "  --help, -h           Show this help"
@@ -73,6 +88,13 @@ function readText(filePath, label = filePath) {
   } catch (error) {
     throw new CliError(`Unable to read ${label}: ${error.message}`, EXIT_CODES.RUNTIME);
   }
+}
+
+function readInputSource(repoRoot, inputPath) {
+  if (inputPath === "-") {
+    return readText("/dev/stdin", "<stdin>");
+  }
+  return readText(path.resolve(repoRoot, inputPath), inputPath);
 }
 
 function readJson(filePath, label = filePath) {
@@ -126,10 +148,8 @@ function validateWithSchema(repoRoot, relativeSchemaPath, value, label) {
   }
 }
 
-function configPath(repoRoot, overridePath) {
-  return overridePath
-    ? path.resolve(repoRoot, overridePath)
-    : path.join(repoRoot, "config/planner-config.json");
+function configPath(repoRoot) {
+  return path.join(repoRoot, "config/planner-config.json");
 }
 
 function validatePlannerConfigStructure(config) {
@@ -175,19 +195,287 @@ function validatePlannerConfigStructure(config) {
   });
 }
 
-function loadPlannerConfig(repoRoot, overridePath) {
-  const resolvedPath = configPath(repoRoot, overridePath);
-  const config = readJson(resolvedPath, resolvedPath);
-  validateWithSchema(repoRoot, "models/planner-config.schema.json", config, "planner config");
-  validatePlannerConfigStructure(config);
-  return config;
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function loadPlanningInput(repoRoot, inputPath) {
-  const resolvedPath = path.resolve(repoRoot, inputPath);
-  const input = readJson(resolvedPath, resolvedPath);
-  validateWithSchema(repoRoot, "models/planning-input.schema.json", input, "planning input");
-  return input;
+function mergeUnique(baseItems = [], overrideItems = []) {
+  return Array.from(new Set([].concat(baseItems || [], overrideItems || [])));
+}
+
+function mergePhaseLists(base = {}, override = {}) {
+  const phases = new Set(Object.keys(base || {}).concat(Object.keys(override || {})));
+  const merged = {};
+
+  phases.forEach((phase) => {
+    merged[phase] = mergeUnique(base[phase] || [], override[phase] || []);
+  });
+
+  return merged;
+}
+
+function mergeProfileConfig(baseProfile = {}, overrideProfile = {}) {
+  return {
+    guidanceAreaAdditionsByPhase: mergePhaseLists(
+      baseProfile.guidanceAreaAdditionsByPhase || {},
+      overrideProfile.guidanceAreaAdditionsByPhase || {}
+    ),
+    artifactAdditionsByPhase: mergePhaseLists(
+      baseProfile.artifactAdditionsByPhase || {},
+      overrideProfile.artifactAdditionsByPhase || {}
+    ),
+    intakePolicy: Object.assign({}, baseProfile.intakePolicy || {}, overrideProfile.intakePolicy || {})
+  };
+}
+
+function mergePlannerConfig(baseConfig, overrideConfig = {}) {
+  const mergedProfiles = {};
+  const profileNames = new Set(Object.keys(baseConfig.profiles || {}).concat(Object.keys(overrideConfig.profiles || {})));
+
+  profileNames.forEach((profileName) => {
+    mergedProfiles[profileName] = mergeProfileConfig(
+      (baseConfig.profiles || {})[profileName] || {},
+      (overrideConfig.profiles || {})[profileName] || {}
+    );
+  });
+
+  return {
+    version: overrideConfig.version || baseConfig.version,
+    defaultProfile: overrideConfig.defaultProfile || baseConfig.defaultProfile,
+    common: {
+      guidanceAreasBase: mergeUnique(baseConfig.common.guidanceAreasBase, overrideConfig.common && overrideConfig.common.guidanceAreasBase),
+      guidanceAreasByPhase: mergePhaseLists(
+        baseConfig.common.guidanceAreasByPhase || {},
+        (overrideConfig.common && overrideConfig.common.guidanceAreasByPhase) || {}
+      ),
+      artifactsBase: mergeUnique(baseConfig.common.artifactsBase, overrideConfig.common && overrideConfig.common.artifactsBase),
+      artifactsByPhase: mergePhaseLists(
+        baseConfig.common.artifactsByPhase || {},
+        (overrideConfig.common && overrideConfig.common.artifactsByPhase) || {}
+      )
+    },
+    profiles: mergedProfiles,
+    governanceDefaults: Object.assign({}, baseConfig.governanceDefaults || {}, overrideConfig.governanceDefaults || {})
+  };
+}
+
+function loadPlannerConfig(repoRoot, overridePath) {
+  const basePath = configPath(repoRoot);
+  const baseConfig = readJson(basePath, basePath);
+  let mergedConfig = baseConfig;
+
+  if (overridePath) {
+    const resolvedOverridePath = path.resolve(repoRoot, overridePath);
+    const overrideConfig = readJson(resolvedOverridePath, resolvedOverridePath);
+    mergedConfig = mergePlannerConfig(baseConfig, overrideConfig);
+  }
+
+  validateWithSchema(repoRoot, "models/planner-config.schema.json", mergedConfig, "planner config");
+  validatePlannerConfigStructure(mergedConfig);
+  return mergedConfig;
+}
+
+function cleanString(value) {
+  return String(value || "").replace(/^[-*#\s]+/, "").trim();
+}
+
+function uniqueNonEmpty(items) {
+  return Array.from(
+    new Set(
+      (items || [])
+        .map((item) => cleanString(item))
+        .filter(Boolean)
+    )
+  );
+}
+
+function parseBooleanFlag(text, pattern) {
+  return pattern.test(text);
+}
+
+function parseTeamSize(text) {
+  const match = text.match(/\bteam(?:\s+of)?\s+(\d+)\b|\b(\d+)\s+(?:people|engineers|developers)\b/i);
+  if (!match) {
+    return undefined;
+  }
+  return Number(match[1] || match[2]);
+}
+
+function findHeadingIndex(lines, pattern) {
+  return lines.findIndex((line) => pattern.test(line.trim()));
+}
+
+function collectBulletSection(lines, headingPattern) {
+  const startIndex = findHeadingIndex(lines, headingPattern);
+  if (startIndex === -1) {
+    return [];
+  }
+
+  const items = [];
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line) {
+      if (items.length) {
+        break;
+      }
+      continue;
+    }
+    if (/^#{1,6}\s/.test(line)) {
+      break;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      items.push(line.replace(/^[-*]\s+/, ""));
+      continue;
+    }
+    if (items.length) {
+      break;
+    }
+  }
+
+  return items;
+}
+
+function firstNonEmptyLine(lines) {
+  return lines.find((line) => line.trim().length > 0) || "";
+}
+
+function summarizeText(lines) {
+  const paragraphs = lines
+    .join("\n")
+    .split(/\n\s*\n/)
+    .map((block) => cleanString(block.replace(/\n+/g, " ")))
+    .filter(Boolean);
+
+  return paragraphs[1] || paragraphs[0] || "";
+}
+
+function sentenceMatches(lines, pattern) {
+  return uniqueNonEmpty(
+    lines
+      .map((line) => line.trim())
+      .filter((line) => pattern.test(line))
+  );
+}
+
+function inferProjectName(lines, format) {
+  const firstLine = firstNonEmptyLine(lines).trim();
+  if (format === "markdown") {
+    const headingMatch = firstLine.match(/^#\s+(.+)$/);
+    if (headingMatch) {
+      return cleanString(headingMatch[1]);
+    }
+  }
+  return cleanString(firstLine.replace(/^Title:\s*/i, "")) || "Untitled Project (confirm name)";
+}
+
+function parseUnstructuredInput(content, format) {
+  const normalized = content.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const bulletLines = uniqueNonEmpty(
+    lines.filter((line) => /^[-*]\s+/.test(line.trim())).map((line) => line.trim().replace(/^[-*]\s+/, ""))
+  );
+  const warnings = [];
+
+  const projectName = inferProjectName(lines, format);
+  const summary = summarizeText(lines) || "Project summary requires confirmation from the source text.";
+  const sectionUsers = collectBulletSection(lines, /^#{0,6}\s*(target users|users|audience)\b/i);
+  const sectionFeatures = collectBulletSection(lines, /^#{0,6}\s*(core features|features|scope)\b/i);
+  const sectionIntegrations = collectBulletSection(lines, /^#{0,6}\s*integrations\b/i);
+  const explicitConstraints = collectBulletSection(lines, /^#{0,6}\s*constraints\b/i);
+  const inferredConstraints = sentenceMatches(lines, /\b(must|should|cannot|can't|required|needs to|need to|without)\b/i);
+  const inferredNfrs = sentenceMatches(lines, /\b(performance|availability|security|audit|auditability|scalability|latency|reliability|uptime)\b/i);
+  const openQuestions = sentenceMatches(lines, /\?$/);
+  const targetUsers = uniqueNonEmpty(sectionUsers.length ? sectionUsers : sentenceMatches(lines, /\b(for|used by|users?|operators?)\b/i).slice(0, 3));
+  const coreFeatures = uniqueNonEmpty(sectionFeatures.length ? sectionFeatures : bulletLines.slice(0, 6));
+  const constraints = uniqueNonEmpty(explicitConstraints.concat(inferredConstraints));
+  const integrations = uniqueNonEmpty(sectionIntegrations.concat(sentenceMatches(lines, /\b(integrates?|sso|email|slack|github|gitlab|stripe|postgres|postgresql|mysql|queue)\b/i)));
+  const enterpriseRequirements = uniqueNonEmpty(sentenceMatches(lines, /\b(compliance|audit|enterprise|soc 2|iso 27001|security review|regulated)\b/i));
+
+  const lower = normalized.toLowerCase();
+  let plannerProfile;
+  if (/\bplatform\b/.test(lower)) {
+    plannerProfile = "platform";
+  } else if (/\benterprise\b/.test(lower)) {
+    plannerProfile = "enterprise";
+  } else if (/\bstartup\b/.test(lower)) {
+    plannerProfile = "startup";
+  }
+
+  let dataSensitivity = "low";
+  if (/\bregulated\b/.test(lower)) {
+    dataSensitivity = "regulated";
+  } else if (/\b(high sensitivity|sensitive|pii|financial|personal data)\b/.test(lower)) {
+    dataSensitivity = "high";
+  } else if (/\bmoderate\b/.test(lower)) {
+    dataSensitivity = "moderate";
+  }
+
+  if (!targetUsers.length) {
+    warnings.push("Could not confidently extract target users.");
+  }
+  if (!coreFeatures.length) {
+    warnings.push("Could not confidently extract core features.");
+  }
+  if (!constraints.length) {
+    warnings.push("Could not confidently extract constraints.");
+  }
+
+  return {
+    input: {
+      projectName,
+      summary,
+      targetUsers: targetUsers.length ? targetUsers : ["unspecified target users (confirm)"],
+      coreFeatures: coreFeatures.length ? coreFeatures : ["unspecified core feature (confirm)"],
+      constraints: constraints.length ? constraints : ["constraints not yet confirmed"],
+      nonFunctionalRequirements: inferredNfrs,
+      integrations,
+      plannerProfile,
+      dataSensitivity,
+      teamSize: parseTeamSize(normalized),
+      productionExpectedSoon: parseBooleanFlag(normalized, /\b(production|launch|ship)\b/i),
+      liveUsers: parseBooleanFlag(normalized, /\b(live users|customers already use|in production)\b/i),
+      enterpriseRequirements,
+      openQuestions
+    },
+    metadata: {
+      format,
+      parserWarnings: warnings,
+      structuredInputSource: "heuristic-extraction"
+    }
+  };
+}
+
+function loadPlanningInput(repoRoot, inputPath, format) {
+  if (!["json", "text", "markdown"].includes(format)) {
+    throw new CliError(`Unsupported format: ${format}`, EXIT_CODES.USAGE, [usageText()]);
+  }
+
+  if (format === "json") {
+    const resolvedPath = inputPath === "-" ? "<stdin>" : path.resolve(repoRoot, inputPath);
+    try {
+      const content = readInputSource(repoRoot, inputPath);
+      const input = JSON.parse(content);
+      validateWithSchema(repoRoot, "models/planning-input.schema.json", input, "planning input");
+      return {
+        input,
+        metadata: {
+          format,
+          parserWarnings: [],
+          structuredInputSource: resolvedPath
+        }
+      };
+    } catch (error) {
+      if (error instanceof CliError) {
+        throw error;
+      }
+      throw new CliError(`Invalid JSON in ${resolvedPath}: ${error.message}`, EXIT_CODES.VALIDATION);
+    }
+  }
+
+  const content = readInputSource(repoRoot, inputPath);
+  const parsed = parseUnstructuredInput(content, format);
+  validateWithSchema(repoRoot, "models/planning-input.schema.json", parsed.input, "planning input");
+  return parsed;
 }
 
 function loadPlaybookContext(repoRoot) {
@@ -243,6 +531,14 @@ function plannerProfile(input, config) {
   return input.plannerProfile || config.defaultProfile || "product";
 }
 
+function isPlaceholderItem(value) {
+  return /\b(confirm|unspecified|not yet confirmed|requires confirmation)\b/i.test(String(value || ""));
+}
+
+function hasMeaningfulItems(items) {
+  return Array.isArray(items) && items.some((item) => !isPlaceholderItem(item));
+}
+
 function intakeSignals(input, config) {
   const missingInformation = [];
   const intakeQuestions = [];
@@ -278,7 +574,7 @@ function intakeSignals(input, config) {
     );
   }
 
-  if (!input.targetUsers || input.targetUsers.length === 0) {
+  if (!hasMeaningfulItems(input.targetUsers)) {
     addQuestion(
       "Q-002",
       "high",
@@ -290,7 +586,7 @@ function intakeSignals(input, config) {
     );
   }
 
-  if (!input.coreFeatures || input.coreFeatures.length === 0) {
+  if (!hasMeaningfulItems(input.coreFeatures)) {
     addQuestion(
       "Q-003",
       "high",
@@ -302,7 +598,7 @@ function intakeSignals(input, config) {
     );
   }
 
-  if (!input.constraints || input.constraints.length === 0) {
+  if (!hasMeaningfulItems(input.constraints)) {
     addQuestion(
       "Q-004",
       "high",
@@ -314,7 +610,7 @@ function intakeSignals(input, config) {
     );
   }
 
-  if (!input.nonFunctionalRequirements || input.nonFunctionalRequirements.length === 0) {
+  if (!hasMeaningfulItems(input.nonFunctionalRequirements)) {
     addQuestion(
       "Q-005",
       intakePolicy.nfrPriority,
@@ -970,7 +1266,7 @@ function buildRisks(input, phase) {
   return risks;
 }
 
-function buildOutput(input, config, playbookContext, repoRoot) {
+function buildOutput(input, config, playbookContext, repoRoot, inputMetadata) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
   const profile = plannerProfile(input, config);
@@ -981,6 +1277,12 @@ function buildOutput(input, config, playbookContext, repoRoot) {
 
   return {
     projectName: input.projectName,
+    inputFormat: inputMetadata.format,
+    inputParsing: {
+      structuredInputSource: inputMetadata.structuredInputSource,
+      parserWarnings: inputMetadata.parserWarnings
+    },
+    inputSnapshot: input,
     plannerProfile: profile,
     intakeCompleteness: intake.intakeCompleteness,
     missingInformation: intake.missingInformation,
@@ -1427,6 +1729,80 @@ function buildPromptArtifacts(repoRoot, input, output) {
   return promptArtifacts;
 }
 
+function profileExecutionPolicy(profile) {
+  const defaults = {
+    startup: {
+      maxParallelAgents: 1,
+      autoStartReviews: true,
+      approvalRequiredForExecution: false,
+      blockerMode: "notify-and-wait"
+    },
+    product: {
+      maxParallelAgents: 2,
+      autoStartReviews: true,
+      approvalRequiredForExecution: false,
+      blockerMode: "notify-and-wait"
+    },
+    enterprise: {
+      maxParallelAgents: 2,
+      autoStartReviews: false,
+      approvalRequiredForExecution: true,
+      blockerMode: "halt-and-escalate"
+    },
+    platform: {
+      maxParallelAgents: 3,
+      autoStartReviews: true,
+      approvalRequiredForExecution: true,
+      blockerMode: "review-before-continue"
+    }
+  };
+
+  return defaults[profile] || defaults.product;
+}
+
+function stepStatusFiles(stepId) {
+  return {
+    input: `runner/${stepId}/input.json`,
+    status: `runner/${stepId}/status.json`,
+    result: `runner/${stepId}/result.json`,
+    blockers: `runner/${stepId}/blockers.json`
+  };
+}
+
+function makeStepPolicy(step, output) {
+  const profilePolicy = profileExecutionPolicy(output.plannerProfile);
+  const isExecutionStep = /execution/i.test(step.name);
+  const isGovernanceStep = /governance/i.test(step.name);
+
+  return {
+    dependencyPolicy: {
+      hard: step.dependsOn.slice(),
+      soft: isExecutionStep && output.path === "enterprise" ? ["step-3-governance-setup"] : []
+    },
+    blockerPolicy: {
+      onBlocked: isGovernanceStep ? "halt-and-escalate" : profilePolicy.blockerMode,
+      escalationTarget: output.path === "enterprise" ? "human owner and governance lead" : "human owner",
+      maxAutoRetries: 0
+    },
+    approvalGate: {
+      required: isExecutionStep ? profilePolicy.approvalRequiredForExecution : !profilePolicy.autoStartReviews,
+      approvers: isGovernanceStep ? ["human owner", "security owner"] : ["human owner"],
+      reason: isGovernanceStep
+        ? "Governance-path work must be explicitly reviewed before downstream execution continues."
+        : isExecutionStep && profilePolicy.approvalRequiredForExecution
+          ? "Execution on this profile requires explicit human review before implementation proceeds."
+          : "No explicit approval gate required beyond normal review."
+    },
+    profilePolicy: {
+      plannerProfile: output.plannerProfile,
+      maxParallelAgents: profilePolicy.maxParallelAgents,
+      autoContinue: profilePolicy.autoStartReviews && !isExecutionStep,
+      reviewRequired: isExecutionStep ? profilePolicy.approvalRequiredForExecution : !profilePolicy.autoStartReviews
+    },
+    statusFiles: stepStatusFiles(step.id)
+  };
+}
+
 function buildHandoffManifest(input, output) {
   const promptById = new Map(output.promptExports.map((item) => [item.id, item]));
   const steps = [];
@@ -1598,11 +1974,17 @@ function buildHandoffManifest(input, output) {
     });
   }
 
+  const policyAwareSteps = steps.map((step) => Object.assign({}, step, makeStepPolicy(step, output)));
+
   const manifestArtifacts = [
     "plan-output.json",
+    "structured-input.json",
     "project-charter.md",
     "architecture-overview.md",
     "delivery-plan.md",
+    "runner-contract.json",
+    ".devreview.json",
+    "scaffoldkit-input.json",
     ".ai/AGENTS.md",
     ".ai/ARCHITECTURE.md",
     ".ai/TASKS.md",
@@ -1613,13 +1995,15 @@ function buildHandoffManifest(input, output) {
     manifestArtifacts.push("intake-questionnaire.md");
   }
 
-  output.adrCandidates.forEach((adr, index) => {
+    output.adrCandidates.forEach((adr, index) => {
     manifestArtifacts.push(adrDocumentPath(index, adr));
   });
 
   return {
     version: "1.0",
     summary: "Coordinate downstream planning, governance, and execution agents from a single generated manifest.",
+    policySummary: `Use ${output.plannerProfile} profile policies for concurrency, blocker escalation, and approval gating.`,
+    runnerContractPath: "runner-contract.json",
     coordinationStrategy: intakePrompt
       ? "Resolve intake blockers first, then run planning review steps in parallel where possible, then begin execution."
       : "Use planning review steps in parallel where possible, then move into execution on the first delivery wave.",
@@ -1632,7 +2016,167 @@ function buildHandoffManifest(input, output) {
       intakeCompleteness: output.intakeCompleteness
     },
     sharedArtifacts: manifestArtifacts,
-    steps
+    steps: policyAwareSteps
+  };
+}
+
+function buildRunnerContract(output) {
+  return {
+    version: "1.0",
+    summary: "Machine-readable contract for downstream agents consuming the planforge handoff manifest.",
+    statusLifecycle: [
+      { id: "queued", meaning: "Step exists but should not start yet." },
+      { id: "ready", meaning: "Dependencies are satisfied and the step may begin." },
+      { id: "in_progress", meaning: "The agent is actively working on the step." },
+      { id: "blocked", meaning: "A blocker prevents progress and escalation is required." },
+      { id: "partial", meaning: "Partial outputs exist but acceptance criteria are not yet satisfied." },
+      { id: "completed", meaning: "The step finished with required outputs and status evidence." }
+    ],
+    requiredStatusFields: [
+      "stepId",
+      "agentId",
+      "status",
+      "updatedAt",
+      "summary",
+      "blockers",
+      "outputArtifacts"
+    ],
+    requiredResultFields: [
+      "stepId",
+      "agentId",
+      "completedAt",
+      "outcomeSummary",
+      "artifacts",
+      "openIssues",
+      "nextStepRecommendations"
+    ],
+    stepContracts: output.handoffManifest.steps.map((step) => ({
+      stepId: step.id,
+      name: step.name,
+      requiredInputFiles: step.agentAssignments.flatMap((assignment) => assignment.reads),
+      expectedOutputFiles: step.agentAssignments.flatMap((assignment) => assignment.writes),
+      statusFiles: step.statusFiles,
+      allowedStatuses: ["queued", "ready", "in_progress", "blocked", "partial", "completed"],
+      dependencyPolicy: step.dependencyPolicy,
+      approvalGate: step.approvalGate
+    }))
+  };
+}
+
+function resolveRunDirectory(repoRoot, runPath) {
+  const resolvedPath = path.resolve(repoRoot, runPath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new CliError(`Previous run path does not exist: ${resolvedPath}`, EXIT_CODES.RUNTIME);
+  }
+  const stats = fs.statSync(resolvedPath);
+  if (stats.isDirectory()) {
+    return resolvedPath;
+  }
+  if (path.basename(resolvedPath) === "plan-output.json") {
+    return path.dirname(resolvedPath);
+  }
+  throw new CliError("Previous run path must be a directory or plan-output.json.", EXIT_CODES.USAGE);
+}
+
+function loadPreviousRun(repoRoot, runPath) {
+  if (!runPath) {
+    return null;
+  }
+
+  const dir = resolveRunDirectory(repoRoot, runPath);
+  const planOutputPath = path.join(dir, "plan-output.json");
+  if (!fs.existsSync(planOutputPath)) {
+    throw new CliError(`Previous run is missing plan-output.json: ${dir}`, EXIT_CODES.RUNTIME);
+  }
+
+  return {
+    dir,
+    output: readJson(planOutputPath, planOutputPath)
+  };
+}
+
+function valuesEqual(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function buildRerunReport(mode, previousRun, input, output) {
+  const regeneratedArtifacts = [
+    "plan-output.json",
+    "handoff-manifest.json",
+    "project-charter.md",
+    "architecture-overview.md",
+    "delivery-plan.md",
+    "runner-contract.json",
+    "scaffoldkit-input.json",
+    ".devreview.json"
+  ];
+
+  if (!previousRun) {
+    return {
+      mode,
+      sourceRun: null,
+      changedAssumptions: [],
+      changedRecommendations: [],
+      regeneratedArtifacts,
+      preservedArtifacts: []
+    };
+  }
+
+  const previousOutput = previousRun.output || {};
+  const previousInput = previousOutput.inputSnapshot || {};
+  const changedAssumptions = [
+    "projectName",
+    "summary",
+    "targetUsers",
+    "coreFeatures",
+    "constraints",
+    "nonFunctionalRequirements",
+    "integrations",
+    "plannerProfile",
+    "dataSensitivity",
+    "teamSize",
+    "productionExpectedSoon",
+    "liveUsers",
+    "enterpriseRequirements",
+    "openQuestions"
+  ].filter((field) => !valuesEqual(previousInput[field], input[field]));
+
+  const previousWave = ((previousOutput.executionWaves || [])[0] || {}).taskIds || [];
+  const currentWave = ((output.executionWaves || [])[0] || {}).taskIds || [];
+  const changedRecommendations = [];
+
+  if (previousOutput.phase !== output.phase) {
+    changedRecommendations.push("phase");
+  }
+  if (previousOutput.path !== output.path) {
+    changedRecommendations.push("path");
+  }
+  if ((previousOutput.architectureRecommendation || {}).optionId !== output.architectureRecommendation.optionId) {
+    changedRecommendations.push("architectureRecommendation");
+  }
+  if (!valuesEqual(previousOutput.recommendedPlaybooks, output.recommendedPlaybooks)) {
+    changedRecommendations.push("recommendedPlaybooks");
+  }
+  if (!valuesEqual(previousWave, currentWave)) {
+    changedRecommendations.push("executionWaveSelection");
+  }
+
+  const preservedCandidates = [
+    "runner",
+    "handoff-status.json",
+    "resume-notes.md",
+    "reviews",
+    "notes"
+  ];
+  const preservedArtifacts = preservedCandidates.filter((entry) => fs.existsSync(path.join(previousRun.dir, entry)));
+
+  return {
+    mode,
+    sourceRun: previousRun.dir,
+    changedAssumptions,
+    changedRecommendations,
+    regeneratedArtifacts,
+    preservedArtifacts
   };
 }
 
@@ -1767,6 +2311,246 @@ function writeAiArtifacts(input, output, outdir) {
   writeFile(path.join(outdir, ".ai", "DECISIONS.md"), renderAiDecisions(output));
 }
 
+function scaffoldkitBlueprint(output, input) {
+  const techStack = inferTechStack(input).toLowerCase();
+
+  if (output.plannerProfile === "platform") {
+    return "internal-platform";
+  }
+  if (/typescript web/.test(techStack) && output.architectureRecommendation.shape === "modular monolith") {
+    return "nextjs-fullstack";
+  }
+  if (/typescript service/.test(techStack) && /background jobs/.test(output.architectureRecommendation.shape)) {
+    return "node-worker-app";
+  }
+  if (/small service-oriented split/.test(output.architectureRecommendation.shape)) {
+    return "service-platform";
+  }
+  return "app-starter";
+}
+
+function renderScaffoldKitInput(input, output) {
+  return {
+    version: "1.0",
+    projectName: input.projectName,
+    blueprint: scaffoldkitBlueprint(output, input),
+    architecture: {
+      shape: output.architectureRecommendation.shape,
+      optionId: output.architectureRecommendation.optionId,
+      phase: output.phase,
+      path: output.path
+    },
+    stack: {
+      hint: inferTechStack(input),
+      dataStore: "relational",
+      integrations: input.integrations || []
+    },
+    features: input.coreFeatures,
+    constraints: input.constraints,
+    playbooks: output.recommendedPlaybooks,
+    aiContextFiles: [
+      ".ai/AGENTS.md",
+      ".ai/ARCHITECTURE.md",
+      ".ai/TASKS.md",
+      ".ai/DECISIONS.md"
+    ]
+  };
+}
+
+function devReviewWeights(profile) {
+  if (profile === "startup") {
+    return {
+      correctness: 30,
+      testing: 15,
+      maintainability: 20,
+      architecture: 15,
+      security: 10,
+      documentation: 10
+    };
+  }
+  if (profile === "enterprise") {
+    return {
+      correctness: 20,
+      testing: 20,
+      maintainability: 15,
+      architecture: 15,
+      security: 20,
+      documentation: 10
+    };
+  }
+  if (profile === "platform") {
+    return {
+      correctness: 20,
+      testing: 25,
+      maintainability: 20,
+      architecture: 20,
+      security: 10,
+      documentation: 5
+    };
+  }
+  return {
+    correctness: 25,
+    testing: 20,
+    maintainability: 20,
+    architecture: 15,
+    security: 10,
+    documentation: 10
+  };
+}
+
+function minReviewScore(phase, profile) {
+  if (profile === "startup") {
+    return 6;
+  }
+  if (phase === "phase_3" || profile === "enterprise") {
+    return 8;
+  }
+  if (phase === "phase_2" || profile === "platform") {
+    return 8;
+  }
+  if (phase === "phase_0") {
+    return 6;
+  }
+  return 7;
+}
+
+function renderDevReviewConfig(input, output) {
+  const techStack = inferTechStack(input).toLowerCase();
+  const ignorePatterns = ["out/**", "coverage/**", "node_modules/**"];
+  if (/typescript web/.test(techStack)) {
+    ignorePatterns.push(".next/**");
+  }
+
+  const customRules = [
+    "require tests when API or workflow behavior changes",
+    "require ADR updates when architecture assumptions shift"
+  ];
+
+  if (/dashboard|portal|admin/.test((input.coreFeatures || []).join(" ").toLowerCase())) {
+    customRules.push("require access-control review for admin-facing routes");
+  }
+  if (output.plannerProfile === "platform") {
+    customRules.push("require API stability review for shared platform interfaces");
+  }
+
+  return {
+    version: "1.0",
+    profile: output.plannerProfile,
+    phase: output.phase,
+    minimumScore: minReviewScore(output.phase, output.plannerProfile),
+    weights: devReviewWeights(output.plannerProfile),
+    ignorePatterns,
+    customRules
+  };
+}
+
+function writeRunnerArtifacts(output, outdir) {
+  const contract = buildRunnerContract(output);
+  writeFile(path.join(outdir, "runner-contract.json"), `${JSON.stringify(contract, null, 2)}\n`);
+
+  contract.stepContracts.forEach((stepContract) => {
+    writeFile(
+      path.join(outdir, stepContract.statusFiles.input),
+      `${JSON.stringify({ stepId: stepContract.stepId, requiredInputFiles: stepContract.requiredInputFiles }, null, 2)}\n`
+    );
+    writeFile(
+      path.join(outdir, stepContract.statusFiles.status),
+      `${JSON.stringify({
+        stepId: stepContract.stepId,
+        agentId: "TBD",
+        status: "queued",
+        updatedAt: "",
+        summary: "",
+        blockers: [],
+        outputArtifacts: []
+      }, null, 2)}\n`
+    );
+    writeFile(
+      path.join(outdir, stepContract.statusFiles.result),
+      `${JSON.stringify({
+        stepId: stepContract.stepId,
+        agentId: "TBD",
+        completedAt: "",
+        outcomeSummary: "",
+        artifacts: [],
+        openIssues: [],
+        nextStepRecommendations: []
+      }, null, 2)}\n`
+    );
+    writeFile(
+      path.join(outdir, stepContract.statusFiles.blockers),
+      `${JSON.stringify({ stepId: stepContract.stepId, blockers: [] }, null, 2)}\n`
+    );
+  });
+}
+
+function copyDirectoryContents(sourcePath, targetPath) {
+  const stats = fs.statSync(sourcePath);
+  if (stats.isDirectory()) {
+    ensureDir(targetPath);
+    fs.readdirSync(sourcePath).forEach((entry) => {
+      copyDirectoryContents(path.join(sourcePath, entry), path.join(targetPath, entry));
+    });
+    return;
+  }
+
+  ensureDir(path.dirname(targetPath));
+  fs.copyFileSync(sourcePath, targetPath);
+}
+
+function preservePreviousRunArtifacts(previousRun, rerunReport, outdir) {
+  if (!previousRun || !rerunReport.preservedArtifacts.length) {
+    return;
+  }
+
+  rerunReport.preservedArtifacts.forEach((relativePath) => {
+    const sourcePath = path.join(previousRun.dir, relativePath);
+    const targetPath = path.join(outdir, relativePath);
+    if (path.resolve(sourcePath) === path.resolve(targetPath)) {
+      return;
+    }
+    copyDirectoryContents(sourcePath, targetPath);
+  });
+}
+
+function renderRerunSummary(rerunReport) {
+  return `# Rerun Summary
+
+## Mode
+
+- ${rerunReport.mode}
+
+## Source Run
+
+- ${rerunReport.sourceRun || "None"}
+
+## Changed Assumptions
+
+${toMarkdownList(rerunReport.changedAssumptions)}
+
+## Changed Recommendations
+
+${toMarkdownList(rerunReport.changedRecommendations)}
+
+## Regenerated Artifacts
+
+${toMarkdownList(rerunReport.regeneratedArtifacts)}
+
+## Preserved Artifacts
+
+${toMarkdownList(rerunReport.preservedArtifacts)}
+`;
+}
+
+function writeOperationalArtifacts(input, output, outdir, rerunReport) {
+  writeFile(path.join(outdir, "structured-input.json"), `${JSON.stringify(output.inputSnapshot, null, 2)}\n`);
+  writeFile(path.join(outdir, "scaffoldkit-input.json"), `${JSON.stringify(renderScaffoldKitInput(input, output), null, 2)}\n`);
+  writeFile(path.join(outdir, ".devreview.json"), `${JSON.stringify(renderDevReviewConfig(input, output), null, 2)}\n`);
+  writeFile(path.join(outdir, "rerun-report.json"), `${JSON.stringify(rerunReport, null, 2)}\n`);
+  writeFile(path.join(outdir, "rerun-summary.md"), renderRerunSummary(rerunReport));
+  writeRunnerArtifacts(output, outdir);
+}
+
 function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
   output.adrCandidates.forEach((adr, index) => {
     const filename = `${String(index + 1).padStart(3, "0")}-${slugify(adr.title)}.md`;
@@ -1804,6 +2588,7 @@ function printSummary(output, outdir, validateOnly) {
 
   console.log([
     `Project: ${output.projectName}`,
+    `Input format: ${output.inputFormat}`,
     `Phase: ${output.phase}`,
     `Path: ${output.path}`,
     `Profile: ${output.plannerProfile}`,
@@ -1827,6 +2612,10 @@ function main() {
       throw new CliError("Missing required argument: --input <file>", EXIT_CODES.USAGE, [usageText()]);
     }
 
+    if (args.resumeFrom && args.rerunFrom) {
+      throw new CliError("Use either --resume-from or --rerun-from, not both.", EXIT_CODES.USAGE, [usageText()]);
+    }
+
     if (!args.outdir && !args.validateOnly) {
       throw new CliError("Missing required argument: --outdir <dir>", EXIT_CODES.USAGE, [usageText()]);
     }
@@ -1834,12 +2623,15 @@ function main() {
     const repoRoot = process.cwd();
     const playbookContext = loadPlaybookContext(repoRoot);
     const config = loadPlannerConfig(repoRoot, args.config);
-    const input = loadPlanningInput(repoRoot, args.input);
-    const output = buildOutput(input, config, playbookContext, repoRoot);
+    const { input, metadata: inputMetadata } = loadPlanningInput(repoRoot, args.input, args.format);
+    const previousRun = loadPreviousRun(repoRoot, args.resumeFrom || args.rerunFrom);
+    const rerunMode = args.resumeFrom ? "resume" : args.rerunFrom ? "rerun" : "fresh";
+    const output = buildOutput(input, config, playbookContext, repoRoot, inputMetadata);
     const promptArtifacts = buildPromptArtifacts(repoRoot, input, output);
 
     output.promptExports = promptArtifacts.map(({ contents, ...metadata }) => metadata);
     output.handoffManifest = buildHandoffManifest(input, output);
+    const rerunReport = buildRerunReport(rerunMode, previousRun, input, output);
 
     validateWithSchema(repoRoot, "models/planning-output.schema.json", output, "generated planning output");
 
@@ -1862,7 +2654,9 @@ function main() {
     writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
     writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
     writeAiArtifacts(input, output, outdir);
+    writeOperationalArtifacts(input, output, outdir, rerunReport);
     writeTemplateArtifacts(repoRoot, input, output, outdir, config);
+    preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
 
     if (args.summary) {
       printSummary(output, outdir, false);

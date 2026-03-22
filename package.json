@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "plan:bootstrap": "node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/sample",
-    "test": "node --test"
+    "test": "node tests/bootstrap-plan.test.js"
   },
   "engines": {
     "node": ">=18"

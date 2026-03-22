@@ -7,7 +7,7 @@
 ## Before You Start
 
 - Read [README.md](README.md) for project scope and current limitations.
-- Review the backlog in [tasks/](tasks/).
+- Review the current backlog in [tasks/](tasks/).
 - Prefer small, reviewable pull requests over broad refactors.
 
 ## Development Workflow
