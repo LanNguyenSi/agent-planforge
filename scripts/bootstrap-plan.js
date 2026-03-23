@@ -2792,7 +2792,8 @@ function main() {
       throw new CliError("Missing required argument: --outdir <dir>", EXIT_CODES.USAGE, [usageText()]);
     }
 
-    const repoRoot = process.cwd();
+    // Use __dirname to resolve paths relative to the script location, not cwd
+    const repoRoot = path.resolve(__dirname, "..");
     const playbookContext = loadPlaybookContext(repoRoot);
     const config = loadPlannerConfig(repoRoot, args.config);
     const { input, metadata: inputMetadata } = loadPlanningInput(repoRoot, args.input, args.format);
