@@ -147,7 +147,39 @@ function renderTemplate(repoRoot, relativeTemplatePath, values) {
 function formatSchemaErrors(errors) {
   return (errors || []).map((error) => {
     const location = error.instancePath || "/";
-    return `${location} ${error.message}`;
+    let message = error.message;
+    
+    // Add helpful hints for common validation errors
+    if (error.keyword === "type" && error.params?.type) {
+      const field = location.split("/").pop() || "field";
+      const expectedType = error.params.type;
+      
+      // Special hints for common fields
+      if (field === "teamSize") {
+        message += ` (expected: integer like 3, or string like "small"/"medium"/"large")`;
+      } else if (expectedType === "integer") {
+        message += ` (expected: a number like 3, not "${error.data}")`;
+      } else if (expectedType === "boolean") {
+        message += ` (expected: true or false, not "${error.data}")`;
+      } else if (expectedType === "array") {
+        message += ` (expected: an array like ["item1", "item2"])`;
+      }
+    }
+    
+    if (error.keyword === "enum" && error.params?.allowedValues) {
+      const allowed = error.params.allowedValues.map(v => `"${v}"`).join(", ");
+      message += ` (allowed values: ${allowed})`;
+    }
+    
+    if (error.keyword === "minLength" && error.params?.limit) {
+      message += ` (minimum length: ${error.params.limit} characters)`;
+    }
+    
+    if (error.keyword === "minItems" && error.params?.limit) {
+      message += ` (minimum items: ${error.params.limit})`;
+    }
+    
+    return `${location} ${message}`;
   });
 }
 
