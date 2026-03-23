@@ -2792,21 +2792,23 @@ function main() {
       throw new CliError("Missing required argument: --outdir <dir>", EXIT_CODES.USAGE, [usageText()]);
     }
 
-    // Use __dirname to resolve paths relative to the script location, not cwd
-    const repoRoot = path.resolve(__dirname, "..");
-    const playbookContext = loadPlaybookContext(repoRoot);
-    const config = loadPlannerConfig(repoRoot, args.config);
-    const { input, metadata: inputMetadata } = loadPlanningInput(repoRoot, args.input, args.format);
-    const previousRun = loadPreviousRun(repoRoot, args.resumeFrom || args.rerunFrom);
+    // Separate internal planforge paths from user working directory
+    const planforgeRoot = path.resolve(__dirname, ".."); // For config/, models/
+    const workingDir = process.cwd(); // For user-provided --input, --outdir
+    
+    const playbookContext = loadPlaybookContext(planforgeRoot);
+    const config = loadPlannerConfig(planforgeRoot, args.config);
+    const { input, metadata: inputMetadata } = loadPlanningInput(workingDir, args.input, args.format);
+    const previousRun = loadPreviousRun(workingDir, args.resumeFrom || args.rerunFrom);
     const rerunMode = args.resumeFrom ? "resume" : args.rerunFrom ? "rerun" : "fresh";
-    const output = buildOutput(input, config, playbookContext, repoRoot, inputMetadata);
-    const promptArtifacts = buildPromptArtifacts(repoRoot, input, output);
+    const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata);
+    const promptArtifacts = buildPromptArtifacts(planforgeRoot, input, output);
 
     output.promptExports = promptArtifacts.map(({ contents, ...metadata }) => metadata);
     output.handoffManifest = buildHandoffManifest(input, output);
     const rerunReport = buildRerunReport(rerunMode, previousRun, input, output);
 
-    validateWithSchema(repoRoot, "models/planning-output.schema.json", output, "generated planning output");
+    validateWithSchema(planforgeRoot, "models/planning-output.schema.json", output, "generated planning output");
 
     if (args.validateOnly) {
       if (args.summary) {
@@ -2817,7 +2819,7 @@ function main() {
       return;
     }
 
-    const outdir = path.resolve(repoRoot, args.outdir);
+    const outdir = path.resolve(workingDir, args.outdir);
     ensureDir(outdir);
     
     // Detect default branch if not specified in input
@@ -2830,17 +2832,17 @@ function main() {
     writePromptArtifacts(promptArtifacts, outdir);
     writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
     writeFile(path.join(outdir, "handoff-manifest.json"), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
-    writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(repoRoot, input, output));
+    writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(planforgeRoot, input, output));
     writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
     writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
     writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
     writeAiArtifacts(input, output, outdir);
     writeOperationalArtifacts(input, output, outdir, rerunReport);
-    writeTemplateArtifacts(repoRoot, input, output, outdir, config);
-    writeMakefile(repoRoot, outdir);
-    writeDockerFiles(repoRoot, outdir);
-    writePreCommitHooks(repoRoot, outdir);
-    writeBranchInfo(repoRoot, outdir, output.defaultBranch, autoDetected);
+    writeTemplateArtifacts(planforgeRoot, input, output, outdir, config);
+    writeMakefile(planforgeRoot, outdir);
+    writeDockerFiles(planforgeRoot, outdir);
+    writePreCommitHooks(planforgeRoot, outdir);
+    writeBranchInfo(planforgeRoot, outdir, output.defaultBranch, autoDetected);
     preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
 
     if (args.install) {
