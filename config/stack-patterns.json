@@ -392,6 +392,276 @@
         ]
       }
     },
+    "payments-billing": {
+      "keywords": ["payment", "billing", "checkout", "stripe", "subscription", "invoice", "pricing"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/payments/types.ts — Payment, Subscription, Invoice interfaces + Zod schemas",
+          "lib/payments/stripe.ts — Stripe SDK client + webhook signature verification",
+          "lib/payments/service.ts — Create checkout, manage subscriptions, handle webhooks",
+          "app/api/payments/checkout/route.ts — POST create checkout session",
+          "app/api/payments/webhook/route.ts — POST Stripe webhook handler",
+          "app/api/payments/subscriptions/route.ts — GET user subscriptions",
+          "components/PricingTable.tsx — Pricing tier display",
+          "prisma/schema.prisma — Subscription, Payment, Invoice models",
+          "tests/payments/service.test.ts — Business logic tests",
+          "tests/payments/webhook.test.ts — Webhook signature + event tests"
+        ],
+        "express-api": [
+          "src/payments/stripe.ts — Stripe SDK client",
+          "src/payments/service.ts — Payment business logic",
+          "src/routes/payments.ts — Express router for checkout, webhooks, subscriptions",
+          "src/models/payment.ts — Payment model",
+          "tests/payments/service.test.ts — Service tests",
+          "tests/payments/webhook.test.ts — Webhook tests"
+        ],
+        "vite-spa": [
+          "src/lib/payments/api.ts — Payment API client",
+          "src/lib/payments/types.ts — Payment interfaces",
+          "src/components/PricingTable.tsx — Pricing display",
+          "src/components/CheckoutButton.tsx — Stripe checkout trigger",
+          "src/pages/Billing.tsx — Billing management page",
+          "tests/lib/payments/api.test.ts — API client tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/payments/stripe.server.ts — Stripe client (server-only)",
+          "app/lib/payments/service.server.ts — Payment business logic",
+          "app/routes/api.webhooks.stripe.tsx — Webhook handler",
+          "app/routes/billing.tsx — Billing page with loader/action",
+          "app/models/payment.server.ts — Payment model",
+          "tests/lib/payments/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/payments/payments.module.ts — Payments module",
+          "src/payments/payments.controller.ts — Payment endpoints",
+          "src/payments/payments.service.ts — Stripe integration + business logic",
+          "src/payments/stripe.provider.ts — Stripe DI provider",
+          "src/payments/dto/checkout.dto.ts — Checkout DTOs",
+          "test/payments/payments.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "file-upload": {
+      "keywords": ["upload", "file", "attachment", "storage", "s3", "image", "media"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/upload/types.ts — FileUpload, StorageConfig interfaces",
+          "lib/upload/storage.ts — Storage adapter (local disk or S3-compatible)",
+          "lib/upload/validation.ts — File type + size validation",
+          "lib/upload/service.ts — Upload, retrieve, delete file logic",
+          "app/api/upload/route.ts — POST file upload endpoint (multipart)",
+          "app/api/files/[id]/route.ts — GET file download, DELETE file",
+          "components/FileUpload.tsx — Drag-and-drop upload component",
+          "prisma/schema.prisma — File model with path, mimeType, size",
+          "tests/upload/validation.test.ts — File validation tests",
+          "tests/upload/service.test.ts — Upload logic tests"
+        ],
+        "express-api": [
+          "src/upload/storage.ts — Storage adapter (multer + S3)",
+          "src/upload/validation.ts — File validation middleware",
+          "src/upload/service.ts — Upload business logic",
+          "src/routes/upload.ts — Express router with multer middleware",
+          "src/models/file.ts — File model",
+          "tests/upload/service.test.ts — Service tests"
+        ],
+        "vite-spa": [
+          "src/lib/upload/api.ts — File upload API client",
+          "src/lib/upload/types.ts — Upload interfaces",
+          "src/components/FileUpload.tsx — Upload component with progress",
+          "src/components/FilePreview.tsx — File preview (images, documents)",
+          "tests/lib/upload/api.test.ts — API client tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/upload/storage.server.ts — Storage adapter (server)",
+          "app/lib/upload/service.server.ts — Upload logic",
+          "app/routes/api.upload.tsx — Upload API route",
+          "app/components/FileUpload.tsx — Upload component",
+          "tests/lib/upload/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/upload/upload.module.ts — Upload module",
+          "src/upload/upload.controller.ts — Upload endpoints with interceptors",
+          "src/upload/upload.service.ts — Storage + business logic",
+          "src/upload/file.entity.ts — File entity",
+          "test/upload/upload.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "email-notifications": {
+      "keywords": ["email", "notification", "send", "template", "smtp", "resend", "sendgrid", "push"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/notifications/types.ts — Notification, Channel, Template interfaces",
+          "lib/notifications/email.ts — Email transport (SMTP/Resend/SendGrid)",
+          "lib/notifications/templates.ts — Email template rendering",
+          "lib/notifications/service.ts — Send notification with channel routing",
+          "app/api/notifications/route.ts — GET user notifications",
+          "app/api/notifications/preferences/route.ts — GET/PUT notification settings",
+          "prisma/schema.prisma — Notification, NotificationPreference models",
+          "tests/notifications/email.test.ts — Email transport tests",
+          "tests/notifications/service.test.ts — Notification logic tests"
+        ],
+        "express-api": [
+          "src/notifications/email.ts — Email transport",
+          "src/notifications/templates.ts — Template rendering",
+          "src/notifications/service.ts — Notification business logic",
+          "src/routes/notifications.ts — Express router for notifications",
+          "tests/notifications/service.test.ts — Service tests"
+        ],
+        "vite-spa": [
+          "src/lib/notifications/api.ts — Notification API client",
+          "src/lib/notifications/types.ts — Notification interfaces",
+          "src/components/NotificationList.tsx — Notification feed component",
+          "src/components/NotificationPreferences.tsx — Settings component",
+          "tests/lib/notifications/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/notifications/email.server.ts — Email transport (server)",
+          "app/lib/notifications/service.server.ts — Business logic",
+          "app/routes/notifications.tsx — Notifications route",
+          "tests/lib/notifications/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/notifications/notifications.module.ts — Notifications module",
+          "src/notifications/notifications.service.ts — Business logic + channel routing",
+          "src/notifications/email.provider.ts — Email transport DI provider",
+          "src/notifications/notification.entity.ts — Notification entity",
+          "test/notifications/notifications.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "search-filtering": {
+      "keywords": ["search", "filter", "full-text", "elasticsearch", "query", "facet", "sort", "pagination"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/search/types.ts — SearchQuery, SearchResult, Filter interfaces",
+          "lib/search/service.ts — Search + filter + pagination logic",
+          "lib/search/indexer.ts — Full-text index management (DB or Elasticsearch)",
+          "app/api/search/route.ts — GET search endpoint with query params",
+          "components/SearchBar.tsx — Search input with debounce",
+          "components/FilterPanel.tsx — Faceted filter UI",
+          "components/Pagination.tsx — Pagination controls",
+          "tests/search/service.test.ts — Search logic tests",
+          "tests/search/indexer.test.ts — Indexing tests"
+        ],
+        "express-api": [
+          "src/search/service.ts — Search business logic",
+          "src/search/indexer.ts — Index management",
+          "src/routes/search.ts — Express search endpoint",
+          "tests/search/service.test.ts — Service tests"
+        ],
+        "vite-spa": [
+          "src/lib/search/api.ts — Search API client",
+          "src/lib/search/types.ts — Search interfaces",
+          "src/components/SearchBar.tsx — Search input",
+          "src/components/FilterPanel.tsx — Filter UI",
+          "src/components/Pagination.tsx — Pagination",
+          "tests/lib/search/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/search/service.server.ts — Search logic (server)",
+          "app/routes/search.tsx — Search route with loader",
+          "app/components/SearchBar.tsx — Search input",
+          "app/components/FilterPanel.tsx — Filter panel",
+          "tests/lib/search/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/search/search.module.ts — Search module",
+          "src/search/search.controller.ts — Search endpoint",
+          "src/search/search.service.ts — Business logic + indexing",
+          "src/search/dto/search-query.dto.ts — Query DTOs",
+          "test/search/search.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "user-management": {
+      "keywords": ["user", "users", "roles", "permissions", "rbac", "admin", "team", "invite", "member"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/users/types.ts — User, Role, Permission interfaces + Zod schemas",
+          "lib/users/service.ts — User CRUD, role assignment, team management",
+          "lib/users/permissions.ts — RBAC check functions (hasPermission, requireRole)",
+          "app/api/users/route.ts — GET (list) + POST (invite) endpoints",
+          "app/api/users/[id]/route.ts — GET/PUT/DELETE user",
+          "app/api/users/[id]/role/route.ts — PUT change user role",
+          "app/admin/users/page.tsx — User management admin page",
+          "prisma/schema.prisma — User, Role, TeamMember models",
+          "tests/users/service.test.ts — User CRUD tests",
+          "tests/users/permissions.test.ts — RBAC logic tests"
+        ],
+        "express-api": [
+          "src/users/service.ts — User business logic",
+          "src/users/permissions.ts — RBAC middleware",
+          "src/routes/users.ts — Express user management routes",
+          "src/models/user.ts — User model with roles",
+          "tests/users/service.test.ts — Service tests",
+          "tests/users/permissions.test.ts — Permission tests"
+        ],
+        "vite-spa": [
+          "src/lib/users/api.ts — User management API client",
+          "src/lib/users/types.ts — User interfaces",
+          "src/lib/users/permissions.ts — Client-side permission checks",
+          "src/pages/Admin/Users.tsx — User management page",
+          "src/components/UserTable.tsx — User list with role editing",
+          "tests/lib/users/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/users/service.server.ts — User business logic (server)",
+          "app/lib/users/permissions.ts — Permission checks",
+          "app/routes/admin.users.tsx — User management route",
+          "app/models/user.server.ts — User model",
+          "tests/lib/users/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/users/users.module.ts — Users module",
+          "src/users/users.controller.ts — User management endpoints",
+          "src/users/users.service.ts — Business logic",
+          "src/users/roles.guard.ts — Role-based guard",
+          "src/users/user.entity.ts — User entity with roles",
+          "test/users/users.service.spec.ts — Service tests"
+        ]
+      }
+    },
+    "audit-trail": {
+      "keywords": ["audit", "log", "trail", "activity", "history", "tracking", "compliance", "event"],
+      "files": {
+        "nextjs-fullstack": [
+          "lib/audit/types.ts — AuditEntry, AuditAction interfaces",
+          "lib/audit/service.ts — Log audit events, query audit trail",
+          "lib/audit/middleware.ts — Automatic audit logging for mutations",
+          "app/api/audit/route.ts — GET audit trail with filters",
+          "app/admin/audit/page.tsx — Audit log viewer page",
+          "prisma/schema.prisma — AuditLog model with actor, action, resource, timestamp",
+          "tests/audit/service.test.ts — Audit logging tests"
+        ],
+        "express-api": [
+          "src/audit/service.ts — Audit logging service",
+          "src/audit/middleware.ts — Express middleware for auto-logging",
+          "src/routes/audit.ts — Audit trail query endpoint",
+          "src/models/audit-log.ts — AuditLog model",
+          "tests/audit/service.test.ts — Service tests"
+        ],
+        "vite-spa": [
+          "src/lib/audit/api.ts — Audit trail API client",
+          "src/lib/audit/types.ts — Audit interfaces",
+          "src/pages/Admin/AuditLog.tsx — Audit viewer page",
+          "tests/lib/audit/api.test.ts — API tests"
+        ],
+        "remix-fullstack": [
+          "app/lib/audit/service.server.ts — Audit logging (server)",
+          "app/routes/admin.audit.tsx — Audit log route",
+          "app/models/audit-log.server.ts — AuditLog model",
+          "tests/lib/audit/service.test.ts — Service tests"
+        ],
+        "nestjs-api": [
+          "src/audit/audit.module.ts — Audit module",
+          "src/audit/audit.service.ts — Logging + query service",
+          "src/audit/audit.interceptor.ts — Auto-logging interceptor",
+          "src/audit/audit-log.entity.ts — AuditLog entity",
+          "test/audit/audit.service.spec.ts — Service tests"
+        ]
+      }
+    },
     "realtime-polling": {
       "keywords": ["real-time", "polling", "refresh", "interval", "live", "update", "auto-refresh"],
       "files": {
