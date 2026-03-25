@@ -13,8 +13,11 @@ function tempDir(prefix) {
 }
 
 function runPlanner(args, options = {}) {
-  // Always add --no-install for fast tests
-  const argsWithNoInstall = args.includes("--no-install") ? args : [...args, "--no-install"];
+  // Default to --no-install for fast tests unless the test explicitly wants install behavior.
+  const argsWithNoInstall =
+    args.includes("--no-install") || args.includes("--install")
+      ? args
+      : [...args, "--no-install"];
   return spawnSync("node", [scriptPath, ...argsWithNoInstall], {
     cwd: options.cwd || repoRoot,
     encoding: "utf8",
@@ -84,6 +87,10 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   const runnerContract = readJson(path.join(outdir, "runner-contract.json"));
   const scaffoldkit = readJson(path.join(outdir, "scaffoldkit-input.json"));
   const devreview = readJson(path.join(outdir, ".devreview.json"));
+  const agentsDoc = readText(path.join(outdir, ".ai", "AGENTS.md"));
+  const architecturePrompt = readText(path.join(outdir, "prompts", "architecture-analysis.md"));
+  const executionPrompt = readText(path.join(outdir, "prompts", "execution-next-wave.md"));
+  const governancePrompt = readText(path.join(outdir, "prompts", "governance-setup.md"));
 
   assert.equal(output.phase, "phase_3");
   assert.equal(output.path, "enterprise");
@@ -96,9 +103,18 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.ok(manifest.steps.every((step) => step.statusFiles && step.approvalGate && step.blockerPolicy));
   assert.ok(manifest.sharedArtifacts.includes("scaffoldkit-input.json"));
   assert.ok(manifest.sharedArtifacts.includes(".devreview.json"));
+  assert.match(agentsDoc, /## Engineering Model/);
+  assert.match(agentsDoc, /Spec-driven planning:/);
+  assert.match(architecturePrompt, /Use a spec\/context\/eval lens:/);
+  assert.match(executionPrompt, /Use a spec\/context\/eval lens:/);
+  assert.match(governancePrompt, /Use a spec\/context\/eval lens:/);
 
   assert.ok(runnerContract.stepContracts.length >= 3);
+  assert.equal(scaffoldkit.version, "1.1");
   assert.equal(scaffoldkit.blueprint, "nextjs-fullstack");
+  assert.ok(scaffoldkit.blueprintCandidates.includes("nextjs-fullstack"));
+  assert.equal(scaffoldkit.suggestedVariables.project_name, "vendor-access-hub");
+  assert.equal(scaffoldkit.suggestedVariables.ai_context, true);
   assert.equal(devreview.minimumScore, 8);
 
   [
@@ -114,6 +130,24 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   ].forEach((relativePath) => {
     assert.ok(fs.existsSync(path.join(outdir, relativePath)), `missing ${relativePath}`);
   });
+});
+
+runCase("service-oriented plans export a real scaffoldkit backend blueprint", () => {
+  const fixtureDir = tempDir("planforge-scaffoldkit-backend-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Queue Worker API",
+    summary: "TypeScript backend service for queued workflows and webhooks.",
+    targetUsers: ["internal systems"],
+    coreFeatures: ["workflow queue processing", "webhook ingestion"],
+    constraints: ["prefer TypeScript", "must run in Docker"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const scaffoldkit = readJson(path.join(fixtureDir, "out", "scaffoldkit-input.json"));
+  assert.equal(scaffoldkit.blueprint, "express-api");
+  assert.equal(scaffoldkit.suggestedVariables.use_queue, true);
 });
 
 runCase("config overrides merge onto the base config without replacing entire sections", () => {
@@ -308,6 +342,42 @@ runCase("resume-from writes rerun metadata and preserves runner state", () => {
   assert.ok(fs.existsSync(path.join(resumedOutdir, "runner", "custom-note.txt")));
 });
 
+runCase("planner fails when npm install is requested and package.json is invalid", () => {
+  const fixtureDir = tempDir("planforge-install-fail-");
+  const outdir = path.join(fixtureDir, "out");
+  fs.mkdirSync(outdir, { recursive: true });
+  writeText(path.join(outdir, "package.json"), "{ invalid json }\n");
+
+  const result = runPlanner([
+    "--input",
+    path.join(repoRoot, "examples", "sample-input.json"),
+    "--outdir",
+    outdir,
+    "--install"
+  ]);
+
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /npm install failed in the output directory/);
+});
+
+runCase("planner succeeds with --no-install even if output package.json is invalid", () => {
+  const fixtureDir = tempDir("planforge-no-install-");
+  const outdir = path.join(fixtureDir, "out");
+  fs.mkdirSync(outdir, { recursive: true });
+  writeText(path.join(outdir, "package.json"), "{ invalid json }\n");
+
+  const result = runPlanner([
+    "--input",
+    path.join(repoRoot, "examples", "sample-input.json"),
+    "--outdir",
+    outdir,
+    "--no-install"
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(fs.existsSync(path.join(outdir, "plan-output.json")));
+});
+
 runCase("validate-only mode succeeds without writing artifacts", () => {
   const outdir = path.join(tempDir("planforge-validate-"), "unused-output");
   const result = runPlanner([
@@ -421,6 +491,31 @@ runCase("invalid config fails with schema validation exit code", () => {
   ]);
 
   assert.equal(result.status, 2);
+});
+
+runCase("invalid config override rejects unsupported keys instead of silently ignoring them", () => {
+  const fixtureDir = tempDir("planforge-invalid-override-");
+  const invalidConfigPath = path.join(fixtureDir, "invalid-override.json");
+  writeJson(invalidConfigPath, {
+    waves: {
+      wave_0: {
+        label: "Custom Foundation"
+      }
+    }
+  });
+
+  const result = runPlanner([
+    "--input",
+    "examples/sample-input.json",
+    "--outdir",
+    path.join(fixtureDir, "out"),
+    "--config",
+    invalidConfigPath
+  ]);
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Invalid planner config override/);
+  assert.match(result.stderr, /unsupported key `waves`/);
 });
 
 console.log("All tests passed.");

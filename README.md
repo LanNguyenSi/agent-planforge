@@ -170,7 +170,7 @@ node scripts/bootstrap-plan.js \
   --no-install
 ```
 
-**Note:** By default, if a `package.json` file exists in the output directory after generation, `bootstrap-plan` will run `npm install` to generate `package-lock.json`. This ensures projects are CI-ready. Use `--no-install` to skip this step.
+**Note:** By default, if a `package.json` file exists in the output directory after generation, `bootstrap-plan` will run `npm install` there. If that install fails, the command now exits non-zero. Use `--no-install` when you only want planning artifacts.
 
 This creates:
 
@@ -222,6 +222,14 @@ This creates:
 - expose open questions and risks instead of pretending certainty
 - keep generated artifacts editable by humans and agents
 - ask for missing information explicitly when confidence would otherwise be fake
+
+## Planning Model
+
+`agent-planforge` follows the same delivery model as the broader playbook:
+
+- spec-driven planning: make the intended outcome, scope, constraints, acceptance criteria, and risks explicit before implementation starts
+- context-driven execution: provide enough architecture, domain, security, and operational context for downstream agents and humans to make sound decisions
+- eval-driven delivery: carry forward the evidence needed to ship safely through tests, review, rollout readiness, and operational verification
 
 ## Config Override Merge Semantics
 

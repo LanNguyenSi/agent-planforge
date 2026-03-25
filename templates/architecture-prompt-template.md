@@ -5,6 +5,11 @@ You are working on `{{projectName}}`.
 ## Objective
 
 Validate and refine the recommended architecture for this project.
+Use a spec/context/eval lens:
+
+- spec: check that the architecture matches the intended scope and constraints
+- context: use the project domain, integrations, security posture, and operating assumptions directly
+- eval: call out the evidence and checks needed to validate the recommendation later
 
 ## Context
 
