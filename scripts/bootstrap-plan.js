@@ -3,6 +3,10 @@
 const fs = require("fs");
 const path = require("path");
 const Ajv2020 = require("ajv/dist/2020");
+const {
+  matchPattern,
+  resolvePatternFiles
+} = require("./lib/pattern-matching");
 
 const EXIT_CODES = {
   USAGE: 1,
@@ -30,7 +34,9 @@ function parseArgs(argv) {
     help: false,
     summary: false,
     validateOnly: false,
-    install: true
+    install: true,
+    clarify: false,
+    autoClarify: false
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -60,6 +66,11 @@ function parseArgs(argv) {
       args.summary = true;
     } else if (arg === "--validate-only") {
       args.validateOnly = true;
+    } else if (arg === "--clarify") {
+      args.clarify = true;
+    } else if (arg === "--auto-clarify") {
+      args.clarify = true;
+      args.autoClarify = true;
     } else if (arg === "--install") {
       args.install = true;
     } else if (arg === "--no-install") {
@@ -83,6 +94,8 @@ function usageText() {
     "  --rerun-from <dir>   Compare against a previous run and emit rerun metadata",
     "  --summary            Print a concise planning summary",
     "  --validate-only      Validate input, config, and generated output without writing files",
+    "  --clarify            Generate specs/clarifications.md before planning continues",
+    "  --auto-clarify       Accept default clarification answers and continue automatically",
     "  --install            Run npm install after generation (default: true)",
     "  --no-install         Skip npm install after generation",
     "  --help, -h           Show this help"
@@ -493,17 +506,17 @@ function parseUnstructuredInput(content, format) {
   };
 }
 
-function loadPlanningInput(repoRoot, inputPath, format) {
+function loadPlanningInput(inputRoot, schemaRoot, inputPath, format) {
   if (!["json", "text", "markdown"].includes(format)) {
     throw new CliError(`Unsupported format: ${format}`, EXIT_CODES.USAGE, [usageText()]);
   }
 
   if (format === "json") {
-    const resolvedPath = inputPath === "-" ? "<stdin>" : path.resolve(repoRoot, inputPath);
+    const resolvedPath = inputPath === "-" ? "<stdin>" : path.resolve(inputRoot, inputPath);
     try {
-      const content = readInputSource(repoRoot, inputPath);
+      const content = readInputSource(inputRoot, inputPath);
       const input = JSON.parse(content);
-      validateWithSchema(repoRoot, "models/planning-input.schema.json", input, "planning input");
+      validateWithSchema(schemaRoot, "models/planning-input.schema.json", input, "planning input");
       return {
         input,
         metadata: {
@@ -520,10 +533,352 @@ function loadPlanningInput(repoRoot, inputPath, format) {
     }
   }
 
-  const content = readInputSource(repoRoot, inputPath);
+  const content = readInputSource(inputRoot, inputPath);
   const parsed = parseUnstructuredInput(content, format);
-  validateWithSchema(repoRoot, "models/planning-input.schema.json", parsed.input, "planning input");
+  validateWithSchema(schemaRoot, "models/planning-input.schema.json", parsed.input, "planning input");
   return parsed;
+}
+
+function clarificationWorkspaceRoot(workingDir, outdir) {
+  return outdir ? path.resolve(workingDir, outdir) : workingDir;
+}
+
+function clarificationPaths(workingDir, outdir) {
+  const root = clarificationWorkspaceRoot(workingDir, outdir);
+  return {
+    root,
+    spec: path.join(root, "specs", "clarifications.md"),
+    prompt: path.join(root, "prompts", "clarify-prompt.md")
+  };
+}
+
+function parseClarificationAnswers(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return new Map();
+  }
+
+  const lines = readText(filePath, filePath).split(/\r?\n/);
+  const answers = new Map();
+  let currentId = "";
+
+  lines.forEach((line) => {
+    const headingMatch = line.match(/^###\s+(CLARIFY-[A-Z0-9-]+):/);
+    if (headingMatch) {
+      currentId = headingMatch[1];
+      return;
+    }
+
+    const answerMatch = line.match(/^Answer:\s*(.*)$/);
+    if (currentId && answerMatch) {
+      answers.set(currentId, answerMatch[1].trim());
+    }
+  });
+
+  return answers;
+}
+
+function compactText(items) {
+  return uniqueNonEmpty(items).join(" ").toLowerCase();
+}
+
+function clarificationQuestionCatalog(input) {
+  const allText = compactText([
+    input.projectName,
+    input.summary,
+    ...(input.targetUsers || []),
+    ...(input.coreFeatures || []),
+    ...(input.constraints || []),
+    ...(input.nonFunctionalRequirements || []),
+    ...(input.integrations || []),
+    ...(input.enterpriseRequirements || []),
+    ...(input.openQuestions || [])
+  ]);
+
+  const listedIntegrations = uniqueNonEmpty(input.integrations || []);
+  const needsWorkflowPrecision = /(approval|request|alert|incident|workflow|dashboard)/.test(allText);
+  const sensitiveData = ["high", "regulated"].includes(input.dataSensitivity);
+  const productionContext = Boolean(input.productionExpectedSoon || input.liveUsers);
+
+  return [
+    {
+      id: "CLARIFY-AUTH-01",
+      category: "Auth Strategy",
+      title: "Access and sign-in flow",
+      question: "Which sign-in and registration model should the first release support?",
+      guidance: "Choose one concise answer such as `approval-based email/password`, `invite-only SSO`, or `internal SSO only`.",
+      reason: "Authentication changes routing, data model assumptions, and approval logic early.",
+      affects: ["authentication design", "access-control boundaries", "onboarding workflow"],
+      defaultAnswer: "approval-based email/password authentication",
+      priority: "high",
+      applies: true
+    },
+    {
+      id: "CLARIFY-DATA-01",
+      category: "Data Model",
+      title: "Primary domain records",
+      question: "What are the primary records and relationships the planner should assume for v1?",
+      guidance: "Name the main entities in one line, for example `users, requests, approvals, audit events in a relational store`.",
+      reason: "The first data model heavily influences module boundaries, file suggestions, and ADR candidates.",
+      affects: ["data model", "persistence layer", "task decomposition"],
+      defaultAnswer: "users, workflow records, and audit events in a relational data model",
+      priority: "high",
+      applies: true
+    },
+    {
+      id: "CLARIFY-DEPLOY-01",
+      category: "Deployment",
+      title: "Target runtime",
+      question: "Where should the first production-capable version run?",
+      guidance: "Name the target platform or hosting model in one line.",
+      reason: "Deployment target affects architecture shape, operational tasks, and delivery sequencing.",
+      affects: ["deployment shape", "operational readiness", "environment setup"],
+      defaultAnswer: "VPS + Docker deployment",
+      priority: productionContext ? "high" : "medium",
+      applies: true
+    },
+    {
+      id: "CLARIFY-INTEGRATIONS-01",
+      category: "Integrations",
+      title: "External system scope",
+      question: "Which external systems are required in v1, and which ones are explicitly out of scope?",
+      guidance: "Use a short comma-separated list for required systems, or `none` if there are no required integrations yet.",
+      reason: "Integration scope drives failure handling, testing boundaries, and operational risk.",
+      affects: ["integration contracts", "test scope", "delivery risk"],
+      defaultAnswer: listedIntegrations.length ? listedIntegrations.join(", ") : "none",
+      priority: listedIntegrations.length ? "high" : "medium",
+      applies: true
+    },
+    {
+      id: "CLARIFY-ACCESS-01",
+      category: "Access Control",
+      title: "Launch roles",
+      question: "Which user roles or permission levels must exist at launch?",
+      guidance: "Use a short list such as `admin, operator, viewer`.",
+      reason: "Explicit roles keep dashboard, approval, and audit work from drifting into incompatible assumptions.",
+      affects: ["RBAC design", "UI/API authorization", "acceptance criteria"],
+      defaultAnswer: "admin, operator, and end-user roles with least-privilege access",
+      priority: "medium",
+      applies: needsWorkflowPrecision || /auth|role|admin|dashboard/.test(allText)
+    },
+    {
+      id: "CLARIFY-WORKFLOW-01",
+      category: "Workflow",
+      title: "Required workflow states",
+      question: "What are the key end-to-end states or transitions the product must support?",
+      guidance: "Provide one compact sequence, for example `draft -> submitted -> approved/rejected -> completed`.",
+      reason: "Core workflow states determine service boundaries, validation rules, and task ordering.",
+      affects: ["business rules", "state transitions", "test scenarios"],
+      defaultAnswer: "draft -> submitted -> approved/rejected -> completed",
+      priority: "medium",
+      applies: needsWorkflowPrecision
+    },
+    {
+      id: "CLARIFY-OBS-01",
+      category: "Operations",
+      title: "Operational signals",
+      question: "Which operational signals or non-functional checks matter most for the first release?",
+      guidance: "Keep the answer short, for example `audit logs, health checks, error rate, and latency`.",
+      reason: "This clarifies what the planner should emphasize in hardening and release-readiness work.",
+      affects: ["NFRs", "hardening tasks", "release verification"],
+      defaultAnswer: "audit logs, health checks, error rate, and latency",
+      priority: productionContext ? "high" : "medium",
+      applies: true
+    },
+    {
+      id: "CLARIFY-COMPLIANCE-01",
+      category: "Compliance",
+      title: "Data handling constraints",
+      question: "Are there retention, residency, or compliance constraints that the initial plan must honor?",
+      guidance: "Use `none beyond current sensitivity` when there are no extra constraints yet.",
+      reason: "Sensitive-data projects often need governance and storage decisions captured before implementation starts.",
+      affects: ["governance artifacts", "storage choices", "audit scope"],
+      defaultAnswer: sensitiveData ? "retain audit history and treat stored business data as sensitive" : "none beyond current sensitivity classification",
+      priority: sensitiveData ? "high" : "medium",
+      applies: sensitiveData || /compliance|audit|regulated|security/.test(allText)
+    }
+  ];
+}
+
+function buildClarificationQuestions(input) {
+  const alwaysInclude = new Set([
+    "CLARIFY-AUTH-01",
+    "CLARIFY-DATA-01",
+    "CLARIFY-DEPLOY-01",
+    "CLARIFY-INTEGRATIONS-01"
+  ]);
+
+  const questions = clarificationQuestionCatalog(input)
+    .filter((question) => question.applies || alwaysInclude.has(question.id))
+    .slice(0, 8);
+
+  if (questions.length < 5) {
+    clarificationQuestionCatalog(input).forEach((question) => {
+      if (questions.length >= 5) {
+        return;
+      }
+      if (!questions.some((entry) => entry.id === question.id)) {
+        questions.push(question);
+      }
+    });
+  }
+
+  return questions.slice(0, 10);
+}
+
+function isMeaningfulClarificationAnswer(value) {
+  const normalized = String(value || "").trim();
+  return Boolean(normalized) && !/^(tbd|todo|pending|n\/a|unknown|<fill in>)$/i.test(normalized);
+}
+
+function renderClarifications(questions, answerMap, autoClarify) {
+  const answeredCount = questions.filter((question) => isMeaningfulClarificationAnswer(answerMap.get(question.id))).length;
+  const modeLine = autoClarify
+    ? "Defaults were accepted automatically for any unanswered items in this run."
+    : "Fill in the `Answer:` line for each item, then rerun with `--clarify` or use `--auto-clarify`.";
+
+  const sections = questions.map((question) => {
+    const answer = answerMap.get(question.id) || "";
+    return `## ${question.category}
+
+### ${question.id}: ${question.title}
+Question: ${question.question}
+Guidance: ${question.guidance}
+Why it matters: ${question.reason}
+Default: ${question.defaultAnswer}
+Affects:
+${toMarkdownList(question.affects)}
+Answer: ${answer}`;
+  }).join("\n\n");
+
+  return `# Clarifications Needed Before Planning
+
+${modeLine}
+
+## Status
+
+- Total questions: ${questions.length}
+- Answered: ${answeredCount}
+- Remaining: ${questions.length - answeredCount}
+
+${sections}
+`;
+}
+
+function renderClarifyPrompt(repoRoot, input, questions) {
+  const items = questions.map((question) => {
+    return `- ${question.id} (${question.category}): ${question.question}
+  Default: ${question.defaultAnswer}
+  Why: ${question.reason}`;
+  }).join("\n");
+
+  return renderTemplate(repoRoot, "templates/clarify-prompt-template.md", {
+    projectName: input.projectName,
+    summary: input.summary,
+    questions: items,
+    openQuestions: toMarkdownList(input.openQuestions || [])
+  });
+}
+
+function splitListAnswer(answer) {
+  const normalized = String(answer || "").trim();
+  if (!normalized || /^none$/i.test(normalized)) {
+    return [];
+  }
+
+  return uniqueNonEmpty(
+    normalized
+      .split(/[,/]/)
+      .map((item) => item.trim())
+  );
+}
+
+function applyClarificationAnswers(input, questions, answerMap) {
+  const nextInput = JSON.parse(JSON.stringify(input));
+
+  function addConstraint(prefix, value) {
+    nextInput.constraints = uniqueNonEmpty([].concat(nextInput.constraints || [], `${prefix}: ${value}`));
+  }
+
+  function addNfr(prefix, value) {
+    nextInput.nonFunctionalRequirements = uniqueNonEmpty([].concat(nextInput.nonFunctionalRequirements || [], `${prefix}: ${value}`));
+  }
+
+  questions.forEach((question) => {
+    const answer = answerMap.get(question.id);
+    if (!isMeaningfulClarificationAnswer(answer)) {
+      return;
+    }
+
+    switch (question.id) {
+      case "CLARIFY-AUTH-01":
+        addConstraint("Authentication strategy", answer);
+        break;
+      case "CLARIFY-DATA-01":
+        addConstraint("Primary data model", answer);
+        break;
+      case "CLARIFY-DEPLOY-01":
+        addConstraint("Deployment target", answer);
+        break;
+      case "CLARIFY-INTEGRATIONS-01": {
+        addConstraint("Integration scope", answer);
+        const integrations = splitListAnswer(answer);
+        nextInput.integrations = uniqueNonEmpty(integrations);
+        break;
+      }
+      case "CLARIFY-ACCESS-01":
+        addConstraint("Launch roles", answer);
+        break;
+      case "CLARIFY-WORKFLOW-01":
+        addConstraint("Workflow states", answer);
+        break;
+      case "CLARIFY-OBS-01":
+        addNfr("Operational signals", answer);
+        break;
+      case "CLARIFY-COMPLIANCE-01":
+        addConstraint("Compliance constraints", answer);
+        break;
+      default:
+        break;
+    }
+  });
+
+  return nextInput;
+}
+
+function prepareClarifications(repoRoot, workingDir, outdir, input, autoClarify) {
+  const questions = buildClarificationQuestions(input);
+  const paths = clarificationPaths(workingDir, outdir);
+  const existingAnswers = parseClarificationAnswers(paths.spec);
+  const workspaceAnswers = outdir
+    ? parseClarificationAnswers(clarificationPaths(workingDir, "").spec)
+    : new Map();
+  const answerMap = new Map();
+
+  questions.forEach((question) => {
+    const existingAnswer = existingAnswers.get(question.id) || workspaceAnswers.get(question.id);
+    if (isMeaningfulClarificationAnswer(existingAnswer)) {
+      answerMap.set(question.id, existingAnswer);
+      return;
+    }
+    if (autoClarify) {
+      answerMap.set(question.id, question.defaultAnswer);
+    } else {
+      answerMap.set(question.id, "");
+    }
+  });
+
+  writeFile(paths.spec, renderClarifications(questions, answerMap, autoClarify));
+  writeFile(paths.prompt, renderClarifyPrompt(repoRoot, input, questions));
+
+  const unanswered = questions.filter((question) => !isMeaningfulClarificationAnswer(answerMap.get(question.id)));
+
+  return {
+    paths,
+    questions,
+    answerMap,
+    unanswered,
+    enrichedInput: applyClarificationAnswers(input, questions, answerMap)
+  };
 }
 
 function loadPlaybookContext(repoRoot) {
@@ -946,62 +1301,15 @@ function loadStackPatterns(repoRoot) {
   }
 }
 
-function matchPattern(feature, patterns) {
-  const lower = feature.toLowerCase();
-  const matches = [];
-  
-  for (const [patternName, pattern] of Object.entries(patterns)) {
-    const keywords = pattern.keywords || [];
-    let matchCount = keywords.filter(keyword => lower.includes(keyword)).length;
-    
-    if (matchCount > 0) {
-      // Boost score if primary keyword appears at start of feature text
-      // e.g., "alert system" → "alert" at start = +10 bonus for alert-system pattern
-      const primaryKeyword = keywords[0];  // First keyword is usually primary
-      const wordsInFeature = lower.split(/\s+/);
-      const firstWord = wordsInFeature[0] || '';
-      
-      if (firstWord === primaryKeyword || firstWord.startsWith(primaryKeyword)) {
-        matchCount += 10;  // Strong boost for primary keyword at start
-      }
-      
-      matches.push({ patternName, pattern, matchCount });
-    }
-  }
-  
-  if (matches.length === 0) {
-    return null;
-  }
-  
-  // Sort by matchCount descending (best match first)
-  matches.sort((a, b) => b.matchCount - a.matchCount);
-  
-  return matches[0];
-}
-
 function featureFiles(feature, architectureShape, stackPatterns) {
   // Try to match a known pattern
   if (stackPatterns && stackPatterns.patterns) {
     const match = matchPattern(feature, stackPatterns.patterns);
     
     if (match && match.pattern.files) {
-      // Check if we have files for this architecture shape
-      const shapeKey = architectureShape.replace(/\s+/g, '-').toLowerCase();
-      
-      // Try exact match first
-      if (match.pattern.files[shapeKey]) {
-        return match.pattern.files[shapeKey];
-      }
-      
-      // Try nextjs-fullstack for Next.js related shapes
-      if (/next|fullstack/.test(shapeKey) && match.pattern.files['nextjs-fullstack']) {
-        return match.pattern.files['nextjs-fullstack'];
-      }
-      
-      // Fall back to first available shape
-      const firstShape = Object.keys(match.pattern.files)[0];
-      if (firstShape) {
-        return match.pattern.files[firstShape];
+      const patternFiles = resolvePatternFiles(match.pattern, architectureShape);
+      if (patternFiles.length) {
+        return patternFiles;
       }
     }
   }
@@ -2820,7 +3128,7 @@ function main() {
       throw new CliError("Use either --resume-from or --rerun-from, not both.", EXIT_CODES.USAGE, [usageText()]);
     }
 
-    if (!args.outdir && !args.validateOnly) {
+    if (!args.outdir && !args.validateOnly && !args.clarify) {
       throw new CliError("Missing required argument: --outdir <dir>", EXIT_CODES.USAGE, [usageText()]);
     }
 
@@ -2830,7 +3138,20 @@ function main() {
     
     const playbookContext = loadPlaybookContext(planforgeRoot);
     const config = loadPlannerConfig(planforgeRoot, args.config);
-    const { input, metadata: inputMetadata } = loadPlanningInput(workingDir, args.input, args.format);
+    const loadedInput = loadPlanningInput(workingDir, planforgeRoot, args.input, args.format);
+    const inputMetadata = loadedInput.metadata;
+    let input = loadedInput.input;
+
+    if (args.clarify) {
+      const clarification = prepareClarifications(planforgeRoot, workingDir, args.outdir, input, args.autoClarify);
+      if (clarification.unanswered.length && !args.autoClarify) {
+        console.log(`Clarifications written to ${clarification.paths.spec}`);
+        console.log("Answer the questions, then rerun with --clarify or use --auto-clarify.");
+        return;
+      }
+      input = clarification.enrichedInput;
+    }
+
     const previousRun = loadPreviousRun(workingDir, args.resumeFrom || args.rerunFrom);
     const rerunMode = args.resumeFrom ? "resume" : args.rerunFrom ? "rerun" : "fresh";
     const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata);
@@ -2851,7 +3172,9 @@ function main() {
       return;
     }
 
-    const outdir = path.resolve(workingDir, args.outdir);
+    const outdir = args.outdir
+      ? path.resolve(workingDir, args.outdir)
+      : clarificationWorkspaceRoot(workingDir, args.outdir);
     ensureDir(outdir);
     
     // Detect default branch if not specified in input

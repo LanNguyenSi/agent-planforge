@@ -6,6 +6,7 @@ const { spawnSync } = require("child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
 const scriptPath = path.join(repoRoot, "scripts", "bootstrap-plan.js");
+const analyzeScriptPath = path.join(repoRoot, "scripts", "analyze-artifacts.js");
 
 function tempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -15,7 +16,15 @@ function runPlanner(args, options = {}) {
   // Always add --no-install for fast tests
   const argsWithNoInstall = args.includes("--no-install") ? args : [...args, "--no-install"];
   return spawnSync("node", [scriptPath, ...argsWithNoInstall], {
-    cwd: repoRoot,
+    cwd: options.cwd || repoRoot,
+    encoding: "utf8",
+    input: options.input
+  });
+}
+
+function runAnalyzer(args, options = {}) {
+  return spawnSync("node", [analyzeScriptPath, ...args], {
+    cwd: options.cwd || repoRoot,
     encoding: "utf8",
     input: options.input
   });
@@ -27,6 +36,31 @@ function readJson(filePath) {
 
 function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writeText(filePath, value) {
+  fs.writeFileSync(filePath, value, "utf8");
+}
+
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function setClarificationAnswer(markdown, id, value) {
+  const lines = markdown.split(/\r?\n/);
+  let currentId = "";
+
+  return lines.map((line) => {
+    const headingMatch = line.match(/^###\s+(CLARIFY-[A-Z0-9-]+):/);
+    if (headingMatch) {
+      currentId = headingMatch[1];
+      return line;
+    }
+    if (currentId === id && line.startsWith("Answer:")) {
+      return `Answer: ${value}`;
+    }
+    return line;
+  }).join("\n");
 }
 
 function runCase(name, fn) {
@@ -139,6 +173,109 @@ runCase("summary mode works with text input", () => {
   assert.ok(fs.existsSync(path.join(outdir, "structured-input.json")));
 });
 
+runCase("alert-focused features no longer fall into pipeline-monitoring matches", () => {
+  const fixtureDir = tempDir("planforge-pattern-");
+  const inputPath = path.join(fixtureDir, "input.json");
+  writeJson(inputPath, {
+    projectName: "Ops Alerting",
+    summary: "Track deployment failures and notify operators quickly.",
+    targetUsers: ["operations engineers"],
+    coreFeatures: ["alert system for deployment failures"],
+    constraints: ["prefer TypeScript"]
+  });
+
+  const outdir = path.join(fixtureDir, "out");
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const output = readJson(path.join(outdir, "plan-output.json"));
+  const featureTask = output.tasks.find((task) => task.category === "feature");
+
+  assert.ok(featureTask.files.some((file) => file.includes("alerts")));
+  assert.equal(featureTask.files.some((file) => file.includes("pipeline")), false);
+});
+
+runCase("clarify mode writes questions and pauses until answers exist", () => {
+  const fixtureDir = tempDir("planforge-clarify-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Ops Console",
+    summary: "Internal ops tool.",
+    targetUsers: ["operations team"],
+    coreFeatures: ["dashboard"],
+    constraints: []
+  });
+
+  const result = runPlanner(["--input", "input.json", "--clarify"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(fixtureDir, "plan-output.json")), false);
+  assert.ok(fs.existsSync(path.join(fixtureDir, "specs", "clarifications.md")));
+  assert.ok(fs.existsSync(path.join(fixtureDir, "prompts", "clarify-prompt.md")));
+
+  const clarifications = fs.readFileSync(path.join(fixtureDir, "specs", "clarifications.md"), "utf8");
+  const questionCount = (clarifications.match(/^### CLARIFY-/gm) || []).length;
+  assert.ok(questionCount >= 5 && questionCount <= 10);
+  assert.match(clarifications, /## Auth Strategy/);
+  assert.match(clarifications, /## Data Model/);
+  assert.match(clarifications, /## Deployment/);
+  assert.match(clarifications, /## Integrations/);
+});
+
+runCase("clarify mode applies provided answers before generating the plan", () => {
+  const fixtureDir = tempDir("planforge-clarify-answers-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Ops Console",
+    summary: "Internal ops tool.",
+    targetUsers: ["operations team"],
+    coreFeatures: ["dashboard"],
+    constraints: []
+  });
+
+  let result = runPlanner(["--input", "input.json", "--clarify"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const clarificationsPath = path.join(fixtureDir, "specs", "clarifications.md");
+  let clarifications = fs.readFileSync(clarificationsPath, "utf8");
+  clarifications = setClarificationAnswer(clarifications, "CLARIFY-AUTH-01", "internal SSO only");
+  clarifications = setClarificationAnswer(clarifications, "CLARIFY-DATA-01", "operators, incidents, and audit events in Postgres");
+  clarifications = setClarificationAnswer(clarifications, "CLARIFY-DEPLOY-01", "kubernetes");
+  clarifications = setClarificationAnswer(clarifications, "CLARIFY-INTEGRATIONS-01", "Slack, PagerDuty");
+  clarifications = setClarificationAnswer(clarifications, "CLARIFY-ACCESS-01", "admin, operator");
+  clarifications = setClarificationAnswer(clarifications, "CLARIFY-WORKFLOW-01", "new -> triaged -> resolved");
+  clarifications = setClarificationAnswer(clarifications, "CLARIFY-OBS-01", "error rate, latency, and audit logs");
+  writeText(clarificationsPath, clarifications);
+
+  result = runPlanner(["--input", "input.json", "--outdir", "out", "--clarify"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const output = readJson(path.join(fixtureDir, "out", "plan-output.json"));
+  assert.ok(output.inputSnapshot.constraints.includes("Authentication strategy: internal SSO only"));
+  assert.ok(output.inputSnapshot.constraints.includes("Primary data model: operators, incidents, and audit events in Postgres"));
+  assert.ok(output.inputSnapshot.constraints.includes("Deployment target: kubernetes"));
+  assert.deepEqual(output.inputSnapshot.integrations, ["Slack", "PagerDuty"]);
+  assert.ok(output.inputSnapshot.nonFunctionalRequirements.includes("Operational signals: error rate, latency, and audit logs"));
+});
+
+runCase("auto-clarify accepts defaults and proceeds without waiting", () => {
+  const fixtureDir = tempDir("planforge-auto-clarify-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Ops Console",
+    summary: "Internal ops tool.",
+    targetUsers: ["operations team"],
+    coreFeatures: ["dashboard"],
+    constraints: []
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out", "--auto-clarify"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const clarifications = fs.readFileSync(path.join(fixtureDir, "out", "specs", "clarifications.md"), "utf8");
+  const output = readJson(path.join(fixtureDir, "out", "plan-output.json"));
+
+  assert.match(clarifications, /Answer: approval-based email\/password authentication/);
+  assert.ok(output.inputSnapshot.constraints.some((item) => item.startsWith("Authentication strategy:")));
+  assert.ok(output.inputSnapshot.constraints.some((item) => item.startsWith("Deployment target:")));
+});
+
 runCase("resume-from writes rerun metadata and preserves runner state", () => {
   const baseOutdir = tempDir("planforge-resume-base-");
   let result = runPlanner(["--input", "examples/sample-input.json", "--outdir", baseOutdir]);
@@ -183,6 +320,67 @@ runCase("validate-only mode succeeds without writing artifacts", () => {
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.existsSync(path.join(outdir, "plan-output.json")), false);
+});
+
+runCase("analyze-artifacts reports clean generated output", () => {
+  const fixtureDir = tempDir("planforge-analyze-clean-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "GitHub Health",
+    summary: "Dashboard for repository health and CI visibility.",
+    targetUsers: ["engineering managers"],
+    coreFeatures: [
+      "github repository health dashboard",
+      "pull request overview"
+    ],
+    constraints: ["prefer TypeScript"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const analysis = runAnalyzer(["--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(analysis.status, 0, analysis.stderr);
+  assert.ok(fs.existsSync(path.join(fixtureDir, "out", "outputs", "consistency-report.md")));
+  assert.ok(fs.existsSync(path.join(fixtureDir, "out", "prompts", "analyze-prompt.md")));
+});
+
+runCase("analyze-artifacts exits non-zero on wave ordering and pattern mismatches", () => {
+  const fixtureDir = tempDir("planforge-analyze-bad-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "GitHub Health",
+    summary: "Dashboard for repository health and CI visibility.",
+    targetUsers: ["engineering managers"],
+    coreFeatures: [
+      "github repository health dashboard",
+      "pull request overview",
+      "widget customization"
+    ],
+    constraints: ["prefer TypeScript"]
+  });
+
+  let result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outputPath = path.join(fixtureDir, "out", "plan-output.json");
+  const output = readJson(outputPath);
+  const githubTask = output.tasks.find((task) => task.title === "Implement github repository health dashboard");
+  const waveThreeTask = output.tasks.find((task) => task.wave === "wave-3");
+  githubTask.dependsOn.push(waveThreeTask.id);
+  writeJson(outputPath, output);
+
+  const githubTaskDocPath = path.join(fixtureDir, "out", "tasks", `${githubTask.id}-implement-github-repository-health-dashboard.md`);
+  writeText(githubTaskDocPath, readText(githubTaskDocPath).replace(
+    "lib/github/client.ts — GitHub API client with octokit",
+    "lib/ai/types.ts — ChatMessage, DashboardContext interfaces + Zod schemas"
+  ));
+
+  result = runAnalyzer(["--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 1);
+
+  const report = readText(path.join(fixtureDir, "out", "outputs", "consistency-report.md"));
+  assert.match(report, /depends on a later execution wave/);
+  assert.match(report, /files do not match the task's semantic pattern/);
+  assert.match(report, /Confidence:/);
 });
 
 runCase("invalid input fails with schema validation exit code", () => {

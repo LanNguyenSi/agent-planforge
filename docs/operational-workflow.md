@@ -11,6 +11,13 @@ node scripts/bootstrap-plan.js --input examples/sample-input.md --format markdow
 
 Use `--validate-only` when you want schema and generation validation without writing artifacts.
 
+If the source input is still underspecified, generate clarification questions first:
+
+```bash
+node scripts/bootstrap-plan.js --input examples/minimal-input.json --clarify
+node scripts/bootstrap-plan.js --input examples/minimal-input.json --outdir out/sample --auto-clarify
+```
+
 ## 2. Review The First Planning Package
 
 After each run, review these files first:
@@ -23,6 +30,8 @@ After each run, review these files first:
 - `rerun-summary.md`
 
 If the input was parsed from text or markdown, check `structured-input.json` before trusting the backlog.
+
+When a clarification pass was used, review `specs/clarifications.md` before trusting downstream task slicing.
 
 ## 3. Use The Handoff Bundle
 
@@ -81,3 +90,18 @@ Every run also emits:
 - `.ai/` context files for coding agents
 
 Treat these as generated derivatives of the planning package. If the plan changes materially, rerun the planner instead of editing them by hand.
+
+## 7. Run Consistency Analysis Before Implementation
+
+After planning artifacts exist, run:
+
+```bash
+node scripts/analyze-artifacts.js --outdir out/sample
+```
+
+Review:
+
+- `outputs/consistency-report.md`
+- `prompts/analyze-prompt.md`
+
+Use the report as a CI gate or pre-implementation sanity check when tasks, plan output, or task markdown may have drifted.

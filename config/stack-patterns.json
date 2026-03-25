@@ -294,7 +294,7 @@
       }
     },
     "pipeline-monitoring": {
-      "keywords": ["pipeline", "workflow", "run", "history", "trend", "pass", "fail", "deployment", "build"],
+      "keywords": ["pipeline", "workflow", "ci-run", "run-history", "build-status", "trend"],
       "files": {
         "nextjs-fullstack": [
           "lib/pipeline/types.ts — Pipeline run types (Run, Status, Trend)",
