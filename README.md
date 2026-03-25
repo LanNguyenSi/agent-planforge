@@ -111,6 +111,23 @@ node scripts/bootstrap-plan.js \
   --validate-only
 ```
 
+Clarification pass before planning:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/minimal-input.json \
+  --clarify
+```
+
+Auto-accept default clarifications and continue:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/minimal-input.json \
+  --outdir out/sample-clarified \
+  --auto-clarify
+```
+
 Concise summary mode:
 
 ```bash
@@ -136,6 +153,12 @@ node scripts/bootstrap-plan.js \
   --input examples/sample-input.json \
   --outdir out/sample-resume \
   --resume-from out/sample
+```
+
+Consistency analysis after generation:
+
+```bash
+node scripts/analyze-artifacts.js --outdir out/sample
 ```
 
 Skip npm install (useful for CI or when package.json not generated):
@@ -164,10 +187,12 @@ This creates:
 - `out/sample/.devreview.json`
 - `out/sample/.ai/`
 - `out/sample/prompts/`
+- `out/sample/specs/clarifications.md` when `--clarify` or `--auto-clarify` is used
 - `out/sample/handoff-manifest.json`
 - `out/sample/runner/`
 - `out/sample/adrs/`
 - `out/sample/tasks/`
+- `out/sample/outputs/consistency-report.md` when `analyze-artifacts.js` is run
 - `out/sample/governance/` for enterprise-path starter docs when relevant
 - `out/sample/runbooks/` for production-oriented starter runbooks when relevant
 
