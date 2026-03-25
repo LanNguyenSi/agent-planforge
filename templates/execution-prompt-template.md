@@ -5,6 +5,11 @@ You are working on `{{projectName}}`.
 ## Objective
 
 Turn the current plan into an implementation strategy for the next delivery wave.
+Use a spec/context/eval lens:
+
+- spec: keep the objective, scope, dependencies, and acceptance criteria explicit
+- context: use the architecture, constraints, and applicable playbooks to guide decisions
+- eval: define the tests, review points, and rollout checks needed before delivery is considered done
 
 ## Context
 

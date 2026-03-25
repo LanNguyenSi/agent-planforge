@@ -90,6 +90,7 @@ Every run also emits:
 - `.ai/` context files for coding agents
 
 Treat these as generated derivatives of the planning package. If the plan changes materially, rerun the planner instead of editing them by hand.
+When ScaffoldKit is available, `scaffoldkit-input.json` can be used directly with `scaffoldkit from-planforge`.
 
 ## 7. Run Consistency Analysis Before Implementation
 

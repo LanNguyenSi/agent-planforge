@@ -5,6 +5,11 @@ You are working on `{{projectName}}`.
 ## Objective
 
 Establish the minimum governance baseline required for the current enterprise-oriented plan.
+Use a spec/context/eval lens:
+
+- spec: define the required governance outcomes, owners, and control scope explicitly
+- context: use data sensitivity, enterprise requirements, and applicable playbooks as decision inputs
+- eval: identify the evidence, reviews, and release outcomes that will show governance is actually working
 
 ## Context
 

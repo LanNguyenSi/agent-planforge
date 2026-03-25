@@ -256,6 +256,121 @@ function validatePlannerConfigStructure(config) {
   });
 }
 
+function validatePlannerConfigOverrideStructure(overrideConfig) {
+  const topLevelKeys = new Set(["version", "defaultProfile", "common", "profiles", "governanceDefaults"]);
+  const commonKeys = new Set(["guidanceAreasBase", "guidanceAreasByPhase", "artifactsBase", "artifactsByPhase"]);
+  const profileNames = new Set(["startup", "product", "enterprise", "platform"]);
+  const profileKeys = new Set(["guidanceAreaAdditionsByPhase", "artifactAdditionsByPhase", "intakePolicy"]);
+  const intakePolicyKeys = new Set(["nfrPriority", "nfrBlocking"]);
+  const governanceKeys = new Set([
+    "accessReviewCadence",
+    "productionAccessCadence",
+    "administrativeAccessCadence",
+    "thirdPartyAccessCadence",
+    "breakGlassCadence"
+  ]);
+  const phaseKeys = new Set(["phase_0", "phase_1", "phase_2", "phase_3"]);
+  const priorities = new Set(["high", "medium", "low"]);
+
+  function assert(condition, message) {
+    if (!condition) {
+      throw new CliError(`Invalid planner config override: ${message}`, EXIT_CODES.VALIDATION);
+    }
+  }
+
+  function assertAllowedKeys(value, allowedKeys, label) {
+    Object.keys(value || {}).forEach((key) => {
+      assert(allowedKeys.has(key), `${label} contains unsupported key \`${key}\``);
+    });
+  }
+
+  function assertStringArray(value, label) {
+    assert(Array.isArray(value), `${label} must be an array`);
+    value.forEach((entry, index) => {
+      assert(typeof entry === "string" && entry.length > 0, `${label}[${index}] must be a non-empty string`);
+    });
+  }
+
+  function assertPhaseMap(value, label) {
+    assert(value && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
+    assertAllowedKeys(value, phaseKeys, label);
+    Object.entries(value).forEach(([phase, items]) => {
+      assertStringArray(items, `${label}.${phase}`);
+    });
+  }
+
+  function assertIntakePolicy(value, label) {
+    assert(value && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
+    assertAllowedKeys(value, intakePolicyKeys, label);
+    if (Object.prototype.hasOwnProperty.call(value, "nfrPriority")) {
+      assert(priorities.has(value.nfrPriority), `${label}.nfrPriority must be high, medium, or low`);
+    }
+    if (Object.prototype.hasOwnProperty.call(value, "nfrBlocking")) {
+      assert(typeof value.nfrBlocking === "boolean", `${label}.nfrBlocking must be boolean`);
+    }
+  }
+
+  if (!isPlainObject(overrideConfig)) {
+    throw new CliError("Invalid planner config override: root must be an object", EXIT_CODES.VALIDATION);
+  }
+
+  assertAllowedKeys(overrideConfig, topLevelKeys, "override");
+
+  if (Object.prototype.hasOwnProperty.call(overrideConfig, "version")) {
+    assert(typeof overrideConfig.version === "string" && overrideConfig.version.length > 0, "override.version must be a non-empty string");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(overrideConfig, "defaultProfile")) {
+    assert(profileNames.has(overrideConfig.defaultProfile), "override.defaultProfile must be one of startup, product, enterprise, platform");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(overrideConfig, "common")) {
+    assert(isPlainObject(overrideConfig.common), "override.common must be an object");
+    assertAllowedKeys(overrideConfig.common, commonKeys, "override.common");
+
+    if (Object.prototype.hasOwnProperty.call(overrideConfig.common, "guidanceAreasBase")) {
+      assertStringArray(overrideConfig.common.guidanceAreasBase, "override.common.guidanceAreasBase");
+    }
+    if (Object.prototype.hasOwnProperty.call(overrideConfig.common, "guidanceAreasByPhase")) {
+      assertPhaseMap(overrideConfig.common.guidanceAreasByPhase, "override.common.guidanceAreasByPhase");
+    }
+    if (Object.prototype.hasOwnProperty.call(overrideConfig.common, "artifactsBase")) {
+      assertStringArray(overrideConfig.common.artifactsBase, "override.common.artifactsBase");
+    }
+    if (Object.prototype.hasOwnProperty.call(overrideConfig.common, "artifactsByPhase")) {
+      assertPhaseMap(overrideConfig.common.artifactsByPhase, "override.common.artifactsByPhase");
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(overrideConfig, "profiles")) {
+    assert(isPlainObject(overrideConfig.profiles), "override.profiles must be an object");
+    assertAllowedKeys(overrideConfig.profiles, profileNames, "override.profiles");
+
+    Object.entries(overrideConfig.profiles).forEach(([profileName, profile]) => {
+      assert(isPlainObject(profile), `override.profiles.${profileName} must be an object`);
+      assertAllowedKeys(profile, profileKeys, `override.profiles.${profileName}`);
+
+      if (Object.prototype.hasOwnProperty.call(profile, "guidanceAreaAdditionsByPhase")) {
+        assertPhaseMap(profile.guidanceAreaAdditionsByPhase, `override.profiles.${profileName}.guidanceAreaAdditionsByPhase`);
+      }
+      if (Object.prototype.hasOwnProperty.call(profile, "artifactAdditionsByPhase")) {
+        assertPhaseMap(profile.artifactAdditionsByPhase, `override.profiles.${profileName}.artifactAdditionsByPhase`);
+      }
+      if (Object.prototype.hasOwnProperty.call(profile, "intakePolicy")) {
+        assertIntakePolicy(profile.intakePolicy, `override.profiles.${profileName}.intakePolicy`);
+      }
+    });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(overrideConfig, "governanceDefaults")) {
+    assert(isPlainObject(overrideConfig.governanceDefaults), "override.governanceDefaults must be an object");
+    assertAllowedKeys(overrideConfig.governanceDefaults, governanceKeys, "override.governanceDefaults");
+    Object.entries(overrideConfig.governanceDefaults).forEach(([key, value]) => {
+      assert(typeof value === "string" && value.length > 0, `override.governanceDefaults.${key} must be a non-empty string`);
+    });
+  }
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -328,6 +443,7 @@ function loadPlannerConfig(repoRoot, overridePath) {
   if (overridePath) {
     const resolvedOverridePath = path.resolve(repoRoot, overridePath);
     const overrideConfig = readJson(resolvedOverridePath, resolvedOverridePath);
+    validatePlannerConfigOverrideStructure(overrideConfig);
     mergedConfig = mergePlannerConfig(baseConfig, overrideConfig);
   }
 
@@ -901,6 +1017,30 @@ function loadPlaybookContext(repoRoot) {
   };
 }
 
+function loadScaffoldkitContext(repoRoot) {
+  const configuredRoot = process.env.SCAFFOLDKIT_ROOT
+    ? path.resolve(process.env.SCAFFOLDKIT_ROOT)
+    : path.resolve(repoRoot, "../scaffoldkit");
+  const blueprintsDir = path.join(configuredRoot, "src", "scaffoldkit", "blueprints");
+
+  if (!fs.existsSync(blueprintsDir)) {
+    return {
+      root: "",
+      availableBlueprints: []
+    };
+  }
+
+  const availableBlueprints = fs.readdirSync(blueprintsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+  return {
+    root: configuredRoot,
+    availableBlueprints
+  };
+}
+
 function resolvePlaybookPath(playbookContext, relativePath) {
   if (playbookContext.root) {
     return path.join(playbookContext.root, relativePath);
@@ -1280,7 +1420,7 @@ function inferTechStack(input) {
   const features = (input.coreFeatures || []).join(" ").toLowerCase();
 
   if (/typescript/.test(constraints)) {
-    if (/dashboard|web|portal|admin/.test(features)) {
+    if (/\b(dashboard|web app|web application|portal|admin)\b/.test(features)) {
       return "TypeScript web application";
     }
     return "TypeScript service stack";
@@ -1291,6 +1431,138 @@ function inferTechStack(input) {
   }
 
   return "application stack to be confirmed";
+}
+
+function inferDatabaseChoice(input, variableName) {
+  const text = [
+    ...(input.constraints || []),
+    ...(input.nonFunctionalRequirements || []),
+    ...(input.integrations || [])
+  ].join(" ").toLowerCase();
+
+  if (/sqlite/.test(text)) {
+    return "sqlite";
+  }
+  if (/mysql/.test(text)) {
+    return "mysql";
+  }
+  if (/mongo/.test(text) && variableName === "database") {
+    return "mongodb";
+  }
+  return "postgresql";
+}
+
+function inferAuthStrategy(input, blueprint) {
+  const text = [
+    input.summary,
+    ...(input.coreFeatures || []),
+    ...(input.constraints || []),
+    ...(input.openQuestions || [])
+  ].join(" ").toLowerCase();
+
+  if (/none|anonymous|public-only/.test(text)) {
+    return "none";
+  }
+  if (/oauth|oauth2/.test(text) && blueprint === "rest-api") {
+    return "oauth2";
+  }
+  if (/api key|api-key/.test(text)) {
+    return "api-key";
+  }
+  if (/sso|next-auth/.test(text) && blueprint === "nextjs-fullstack") {
+    return "next-auth";
+  }
+  return "jwt";
+}
+
+function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
+  const combinedText = [
+    input.projectName,
+    input.summary,
+    ...(input.coreFeatures || []),
+    ...(input.constraints || []),
+    ...(input.integrations || [])
+  ].join(" ").toLowerCase();
+  const techStack = inferTechStack(input).toLowerCase();
+  const available = new Set(scaffoldkitContext.availableBlueprints || []);
+
+  let candidates;
+  let reason;
+
+  if (/(landing page|marketing site|content site|blog|documentation site|static site)/.test(combinedText)) {
+    candidates = ["static-site", "nextjs-frontend", "nextjs-fullstack"];
+    reason = "The request reads like a content-oriented or marketing-style site rather than an application backend.";
+  } else if (/(cli|command line|terminal tool|developer tool|code generator|scaffold)/.test(combinedText)) {
+    candidates = ["cli-tool", "express-api", "rest-api"];
+    reason = "The request reads like an internal or developer-facing tool with command-style workflows.";
+  } else if (/typescript web application/.test(techStack)) {
+    candidates = ["nextjs-fullstack", "saas-dashboard", "nextjs-frontend"];
+    reason = "The plan points to a TypeScript web application with product-style UI surfaces.";
+  } else if (/typescript service stack/.test(techStack)) {
+    candidates = ["express-api", "rest-api"];
+    reason = "The plan points to a TypeScript service-oriented implementation.";
+  } else if (/small service-oriented split/.test(output.architectureRecommendation.shape)) {
+    candidates = ["rest-api", "express-api"];
+    reason = "The architecture recommendation is service-oriented, so an API-first scaffold is the closest fit.";
+  } else if (output.plannerProfile === "platform") {
+    candidates = ["rest-api", "cli-tool", "express-api"];
+    reason = "Platform work maps better to API or tool-oriented scaffolds than to product UI blueprints.";
+  } else {
+    candidates = ["rest-api", "express-api", "nextjs-fullstack"];
+    reason = "No stronger scaffold signal was found, so the fallback stays close to the recommended architecture and stack.";
+  }
+
+  const blueprint = scaffoldkitContext.root
+    ? candidates.find((candidate) => available.has(candidate)) || candidates[0]
+    : candidates[0];
+
+  return {
+    blueprint,
+    candidates,
+    reason,
+    validatedLocally: scaffoldkitContext.root ? available.has(blueprint) : false,
+    scaffoldkitRoot: scaffoldkitContext.root || ""
+  };
+}
+
+function scaffoldkitSuggestedVariables(input, output, blueprint) {
+  const featuresText = (input.coreFeatures || []).join(" ").toLowerCase();
+  const constraintsText = (input.constraints || []).join(" ").toLowerCase();
+  const summaryText = String(input.summary || "").toLowerCase();
+  const combinedText = `${featuresText} ${constraintsText} ${summaryText}`;
+  const suggested = {
+    project_name: slugify(input.projectName, 40) || "generated-app",
+    display_name: input.projectName,
+    description: input.summary,
+    ai_context: true
+  };
+
+  if (blueprint === "nextjs-fullstack") {
+    suggested.db_provider = inferDatabaseChoice(input, "db_provider");
+    suggested.auth_strategy = inferAuthStrategy(input, blueprint);
+    suggested.use_docker = /docker|container|kubernetes|compose/.test(combinedText);
+    suggested.use_analytics = /analytics|dashboard|report/.test(featuresText);
+    suggested.use_email = /email|notification|invite/.test(combinedText);
+  } else if (blueprint === "express-api") {
+    suggested.db_provider = inferDatabaseChoice(input, "db_provider");
+    suggested.auth_strategy = inferAuthStrategy(input, blueprint);
+    suggested.use_docker = /docker|container|kubernetes|compose/.test(combinedText);
+    suggested.use_queue = /background jobs|queue|workflow|notification/.test(`${featuresText} ${output.architectureRecommendation.shape}`);
+    suggested.use_websockets = /realtime|real-time|websocket/.test(combinedText);
+  } else if (blueprint === "rest-api") {
+    suggested.database = inferDatabaseChoice(input, "database");
+    suggested.framework = /typescript service stack/.test(inferTechStack(input).toLowerCase()) ? "express" : "fastapi";
+    suggested.use_auth = !/public-only|anonymous|no auth/.test(combinedText);
+    suggested.auth_strategy = inferAuthStrategy(input, blueprint);
+    suggested.use_docker = /docker|container|kubernetes|compose/.test(combinedText);
+    suggested.use_openapi = true;
+  } else if (blueprint === "cli-tool") {
+    suggested.description = input.summary || "A developer-facing automation tool";
+  } else if (blueprint === "static-site") {
+    suggested.description = input.summary || "A static website";
+  }
+
+  return suggested;
 }
 
 function loadStackPatterns(repoRoot) {
@@ -2609,6 +2881,12 @@ function buildRerunReport(mode, previousRun, input, output) {
 function renderAiAgents(input, output) {
   return `# AGENTS
 
+## Engineering Model
+
+- Spec-driven planning: make the intended outcome, scope, constraints, acceptance criteria, and major risks explicit before coding.
+- Context-driven execution: use the project architecture, domain constraints, security posture, and operating assumptions when making changes.
+- Eval-driven delivery: rely on tests, review findings, rollout readiness, and operational checks before calling work done.
+
 ## Roles
 
 - Planning lead: maintains the plan, validates architecture assumptions, and reruns planning when inputs materially change.
@@ -2737,29 +3015,18 @@ function writeAiArtifacts(input, output, outdir) {
   writeFile(path.join(outdir, ".ai", "DECISIONS.md"), renderAiDecisions(output));
 }
 
-function scaffoldkitBlueprint(output, input) {
-  const techStack = inferTechStack(input).toLowerCase();
-
-  if (output.plannerProfile === "platform") {
-    return "internal-platform";
-  }
-  if (/typescript web/.test(techStack) && output.architectureRecommendation.shape === "modular monolith") {
-    return "nextjs-fullstack";
-  }
-  if (/typescript service/.test(techStack) && /background jobs/.test(output.architectureRecommendation.shape)) {
-    return "node-worker-app";
-  }
-  if (/small service-oriented split/.test(output.architectureRecommendation.shape)) {
-    return "service-platform";
-  }
-  return "app-starter";
-}
-
-function renderScaffoldKitInput(input, output) {
+function renderScaffoldKitInput(input, output, scaffoldkitContext) {
+  const recommendation = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
   return {
-    version: "1.0",
+    version: "1.1",
+    exportedBy: "agent-planforge",
     projectName: input.projectName,
-    blueprint: scaffoldkitBlueprint(output, input),
+    summary: input.summary,
+    blueprint: recommendation.blueprint,
+    blueprintCandidates: recommendation.candidates,
+    blueprintReason: recommendation.reason,
+    blueprintValidatedLocally: recommendation.validatedLocally,
+    plannerProfile: output.plannerProfile,
     architecture: {
       shape: output.architectureRecommendation.shape,
       optionId: output.architectureRecommendation.optionId,
@@ -2773,6 +3040,7 @@ function renderScaffoldKitInput(input, output) {
     },
     features: input.coreFeatures,
     constraints: input.constraints,
+    suggestedVariables: scaffoldkitSuggestedVariables(input, output, recommendation.blueprint),
     playbooks: output.recommendedPlaybooks,
     aiContextFiles: [
       ".ai/AGENTS.md",
@@ -2968,9 +3236,12 @@ ${toMarkdownList(rerunReport.preservedArtifacts)}
 `;
 }
 
-function writeOperationalArtifacts(input, output, outdir, rerunReport) {
+function writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldkitContext) {
   writeFile(path.join(outdir, "structured-input.json"), `${JSON.stringify(output.inputSnapshot, null, 2)}\n`);
-  writeFile(path.join(outdir, "scaffoldkit-input.json"), `${JSON.stringify(renderScaffoldKitInput(input, output), null, 2)}\n`);
+  writeFile(
+    path.join(outdir, "scaffoldkit-input.json"),
+    `${JSON.stringify(renderScaffoldKitInput(input, output, scaffoldkitContext), null, 2)}\n`
+  );
   writeFile(path.join(outdir, ".devreview.json"), `${JSON.stringify(renderDevReviewConfig(input, output), null, 2)}\n`);
   writeFile(path.join(outdir, "rerun-report.json"), `${JSON.stringify(rerunReport, null, 2)}\n`);
   writeFile(path.join(outdir, "rerun-summary.md"), renderRerunSummary(rerunReport));
@@ -3084,7 +3355,14 @@ function runNpmInstall(outdir) {
     });
     console.log("✓ package-lock.json generated successfully");
   } catch (error) {
-    console.error("Warning: npm install failed. Run manually in output directory.");
+    throw new CliError(
+      "npm install failed in the output directory.",
+      EXIT_CODES.RUNTIME,
+      [
+        `Output directory: ${outdir}`,
+        "Fix package.json or rerun with --no-install if you only need planning artifacts."
+      ]
+    );
   }
 }
 
@@ -3137,6 +3415,7 @@ function main() {
     const workingDir = process.cwd(); // For user-provided --input, --outdir
     
     const playbookContext = loadPlaybookContext(planforgeRoot);
+    const scaffoldkitContext = loadScaffoldkitContext(planforgeRoot);
     const config = loadPlannerConfig(planforgeRoot, args.config);
     const loadedInput = loadPlanningInput(workingDir, planforgeRoot, args.input, args.format);
     const inputMetadata = loadedInput.metadata;
@@ -3192,7 +3471,7 @@ function main() {
     writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
     writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
     writeAiArtifacts(input, output, outdir);
-    writeOperationalArtifacts(input, output, outdir, rerunReport);
+    writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldkitContext);
     writeTemplateArtifacts(planforgeRoot, input, output, outdir, config);
     writeMakefile(planforgeRoot, outdir);
     writeDockerFiles(planforgeRoot, outdir);

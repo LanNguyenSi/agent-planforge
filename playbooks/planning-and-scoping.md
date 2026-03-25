@@ -11,6 +11,14 @@ The planning phase should produce:
 - visible assumptions and risks
 - an actionable first backlog
 
+## Planning Lens: Spec, Context, Eval
+
+Use the planning phase as the first application of the wider delivery model:
+
+- spec-driven: restate the objective, scope, constraints, acceptance criteria, and major risks before implementation work begins
+- context-driven: capture the architecture, data sensitivity, integrations, and operating assumptions that shape good downstream decisions
+- eval-driven: include the tests, review expectations, rollout concerns, and operational checks that will determine delivery confidence later
+
 ## Planning Sequence
 
 ### 1. Normalize The Input

@@ -1,402 +1,257 @@
-# scaffoldkit → planforge Workflow Guide
+# scaffoldkit -> planforge Workflow Guide
 
 ## Overview
 
-This guide explains the end-to-end workflow for using **scaffoldkit** and **agent-planforge** together to generate a production-ready project.
+Use `scaffoldkit` to create an initial runnable codebase.
+Use `agent-planforge` to generate planning, governance, and downstream execution artifacts for that codebase.
 
-## The Two Tools
+The tools are related, but they do not own the same files.
+
+## Current Division Of Responsibility
 
 ### scaffoldkit
-**Purpose:** Generate initial project structure (files, configs, boilerplate)
 
-**Responsibilities:**
-- Creates file structure (Dockerfile, docker-compose, Makefile)
-- Generates basic AI context files (.ai/AGENTS.md, .ai/ARCHITECTURE.md)
-- Sets up development environment
-- Creates pre-commit hooks
-- Generates README and documentation stubs
+Typical responsibilities:
 
-**Output:** A runnable project skeleton with infrastructure files
+- create the application skeleton
+- initialize `package.json` and the dependency baseline
+- create starter infrastructure such as Docker, CI, or Makefile files
+- create starter documentation and repository structure
 
 ### agent-planforge
-**Purpose:** Enrich the skeleton with detailed planning artifacts
 
-**Responsibilities:**
-- Generates task breakdown (8 tasks in waves)
-- Creates ADRs (Architecture Decision Records)
-- Generates execution prompts for AI agents
-- Creates handoff manifests
-- Enriches AI context files with planning details
-- Generates package.json with correct dependencies
+Current responsibilities:
 
-**Output:** A planning-complete project ready for development
+- read planning input and infer a first delivery phase and path
+- generate planning artifacts such as `project-charter.md`, `architecture-overview.md`, `delivery-plan.md`
+- generate ADRs in `adrs/`
+- generate task documents in `tasks/`
+- generate prompt exports in `prompts/`
+- generate orchestration files such as `handoff-manifest.json`, `runner-contract.json`, and `runner/`
+- generate `.ai/` context files for downstream coding agents
+- generate governance starter artifacts for enterprise-path plans
+
+Important: `agent-planforge` does not generate `package.json`.
+If a `package.json` already exists in the output directory, `--install` will run `npm install` there after artifact generation.
 
 ## File Ownership Model
 
-### scaffoldkit Owns (Generated First)
-- `Dockerfile.dev`, `docker-compose.dev.yml`
-- `Makefile` (basic structure)
-- `.ai/AGENTS.md`, `.ai/ARCHITECTURE.md` (initial versions)
-- `.husky-pre-commit`, `lint-staged.config.js`
-- `README.md` (initial version)
+### scaffoldkit Owns First
 
-### planforge Owns (Enriches/Replaces)
-- `tasks/*.md` (8 task files)
-- `docs/adrs/*.md` (Architecture Decision Records)
-- `prompts/*.md` (AI agent prompts)
-- `docs/runner/*.json` (handoff manifests)
-- `.ai/*` files (enriched with planning context)
-- `package.json` (with complete dependencies)
-- `plan-output.json`, `handoff-manifest.json`
+- application source tree
+- `package.json`
+- baseline Docker or runtime files
+- initial repository automation
 
-### Shared (Modified by Both)
-- `.ai/ARCHITECTURE.md`: scaffoldkit creates, planforge enriches
-- `.ai/DECISIONS.md`: scaffoldkit creates, planforge enriches
-- `Makefile`: scaffoldkit creates base, planforge may add hooks
+### planforge Generates Or Replaces
 
-## End-to-End Workflow
+- `plan-output.json`
+- `structured-input.json`
+- `project-charter.md`
+- `architecture-overview.md`
+- `delivery-plan.md`
+- `adrs/*.md`
+- `tasks/*.md`
+- `prompts/*.md`
+- `.ai/AGENTS.md`
+- `.ai/ARCHITECTURE.md`
+- `.ai/TASKS.md`
+- `.ai/DECISIONS.md`
+- `handoff-manifest.json`
+- `runner-contract.json`
+- `runner/`
+- `rerun-report.json`
+- `rerun-summary.md`
+- `governance/` when the enterprise path applies
+- `runbooks/` when production-oriented phases apply
 
-### Step 1: Run scaffoldkit
+### Shared By Convention
 
-```bash
-# Install scaffoldkit (if not already installed)
-cd /path/to/scaffoldkit
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+- `Makefile`
+- Docker dev files
+- pre-commit helper files
 
-# Generate project
-scaffoldkit new nextjs-fullstack \\
-  --var project_name=my-app \\
-  --var db_provider=sqlite \\
-  --var auth_strategy=jwt \\
-  --var use_docker=true \\
-  --var use_analytics=true \\
-  --non-interactive
-```
+If scaffoldkit already created these files, planforge may overwrite them with its bundled templates. Review generated diffs instead of assuming merge behavior.
 
-**What happens:**
-- Creates `my-app/` directory
-- Generates infrastructure files (Docker, Makefile)
-- Creates basic `.ai/` context
-- Sets up pre-commit hooks
-- Initializes git repository
+## End-To-End Workflow
 
-**Commit the scaffoldkit output:**
-```bash
-cd my-app
-git add .
-git commit -m "chore: scaffoldkit initial structure"
-```
+### 1. Generate The Project Skeleton
 
-### Step 2: Create planforge-input.json
+You can either run scaffoldkit first and then enrich the result with planforge, or let planforge recommend a scaffold and run scaffoldkit from that export afterward.
 
-Create `planforge-input.json` in your project:
+### 2. Create Planning Input
+
+Create a planning input file inside the target project, for example `planforge-input.json`:
 
 ```json
 {
   "projectName": "my-app",
-  "summary": "A modern web application with authentication and analytics",
+  "summary": "A modern web application with authentication and analytics.",
   "targetUsers": [
-    "End users who need secure access",
-    "Administrators who manage the system"
+    "end users",
+    "administrators"
   ],
   "coreFeatures": [
-    "User authentication with JWT",
-    "Analytics dashboard",
-    "Data management"
+    "user authentication",
+    "analytics dashboard",
+    "data management"
   ],
   "constraints": [
-    "Must support SQLite",
-    "Must be dockerized"
+    "must support SQLite",
+    "must be dockerized"
   ],
-  "architectureShape": "Next.js App Router fullstack",
   "plannerProfile": "product",
   "teamSize": 3,
   "productionExpectedSoon": true
 }
 ```
 
-### Step 3: Run planforge
+Use only fields defined by `models/planning-input.schema.json`.
+
+### 3. Run planforge
 
 ```bash
-# Run from anywhere (no cd required thanks to PR #40!)
-/path/to/agent-planforge/scripts/bootstrap-plan.js \\
-  --input /path/to/my-app/planforge-input.json \\
-  --outdir /path/to/my-app \\
-  --install
+node /path/to/agent-planforge/scripts/bootstrap-plan.js \
+  --input /path/to/my-app/planforge-input.json \
+  --outdir /path/to/my-app
 ```
 
-**What happens:**
-- Reads your planforge-input.json
-- Loads config from planforge repo (automatic, no copying needed)
-- Generates 8 tasks in `tasks/` directory
-- Creates ADRs in `docs/adrs/`
-- Generates AI prompts in `prompts/`
-- Enriches `.ai/` files
-- Creates `package.json` with dependencies
-- Runs `npm install` (if --install flag used)
+If the input is still underspecified, do a clarification pass first:
 
-**Commit the planforge output:**
 ```bash
-cd my-app
-git add .
-git commit -m "chore: planforge task breakdown and planning artifacts"
+node /path/to/agent-planforge/scripts/bootstrap-plan.js \
+  --input /path/to/my-app/planforge-input.json \
+  --clarify
 ```
 
-### Step 4: Review the Output
+Or continue with default answers:
 
-**Task breakdown:**
 ```bash
-ls tasks/
-# 001-api-foundation.md
-# 002-ui-foundation.md
-# 003-user-authentication-with-jwt.md
-# 004-analytics-dashboard.md
-# 005-data-management.md
-# 006-integration-coverage.md
-# 007-production-readiness.md
-# 008-documentation.md
+node /path/to/agent-planforge/scripts/bootstrap-plan.js \
+  --input /path/to/my-app/planforge-input.json \
+  --outdir /path/to/my-app \
+  --auto-clarify
 ```
 
-**ADRs (Architecture Decision Records):**
+If the output directory already contains a valid `package.json`, planforge will run `npm install` by default after generation.
+Use `--no-install` when you only want the planning artifacts.
+
+### 4. Review The Generated Package
+
+Start with:
+
+- `structured-input.json`
+- `plan-output.json`
+- `project-charter.md`
+- `architecture-overview.md`
+- `delivery-plan.md`
+- `.ai/AGENTS.md`
+- `handoff-manifest.json`
+
+Then inspect:
+
+- `adrs/`
+- `tasks/`
+- `prompts/`
+- `runner/`
+- `governance/` when present
+- `runbooks/` when present
+
+### 5. Commit The Planning Baseline
+
+Commit the generated artifacts once the plan looks credible.
+
+### 6. Execute From The Handoff Bundle
+
+Use:
+
+- `handoff-manifest.json` for orchestration order, dependencies, and approval gates
+- `runner-contract.json` for step status conventions
+- `prompts/` for role-specific prompt inputs
+- `.ai/` for shared coding context
+
+## Import Into ScaffoldKit
+
+If local ScaffoldKit is available, you can use the generated `scaffoldkit-input.json` directly:
+
 ```bash
-ls docs/adrs/
-# 0001-architecture.md
-# 0002-data-store.md
-# 0003-authentication.md
+scaffoldkit from-planforge /path/to/my-app/scaffoldkit-input.json --target /path/to/my-app
 ```
 
-**AI Prompts:**
+`agent-planforge` now recommends real ScaffoldKit blueprints and includes `suggestedVariables` so ScaffoldKit can scaffold from the plan without manual re-entry.
+
+## Re-Running Safely
+
+Planforge overwrites its generated artifacts in the selected output directory.
+Do not rely on manual cleanup as the normal rerun workflow.
+
+Use these modes deliberately:
+
+- `--rerun-from <dir>` for a fresh planning pass plus changed-assumption reporting
+- `--resume-from <dir>` when runner state or manual execution notes should be preserved into a new output directory
+
+Examples:
+
 ```bash
-ls prompts/
-# architecture-analysis.md
-# task-001.md
-# task-002.md
-# ...
+node /path/to/agent-planforge/scripts/bootstrap-plan.js \
+  --input /path/to/my-app/planforge-input.json \
+  --outdir /path/to/my-app-rerun \
+  --rerun-from /path/to/my-app
 ```
 
-### Step 5: Execute Tasks
-
-**Option A: Manual Implementation**
-Read `tasks/001-api-foundation.md` and implement according to the guidance.
-
-**Option B: AI Agent Implementation**
 ```bash
-# Use Claude Code / Codex / etc
-claude code --task tasks/001-api-foundation.md
+node /path/to/agent-planforge/scripts/bootstrap-plan.js \
+  --input /path/to/my-app/planforge-input.json \
+  --outdir /path/to/my-app-resume \
+  --resume-from /path/to/my-app
 ```
 
-**Option C: Automated Workflow**
-Use the handoff manifest for automation:
-```bash
-cat docs/runner/handoff-manifest.json
-# Contains task sequence, dependencies, acceptance criteria
-```
+## Config Overrides
 
-## Common Scenarios
+Override files are merged onto the base planner config and then validated.
 
-### Scenario 1: Changing Configuration
+Use the same structure as `config/planner-config.json`, but only specify the fields you want to add or replace.
 
-If you need to change planforge configuration:
+Valid example:
 
-```bash
-# Create override in your project
-cat > planforge-config.override.json << 'EOF'
+```json
 {
-  "waves": {
-    "wave_0": { "label": "Custom Foundation" }
+  "profiles": {
+    "startup": {
+      "guidanceAreaAdditionsByPhase": {
+        "phase_1": [
+          "founder feedback loop"
+        ]
+      }
+    }
+  },
+  "governanceDefaults": {
+    "breakGlassCadence": "After every use"
   }
 }
-EOF
-
-# Run with override
-/path/to/agent-planforge/scripts/bootstrap-plan.js \\
-  --input planforge-input.json \\
-  --outdir . \\
-  --config planforge-config.override.json
 ```
 
-### Scenario 2: Re-running planforge
-
-If you need to regenerate planning artifacts:
+Run with:
 
 ```bash
-# planforge won't overwrite existing files by default
-# To force regeneration, remove old files first:
-rm -rf tasks/ docs/adrs/ prompts/ plan-output.json
-
-# Re-run planforge
-/path/to/agent-planforge/scripts/bootstrap-plan.js \\
-  --input planforge-input.json \\
-  --outdir .
+node /path/to/agent-planforge/scripts/bootstrap-plan.js \
+  --input /path/to/my-app/planforge-input.json \
+  --outdir /path/to/my-app \
+  --config /path/to/my-app/planforge-config.override.json
 ```
 
-### Scenario 3: Adding More Features
+## Consistency Check
 
-To add features after initial generation:
+After artifact generation, run:
 
-1. Update `planforge-input.json` with new features
-2. Re-run planforge (it will generate new tasks)
-3. Review and implement the new tasks
-
-## Path Resolution (PR #40 Fix)
-
-### Internal planforge Paths
-These resolve from the planforge repository:
-- `config/planner-config.json`
-- `config/stack-patterns.json`
-- `models/*.schema.json`
-- Template files
-
-### User-Provided Paths
-These resolve from your current working directory:
-- `--input planforge-input.json`
-- `--outdir .`
-- `--config planforge-config.override.json`
-
-**Example:**
 ```bash
-# You are in: /home/user/projects/my-app
-# planforge is in: /opt/agent-planforge
-
-/opt/agent-planforge/scripts/bootstrap-plan.js \\
-  --input planforge-input.json \\  # Looks in /home/user/projects/my-app/
-  --outdir .                        # Outputs to /home/user/projects/my-app/
-
-# Config loaded from: /opt/agent-planforge/config/
-# No manual copying needed!
+node /path/to/agent-planforge/scripts/analyze-artifacts.js \
+  --outdir /path/to/my-app
 ```
 
-## Best Practices
+Review:
 
-### 1. Version Control Strategy
+- `outputs/consistency-report.md`
+- `prompts/analyze-prompt.md`
 
-**Commit after each stage:**
-```bash
-git commit -m "chore: scaffoldkit structure"      # After Step 1
-git commit -m "chore: planforge planning"         # After Step 3
-git commit -m "feat: implement task 001"          # After each task
-```
-
-### 2. Don't Edit Generated Files Directly
-
-Files that will be regenerated:
-- `tasks/*.md`
-- `docs/adrs/*.md`
-- `prompts/*.md`
-- `plan-output.json`
-
-If you need changes, update `planforge-input.json` and re-run.
-
-### 3. Customize in the Right Place
-
-**scaffoldkit customization:**
-- Modify blueprint templates in scaffoldkit repo
-- Or use `--var` flags to override variables
-
-**planforge customization:**
-- Create `planforge-config.override.json`
-- Edit `planforge-input.json` for project-specific changes
-
-### 4. CI/CD Integration
-
-```yaml
-# .github/workflows/scaffold.yml
-name: Scaffold Project
-
-on:
-  workflow_dispatch:
-    inputs:
-      project_name:
-        required: true
-
-jobs:
-  scaffold:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install scaffoldkit
-        run: |
-          git clone https://github.com/LanNguyenSi/scaffoldkit
-          cd scaffoldkit
-          python3 -m venv .venv
-          .venv/bin/pip install -e .
-      
-      - name: Generate structure
-        run: |
-          scaffoldkit/venv/bin/scaffoldkit new nextjs-fullstack \\
-            --var project_name=${{ inputs.project_name }} \\
-            --var db_provider=sqlite \\
-            --non-interactive
-      
-      - name: Run planforge
-        run: |
-          git clone https://github.com/LanNguyenSi/agent-planforge
-          agent-planforge/scripts/bootstrap-plan.js \\
-            --input ${{ inputs.project_name }}/planforge-input.json \\
-            --outdir ${{ inputs.project_name }}
-```
-
-## Troubleshooting
-
-### Issue: "config/planner-config.json not found"
-
-**Old behavior (before PR #40):** You had to copy config files manually.
-
-**New behavior (after PR #40):** Configs are auto-loaded from planforge repo.
-
-**Fix:** Update to latest agent-planforge (PR #40 merged).
-
-### Issue: "Invalid --var format"
-
-**Problem:** Using `--var` with old scaffoldkit version.
-
-**Fix:** Update to latest scaffoldkit (PR #21 merged).
-
-### Issue: Files getting overwritten
-
-**Explanation:** planforge enriches some files scaffoldkit creates.
-
-**Expected behavior:**
-- `.ai/ARCHITECTURE.md`: scaffoldkit creates basic structure, planforge adds planning details
-- `Makefile`: scaffoldkit creates targets, planforge may add hooks
-
-**Not a bug:** This is intentional enrichment, not a conflict.
-
-## FAQ
-
-**Q: Do I need to copy config files manually?**
-A: No! After PR #40, configs are loaded from planforge repo automatically.
-
-**Q: Can I run scaffoldkit and planforge in different directories?**
-A: Yes! Use full paths for both tools. They work from anywhere.
-
-**Q: What if I skip scaffoldkit and only use planforge?**
-A: planforge expects some basic structure. Use scaffoldkit first for best results.
-
-**Q: Can I use planforge without scaffoldkit?**
-A: Yes, but you'll need to create the basic project structure manually.
-
-**Q: How do I update just the planning artifacts?**
-A: Remove `tasks/`, `docs/adrs/`, `prompts/` and re-run planforge.
-
-**Q: Can I customize the task templates?**
-A: Yes, modify templates in agent-planforge repo or create a fork.
-
-## Related Documentation
-
-- [scaffoldkit README](https://github.com/LanNguyenSi/scaffoldkit)
-- [agent-planforge README](https://github.com/LanNguyenSi/agent-planforge)
-- [Blueprint Variables](../blueprints/nextjs-fullstack/blueprint.yaml)
-- [Planning Input Schema](../models/planning-input.schema.json)
-- [Stack Patterns](../config/stack-patterns.json)
-
-## Changelog
-
-**2026-03-23:**
-- Added workflow guide (Issue #38)
-- Documented PR #40 path resolution fix
-- Added PR #21 non-interactive mode examples
-- Added CI/CD integration example
+Use this before implementation if task documents, prompts, or plan outputs may have drifted.

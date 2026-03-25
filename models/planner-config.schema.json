@@ -10,9 +10,78 @@
     "profiles",
     "governanceDefaults"
   ],
+  "$defs": {
+    "phaseItemList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "phaseMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phase_0": {
+          "$ref": "#/$defs/phaseItemList"
+        },
+        "phase_1": {
+          "$ref": "#/$defs/phaseItemList"
+        },
+        "phase_2": {
+          "$ref": "#/$defs/phaseItemList"
+        },
+        "phase_3": {
+          "$ref": "#/$defs/phaseItemList"
+        }
+      }
+    },
+    "intakePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nfrPriority",
+        "nfrBlocking"
+      ],
+      "properties": {
+        "nfrPriority": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "nfrBlocking": {
+          "type": "boolean"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "guidanceAreaAdditionsByPhase",
+        "artifactAdditionsByPhase",
+        "intakePolicy"
+      ],
+      "properties": {
+        "guidanceAreaAdditionsByPhase": {
+          "$ref": "#/$defs/phaseMap"
+        },
+        "artifactAdditionsByPhase": {
+          "$ref": "#/$defs/phaseMap"
+        },
+        "intakePolicy": {
+          "$ref": "#/$defs/intakePolicy"
+        }
+      }
+    }
+  },
   "properties": {
     "version": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "defaultProfile": {
       "type": "string",
@@ -24,13 +93,85 @@
       ]
     },
     "common": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "guidanceAreasBase",
+        "guidanceAreasByPhase",
+        "artifactsBase",
+        "artifactsByPhase"
+      ],
+      "properties": {
+        "guidanceAreasBase": {
+          "$ref": "#/$defs/phaseItemList"
+        },
+        "guidanceAreasByPhase": {
+          "$ref": "#/$defs/phaseMap"
+        },
+        "artifactsBase": {
+          "$ref": "#/$defs/phaseItemList"
+        },
+        "artifactsByPhase": {
+          "$ref": "#/$defs/phaseMap"
+        }
+      }
     },
     "profiles": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startup",
+        "product",
+        "enterprise",
+        "platform"
+      ],
+      "properties": {
+        "startup": {
+          "$ref": "#/$defs/profile"
+        },
+        "product": {
+          "$ref": "#/$defs/profile"
+        },
+        "enterprise": {
+          "$ref": "#/$defs/profile"
+        },
+        "platform": {
+          "$ref": "#/$defs/profile"
+        }
+      }
     },
     "governanceDefaults": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accessReviewCadence",
+        "productionAccessCadence",
+        "administrativeAccessCadence",
+        "thirdPartyAccessCadence",
+        "breakGlassCadence"
+      ],
+      "properties": {
+        "accessReviewCadence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "productionAccessCadence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "administrativeAccessCadence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "thirdPartyAccessCadence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "breakGlassCadence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   }
 }
