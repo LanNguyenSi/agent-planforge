@@ -30,11 +30,23 @@ function patternSpecificityScore(matchedKeywords) {
 }
 
 function matchPattern(text, patterns) {
+  const normalizedText = normalizeMatchText(text);
   const matches = [];
 
   for (const [patternName, pattern] of Object.entries(patterns || {})) {
+    const negativeKeywords = pattern.negativeKeywords || [];
+    const hasNegativeKeyword = negativeKeywords.some((keyword) => {
+      const normalizedKeyword = normalizeMatchText(keyword);
+      return normalizedKeyword && normalizedText.includes(normalizedKeyword);
+    });
+
+    if (hasNegativeKeyword) {
+      continue;
+    }
+
     const matchedKeywords = matchedKeywordsForText(text, pattern.keywords || []);
-    if (!matchedKeywords.length) {
+    const minKeywordMatches = Number(pattern.minKeywordMatches || 1);
+    if (matchedKeywords.length < minKeywordMatches) {
       continue;
     }
 

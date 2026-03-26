@@ -150,6 +150,52 @@ runCase("service-oriented plans export a real scaffoldkit backend blueprint", ()
   assert.equal(scaffoldkit.suggestedVariables.use_queue, true);
 });
 
+runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database defaults", () => {
+  const fixtureDir = tempDir("planforge-cli-sync-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "agent-memory-sync",
+    summary: "A CLI tool that syncs agent memory files across multiple OpenClaw instances via a central Git repository.",
+    targetUsers: ["AI agents", "developers"],
+    coreFeatures: [
+      "push local memory files to remote git repo",
+      "pull and merge memory from remote",
+      "conflict resolution for concurrent agent writes",
+      "configurable sync interval (cron-compatible)",
+      "dry-run mode to preview changes before sync"
+    ],
+    constraints: [
+      "TypeScript only",
+      "no external databases, git is the source of truth",
+      "must work offline (queue syncs until connection restored)",
+      "lightweight CLI, no heavy frameworks"
+    ]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const output = readJson(path.join(outdir, "plan-output.json"));
+  const scaffoldkit = readJson(path.join(outdir, "scaffoldkit-input.json"));
+  const adr002 = readText(path.join(outdir, "adrs", "002-primary-data-store.md"));
+
+  assert.equal(scaffoldkit.blueprint, "cli-tool");
+  assert.equal(scaffoldkit.stack.dataStore, "git");
+  assert.equal(scaffoldkit.suggestedVariables.language, "typescript");
+  assert.equal(scaffoldkit.suggestedVariables.cli_framework, "commander");
+  assert.equal(scaffoldkit.suggestedVariables.test_strategy, "integration-tests");
+  assert.match(adr002, /Git-backed file store/);
+  assert.doesNotMatch(adr002, /relational primary data store/i);
+
+  const featureTasks = output.tasks.filter((task) => task.category === "feature");
+  assert.ok(featureTasks.some((task) => task.files.some((file) => file.includes("memory-sync"))));
+  assert.equal(featureTasks.some((task) => task.files.some((file) => /notifications|widgets|github/i.test(file))), false);
+
+  assert.equal(fs.existsSync(path.join(outdir, "Makefile")), false);
+  assert.equal(fs.existsSync(path.join(outdir, "Dockerfile.dev")), false);
+  assert.equal(fs.existsSync(path.join(outdir, "docker-compose.dev.yml")), false);
+});
+
 runCase("config overrides merge onto the base config without replacing entire sections", () => {
   const outdir = tempDir("planforge-config-merge-");
   const result = runPlanner([

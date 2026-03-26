@@ -323,6 +323,31 @@ function analyzeArtifacts(projectDir, repoRoot) {
       return;
     }
 
+    if (unexpectedFiles.length) {
+      const conflictingUnexpectedPatterns = unexpectedFiles
+        .map((filePath) => ({
+          filePath,
+          match: matchPattern(filePath, patterns)
+        }))
+        .filter(({ match }) => match && match.patternName !== semanticPattern.patternName);
+
+      if (conflictingUnexpectedPatterns.length) {
+        issues.push(
+          makeIssue(
+            "critical",
+            "pattern-mismatch",
+            `Task ${task.id} files do not match the task's semantic pattern`,
+            conflictingUnexpectedPatterns.map(
+              ({ filePath, match }) =>
+                `${filePath} aligns with ${match.patternName}, not ${semanticPattern.patternName}`
+            ),
+            0.97
+          )
+        );
+        return;
+      }
+    }
+
     const expectedFiles = resolvePatternFiles(semanticPattern.pattern, planOutput.architectureRecommendation.shape);
     const semanticScore = alignmentScore(actualFiles, expectedFiles);
     const alignedPattern = bestAlignedPattern(actualFiles, patterns, planOutput.architectureRecommendation.shape);
