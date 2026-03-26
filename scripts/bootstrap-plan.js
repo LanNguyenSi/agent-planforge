@@ -137,6 +137,10 @@ function writeFile(targetPath, contents) {
   fs.writeFileSync(targetPath, contents, "utf8");
 }
 
+function writeStderrLine(message) {
+  fs.writeSync(2, `${message}\n`);
+}
+
 function slugify(value, maxLength = null) {
   let slug = value
     .toLowerCase()
@@ -1425,6 +1429,10 @@ function inferTechStack(input) {
   ].join(" ").toLowerCase();
   const features = (input.coreFeatures || []).join(" ").toLowerCase();
 
+  if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
+    return "PHP/Symfony application";
+  }
+
   if (/typescript/.test(constraints)) {
     if (/(cli|command line|terminal tool|developer tool|openclaw|memory sync)/.test(combinedText)) {
       return "TypeScript CLI tool";
@@ -1535,7 +1543,21 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
   let candidates;
   let reason;
 
-  if (/(landing page|marketing site|content site|blog|documentation site|static site)/.test(combinedText)) {
+  if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
+    if (/(next\.?js|react|vue|angular|frontend|spa|client-side)/.test(combinedText)) {
+      candidates = ["symfony-nextjs", "reference-php-app"];
+      reason = "PHP/Symfony + JS frontend signals -> symfony-nextjs";
+    } else if (
+      /(api|rest|json endpoint|backend|service|graphql)/.test(combinedText) &&
+      !/(frontend|portal|admin ui|dashboard)/.test(combinedText)
+    ) {
+      candidates = ["symfony-backend", "reference-php-app"];
+      reason = "PHP/Symfony backend/API without frontend -> symfony-backend";
+    } else {
+      candidates = ["reference-php-app", "symfony-backend"];
+      reason = "Generic PHP/Symfony -> reference-php-app as baseline";
+    }
+  } else if (/(landing page|marketing site|content site|blog|documentation site|static site)/.test(combinedText)) {
     candidates = ["static-site", "nextjs-frontend", "nextjs-fullstack"];
     reason = "The request reads like a content-oriented or marketing-style site rather than an application backend.";
   } else if (/(cli|command line|terminal tool|developer tool|code generator|scaffold)/.test(combinedText)) {
@@ -1612,6 +1634,12 @@ function scaffoldkitSuggestedVariables(input, output, blueprint) {
     suggested.config_format = "json";
     suggested.distribution = suggested.language === "typescript" ? "binary" : "pip-package";
     suggested.description = input.summary || "A developer-facing automation tool";
+  } else if (["reference-php-app", "symfony-backend", "symfony-nextjs"].includes(blueprint)) {
+    suggested.php_version = /php 8\.2/.test(constraintsText) ? "8.2" : "8.3";
+    suggested.symfony_version = /symfony 6/.test(constraintsText) ? "6" : "7";
+    suggested.use_docker = /docker|container|compose/.test(combinedText);
+    suggested.use_postgresql = /postgres|postgresql/.test(combinedText);
+    suggested.use_mysql = /mysql|mariadb/.test(combinedText);
   } else if (blueprint === "static-site") {
     suggested.description = input.summary || "A static website";
   }
@@ -3375,16 +3403,33 @@ function writeMakefile(repoRoot, outdir) {
   writeFile(path.join(outdir, "Makefile"), makefileContent);
 }
 
+function readScaffoldkitBlueprint(outdir) {
+  const scaffoldkitInputPath = path.join(outdir, "scaffoldkit-input.json");
+
+  if (!fs.existsSync(scaffoldkitInputPath)) {
+    return "";
+  }
+
+  try {
+    const scaffoldkitInput = JSON.parse(readText(scaffoldkitInputPath, "scaffoldkit-input.json"));
+    return scaffoldkitInput && scaffoldkitInput.blueprint ? scaffoldkitInput.blueprint : "";
+  } catch (error) {
+    return "";
+  }
+}
+
 function shouldWriteRuntimeTemplates(input, output, outdir) {
   if (fs.existsSync(path.join(outdir, "package.json"))) {
     return true;
   }
 
-  const blueprint = output.scaffoldkit && output.scaffoldkit.blueprint
-    ? output.scaffoldkit.blueprint
-    : "";
+  const blueprint = readScaffoldkitBlueprint(outdir);
 
   if (blueprint === "cli-tool") {
+    return false;
+  }
+
+  if (["reference-php-app", "symfony-backend", "symfony-nextjs"].includes(blueprint)) {
     return false;
   }
 
@@ -3392,7 +3437,13 @@ function shouldWriteRuntimeTemplates(input, output, outdir) {
     return false;
   }
 
-  return false;
+  return new Set([
+    "nextjs-fullstack",
+    "nextjs-frontend",
+    "express-api",
+    "rest-api",
+    "saas-dashboard"
+  ]).has(blueprint);
 }
 
 function writeDockerFiles(repoRoot, outdir) {
@@ -3460,26 +3511,37 @@ function runNpmInstall(outdir) {
     return;
   }
   
-  const { execSync } = require("child_process");
+  const { spawnSync } = require("child_process");
   
   console.log("Running npm install to generate package-lock.json...");
   
-  try {
-    execSync("npm install", {
-      cwd: outdir,
-      stdio: "inherit"
-    });
+  const result = spawnSync("npm", ["install"], {
+    cwd: outdir,
+    encoding: "utf8"
+  });
+
+  if (result.status === 0) {
     console.log("✓ package-lock.json generated successfully");
-  } catch (error) {
-    throw new CliError(
-      "npm install failed in the output directory.",
-      EXIT_CODES.RUNTIME,
-      [
-        `Output directory: ${outdir}`,
-        "Fix package.json or rerun with --no-install if you only need planning artifacts."
-      ]
-    );
+    return;
   }
+
+  const installOutput = `${result.stdout || ""}\n${result.stderr || ""}`.trim();
+  const details = [
+    `Output directory: ${outdir}`,
+    "Fix package.json or rerun with --no-install if you only need planning artifacts."
+  ];
+
+  if (result.error) {
+    details.push(`Install error: ${result.error.message}`);
+  } else if (installOutput) {
+    details.push(`npm output: ${installOutput.split("\n")[0]}`);
+  }
+
+  throw new CliError(
+    "npm install failed in the output directory.",
+    EXIT_CODES.RUNTIME,
+    details
+  );
 }
 
 function printSummary(output, outdir, validateOnly) {
@@ -3608,12 +3670,12 @@ function main() {
     }
   } catch (error) {
     if (error instanceof CliError) {
-      console.error(error.message);
-      error.details.forEach((detail) => console.error(`- ${detail}`));
+      writeStderrLine(error.message);
+      error.details.forEach((detail) => writeStderrLine(`- ${detail}`));
       process.exit(error.exitCode);
     }
 
-    console.error(`Planner failed: ${error.message}`);
+    writeStderrLine(`Planner failed: ${error.message}`);
     process.exit(EXIT_CODES.RUNTIME);
   }
 }
