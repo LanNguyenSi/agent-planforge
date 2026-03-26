@@ -130,6 +130,8 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   ].forEach((relativePath) => {
     assert.ok(fs.existsSync(path.join(outdir, relativePath)), `missing ${relativePath}`);
   });
+
+  assert.equal(fs.existsSync(path.join(outdir, "Makefile")), true);
 });
 
 runCase("service-oriented plans export a real scaffoldkit backend blueprint", () => {
@@ -196,11 +198,11 @@ runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database
   assert.equal(fs.existsSync(path.join(outdir, "docker-compose.dev.yml")), false);
 });
 
-runCase("php symfony plans recommend the reference php app blueprint without cli defaults", () => {
+runCase("php symfony backend plans recommend the symfony backend blueprint", () => {
   const fixtureDir = tempDir("planforge-php-symfony-");
   writeJson(path.join(fixtureDir, "input.json"), {
-    projectName: "Partner Portal API",
-    summary: "Symfony-based PHP application for partner onboarding and secure case workflows.",
+    projectName: "Partner Case API",
+    summary: "Symfony-based PHP backend service for partner onboarding and secure case workflows.",
     targetUsers: ["partner managers", "operations team"],
     coreFeatures: [
       "Symfony case management backend",
@@ -218,10 +220,39 @@ runCase("php symfony plans recommend the reference php app blueprint without cli
   assert.equal(result.status, 0, result.stderr);
 
   const scaffoldkit = readJson(path.join(fixtureDir, "out", "scaffoldkit-input.json"));
-  assert.equal(scaffoldkit.blueprint, "reference-php-app");
+  assert.equal(scaffoldkit.blueprint, "symfony-backend");
   assert.equal(scaffoldkit.stack.hint, "PHP/Symfony application");
+  assert.equal(scaffoldkit.suggestedVariables.php_version, "8.3");
+  assert.equal(scaffoldkit.suggestedVariables.symfony_version, "7");
   assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "language"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "cli_framework"), false);
+});
+
+runCase("php symfony plus react dashboard plans recommend the symfony nextjs blueprint", () => {
+  const fixtureDir = tempDir("planforge-php-symfony-nextjs-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Partner Dashboard",
+    summary: "Symfony API with a React dashboard for partner support teams.",
+    targetUsers: ["partner managers", "operations team"],
+    coreFeatures: [
+      "Symfony backend for partner data",
+      "React dashboard for internal operators",
+      "REST API for case management"
+    ],
+    constraints: [
+      "PHP 8.3",
+      "Symfony 7",
+      "must run in Docker"
+    ]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const scaffoldkit = readJson(path.join(fixtureDir, "out", "scaffoldkit-input.json"));
+  assert.equal(scaffoldkit.blueprint, "symfony-nextjs");
+  assert.equal(scaffoldkit.suggestedVariables.php_version, "8.3");
+  assert.equal(scaffoldkit.suggestedVariables.symfony_version, "7");
 });
 
 runCase("config overrides merge onto the base config without replacing entire sections", () => {
