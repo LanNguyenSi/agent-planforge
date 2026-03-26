@@ -1383,6 +1383,7 @@ function architectureRecommendation(options, phase) {
 }
 
 function adrCandidates(input, architecture) {
+  const primaryDataStoreDecision = inferPrimaryDataStoreDecision(input);
   const adrs = [
     {
       id: "ADR-001",
@@ -1392,7 +1393,7 @@ function adrCandidates(input, architecture) {
     {
       id: "ADR-002",
       title: "Primary Data Store",
-      decision: "Use a relational primary data store unless the domain clearly requires a different model."
+      decision: primaryDataStoreDecision
     }
   ];
 
@@ -1417,9 +1418,17 @@ function adrCandidates(input, architecture) {
 
 function inferTechStack(input) {
   const constraints = (input.constraints || []).join(" ").toLowerCase();
+  const combinedText = [
+    input.summary,
+    ...(input.coreFeatures || []),
+    ...(input.constraints || [])
+  ].join(" ").toLowerCase();
   const features = (input.coreFeatures || []).join(" ").toLowerCase();
 
   if (/typescript/.test(constraints)) {
+    if (/(cli|command line|terminal tool|developer tool|openclaw|memory sync)/.test(combinedText)) {
+      return "TypeScript CLI tool";
+    }
     if (/\b(dashboard|web app|web application|portal|admin)\b/.test(features)) {
       return "TypeScript web application";
     }
@@ -1431,6 +1440,43 @@ function inferTechStack(input) {
   }
 
   return "application stack to be confirmed";
+}
+
+function hasNoExternalDatabaseConstraint(input) {
+  const text = [
+    ...(input.constraints || []),
+    ...(input.summary ? [input.summary] : [])
+  ].join(" ").toLowerCase();
+  return /no external databases?|without (a )?database|git is the source of truth|filesystem is the source of truth/.test(text);
+}
+
+function usesGitAsPrimaryStore(input) {
+  const text = [
+    input.summary,
+    ...(input.constraints || []),
+    ...(input.coreFeatures || [])
+  ].join(" ").toLowerCase();
+  return /git is the source of truth|git repo|git repository|memory files|memory\.md|daily logs/.test(text);
+}
+
+function inferPrimaryDataStore(input) {
+  if (usesGitAsPrimaryStore(input)) {
+    return "git";
+  }
+  if (hasNoExternalDatabaseConstraint(input)) {
+    return "filesystem";
+  }
+  return "relational";
+}
+
+function inferPrimaryDataStoreDecision(input) {
+  if (usesGitAsPrimaryStore(input)) {
+    return "Use a Git-backed file store as the primary source of truth and keep sync metadata in files unless later requirements justify a separate database.";
+  }
+  if (hasNoExternalDatabaseConstraint(input)) {
+    return "Use file-backed state as the primary data store unless later requirements explicitly justify introducing a database.";
+  }
+  return "Use a relational primary data store unless the domain clearly requires a different model.";
 }
 
 function inferDatabaseChoice(input, variableName) {
@@ -1557,6 +1603,14 @@ function scaffoldkitSuggestedVariables(input, output, blueprint) {
     suggested.use_docker = /docker|container|kubernetes|compose/.test(combinedText);
     suggested.use_openapi = true;
   } else if (blueprint === "cli-tool") {
+    suggested.language = /typescript/.test(constraintsText) ? "typescript" : "python";
+    suggested.cli_framework = suggested.language === "typescript" ? "commander" : "typer";
+    suggested.test_strategy = /integration|git|sync|filesystem|queue/.test(combinedText)
+      ? "integration-tests"
+      : "unit-tests";
+    suggested.use_config_file = true;
+    suggested.config_format = "json";
+    suggested.distribution = suggested.language === "typescript" ? "binary" : "pip-package";
     suggested.description = input.summary || "A developer-facing automation tool";
   } else if (blueprint === "static-site") {
     suggested.description = input.summary || "A static website";
@@ -1573,7 +1627,49 @@ function loadStackPatterns(repoRoot) {
   }
 }
 
+function isGitMemorySyncFeature(feature) {
+  const lower = String(feature || "").toLowerCase();
+  return (
+    /\b(memory|memory\.md|daily logs?)\b/.test(lower) ||
+    /\bgit repo|git repository|remote git\b/.test(lower) ||
+    (/\bsync\b/.test(lower) &&
+      /\b(cron|interval|dry-run|dry run|conflict|merge|remote|push|pull)\b/.test(lower))
+  );
+}
+
+function gitMemorySyncFeatureFiles(feature) {
+  const lower = String(feature || "").toLowerCase();
+  const files = [
+    "src/memory-sync/git-client.ts",
+    "src/memory-sync/config.ts",
+    "src/memory-sync/state-store.ts",
+    "tests/integration/memory-sync.test.ts"
+  ];
+
+  if (/\bpush\b/.test(lower)) {
+    files.unshift("src/memory-sync/push.ts");
+  } else if (/\bpull\b/.test(lower) || /\bmerge\b/.test(lower)) {
+    files.unshift("src/memory-sync/pull.ts");
+    files.push("src/memory-sync/merge.ts");
+  } else if (/\bconflict\b/.test(lower)) {
+    files.unshift("src/memory-sync/conflicts.ts");
+    files.push("src/memory-sync/merge.ts");
+  } else if (/\bcron|interval|schedule\b/.test(lower)) {
+    files.unshift("src/memory-sync/scheduler.ts");
+  } else if (/\bdry-run|dry run|preview\b/.test(lower)) {
+    files.unshift("src/memory-sync/preview.ts");
+  } else {
+    files.unshift("src/memory-sync/sync.ts");
+  }
+
+  return Array.from(new Set(files));
+}
+
 function featureFiles(feature, architectureShape, stackPatterns) {
+  if (isGitMemorySyncFeature(feature)) {
+    return gitMemorySyncFeatureFiles(feature);
+  }
+
   // Try to match a known pattern
   if (stackPatterns && stackPatterns.patterns) {
     const match = matchPattern(feature, stackPatterns.patterns);
@@ -3035,7 +3131,7 @@ function renderScaffoldKitInput(input, output, scaffoldkitContext) {
     },
     stack: {
       hint: inferTechStack(input),
-      dataStore: "relational",
+      dataStore: inferPrimaryDataStore(input),
       integrations: input.integrations || []
     },
     features: input.coreFeatures,
@@ -3279,6 +3375,26 @@ function writeMakefile(repoRoot, outdir) {
   writeFile(path.join(outdir, "Makefile"), makefileContent);
 }
 
+function shouldWriteRuntimeTemplates(input, output, outdir) {
+  if (fs.existsSync(path.join(outdir, "package.json"))) {
+    return true;
+  }
+
+  const blueprint = output.scaffoldkit && output.scaffoldkit.blueprint
+    ? output.scaffoldkit.blueprint
+    : "";
+
+  if (blueprint === "cli-tool") {
+    return false;
+  }
+
+  if (hasNoExternalDatabaseConstraint(input) || usesGitAsPrimaryStore(input)) {
+    return false;
+  }
+
+  return false;
+}
+
 function writeDockerFiles(repoRoot, outdir) {
   const dockerComposePath = path.join(repoRoot, "templates", "docker-compose.dev.yml.template");
   const dockerfilePath = path.join(repoRoot, "templates", "Dockerfile.dev.template");
@@ -3473,9 +3589,11 @@ function main() {
     writeAiArtifacts(input, output, outdir);
     writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldkitContext);
     writeTemplateArtifacts(planforgeRoot, input, output, outdir, config);
-    writeMakefile(planforgeRoot, outdir);
-    writeDockerFiles(planforgeRoot, outdir);
-    writePreCommitHooks(planforgeRoot, outdir);
+    if (shouldWriteRuntimeTemplates(input, output, outdir)) {
+      writeMakefile(planforgeRoot, outdir);
+      writeDockerFiles(planforgeRoot, outdir);
+      writePreCommitHooks(planforgeRoot, outdir);
+    }
     writeBranchInfo(planforgeRoot, outdir, output.defaultBranch, autoDetected);
     preservePreviousRunArtifacts(previousRun, rerunReport, outdir);
 

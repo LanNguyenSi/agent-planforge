@@ -69,7 +69,9 @@
       }
     },
     "dashboard-widgets": {
-      "keywords": ["dashboard", "widget", "configurable", "personalized"],
+      "keywords": ["dashboard", "widget", "widget layout", "personalized dashboard", "reorder"],
+      "minKeywordMatches": 2,
+      "negativeKeywords": ["cron-compatible", "sync interval", "memory", "git repository", "git repo"],
       "files": {
         "nextjs-fullstack": [
           "lib/widgets/types.ts — Widget interfaces + Zod schemas",
@@ -240,7 +242,9 @@
       }
     },
     "github-api": {
-      "keywords": ["github", "repository", "health", "ci", "status", "check", "pull request", "pr", "workflow", "actions"],
+      "keywords": ["github", "repository", "repository health", "ci", "ci status", "pull request", "workflow", "actions"],
+      "minKeywordMatches": 1,
+      "negativeKeywords": ["memory", "git repository sync", "daily logs"],
       "files": {
         "nextjs-fullstack": [
           "lib/github/client.ts — GitHub API client with octokit",
@@ -294,7 +298,9 @@
       }
     },
     "pipeline-monitoring": {
-      "keywords": ["pipeline", "workflow", "ci-run", "run-history", "build-status", "trend"],
+      "keywords": ["pipeline", "workflow run", "ci-run", "run-history", "build-status", "trend"],
+      "minKeywordMatches": 1,
+      "negativeKeywords": ["alert", "incident", "notification", "memory sync"],
       "files": {
         "nextjs-fullstack": [
           "lib/pipeline/types.ts — Pipeline run types (Run, Status, Trend)",
@@ -488,7 +494,9 @@
       }
     },
     "email-notifications": {
-      "keywords": ["email", "notification", "send", "template", "smtp", "resend", "sendgrid", "push"],
+      "keywords": ["email", "email notification", "send email", "template", "smtp", "resend", "sendgrid", "push notification"],
+      "minKeywordMatches": 1,
+      "negativeKeywords": ["git repo", "git repository", "memory", "daily logs", "sync interval", "cron-compatible"],
       "files": {
         "nextjs-fullstack": [
           "lib/notifications/types.ts — Notification, Channel, Template interfaces",
