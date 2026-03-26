@@ -196,6 +196,34 @@ runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database
   assert.equal(fs.existsSync(path.join(outdir, "docker-compose.dev.yml")), false);
 });
 
+runCase("php symfony plans recommend the reference php app blueprint without cli defaults", () => {
+  const fixtureDir = tempDir("planforge-php-symfony-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Partner Portal API",
+    summary: "Symfony-based PHP application for partner onboarding and secure case workflows.",
+    targetUsers: ["partner managers", "operations team"],
+    coreFeatures: [
+      "Symfony case management backend",
+      "composer-based dependency workflow",
+      "phpunit and phpstan quality gates"
+    ],
+    constraints: [
+      "PHP 8.3",
+      "Symfony 7",
+      "must run in Docker"
+    ]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const scaffoldkit = readJson(path.join(fixtureDir, "out", "scaffoldkit-input.json"));
+  assert.equal(scaffoldkit.blueprint, "reference-php-app");
+  assert.equal(scaffoldkit.stack.hint, "PHP/Symfony application");
+  assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "language"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "cli_framework"), false);
+});
+
 runCase("config overrides merge onto the base config without replacing entire sections", () => {
   const outdir = tempDir("planforge-config-merge-");
   const result = runPlanner([

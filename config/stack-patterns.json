@@ -707,6 +707,19 @@
           "test/polling/polling.interceptor.spec.ts — Interceptor tests"
         ]
       }
+    },
+    "php-symfony": {
+      "keywords": ["php", "symfony", "laravel", "composer", "artisan", "phpunit", "phpstan"],
+      "files": {
+        "reference-php-app": [
+          "build/app/Dockerfile — PHP-FPM container build for the application runtime",
+          "build/nginx/Dockerfile — nginx container build for frontend serving and proxying",
+          "docker-compose.yml — Local orchestration for php-fpm, nginx, and database services",
+          "tools/composer.json — PHP dependency and quality-tooling manifest",
+          "phpunit.xml.dist — PHPUnit test suite configuration",
+          "phpstan.neon.dist — PHPStan static analysis configuration"
+        ]
+      }
     }
   }
 }

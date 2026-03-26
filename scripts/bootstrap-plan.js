@@ -1425,6 +1425,10 @@ function inferTechStack(input) {
   ].join(" ").toLowerCase();
   const features = (input.coreFeatures || []).join(" ").toLowerCase();
 
+  if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
+    return "PHP/Symfony application";
+  }
+
   if (/typescript/.test(constraints)) {
     if (/(cli|command line|terminal tool|developer tool|openclaw|memory sync)/.test(combinedText)) {
       return "TypeScript CLI tool";
@@ -1535,7 +1539,10 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
   let candidates;
   let reason;
 
-  if (/(landing page|marketing site|content site|blog|documentation site|static site)/.test(combinedText)) {
+  if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
+    candidates = ["reference-php-app"];
+    reason = "The request explicitly points to a PHP/Symfony-style application, so the reference PHP scaffold is the closest fit.";
+  } else if (/(landing page|marketing site|content site|blog|documentation site|static site)/.test(combinedText)) {
     candidates = ["static-site", "nextjs-frontend", "nextjs-fullstack"];
     reason = "The request reads like a content-oriented or marketing-style site rather than an application backend.";
   } else if (/(cli|command line|terminal tool|developer tool|code generator|scaffold)/.test(combinedText)) {
@@ -3460,26 +3467,37 @@ function runNpmInstall(outdir) {
     return;
   }
   
-  const { execSync } = require("child_process");
+  const { spawnSync } = require("child_process");
   
   console.log("Running npm install to generate package-lock.json...");
   
-  try {
-    execSync("npm install", {
-      cwd: outdir,
-      stdio: "inherit"
-    });
+  const result = spawnSync("npm", ["install"], {
+    cwd: outdir,
+    encoding: "utf8"
+  });
+
+  if (result.status === 0) {
     console.log("✓ package-lock.json generated successfully");
-  } catch (error) {
-    throw new CliError(
-      "npm install failed in the output directory.",
-      EXIT_CODES.RUNTIME,
-      [
-        `Output directory: ${outdir}`,
-        "Fix package.json or rerun with --no-install if you only need planning artifacts."
-      ]
-    );
+    return;
   }
+
+  const installOutput = `${result.stdout || ""}\n${result.stderr || ""}`.trim();
+  const details = [
+    `Output directory: ${outdir}`,
+    "Fix package.json or rerun with --no-install if you only need planning artifacts."
+  ];
+
+  if (result.error) {
+    details.push(`Install error: ${result.error.message}`);
+  } else if (installOutput) {
+    details.push(`npm output: ${installOutput.split("\n")[0]}`);
+  }
+
+  throw new CliError(
+    "npm install failed in the output directory.",
+    EXIT_CODES.RUNTIME,
+    details
+  );
 }
 
 function printSummary(output, outdir, validateOnly) {
