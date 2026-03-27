@@ -1797,6 +1797,7 @@ function buildTasks(input, phase, architecture, stackPatterns) {
       problem: "The project starts from rough requirements and needs a shared baseline before implementation can be reviewed or sequenced safely.",
       solution: "Create the charter, architecture overview, and first ADRs so later execution work inherits explicit assumptions instead of guesswork.",
       files: [
+        "PROJECT.md",
         "project-charter.md",
         "architecture-overview.md",
         "adrs/001-initial-architecture-shape.md",
@@ -2190,6 +2191,39 @@ ${toMarkdownList(output.followUpQuestions)}
 
 ${toMarkdownList(output.openQuestions)}
 `;
+}
+
+function renderProjectIndex(repoRoot, input, output) {
+  const currentWave = output.executionWaves[0];
+  const currentWaveTasks = currentWave
+    ? currentWave.taskIds.map((taskId) => {
+        const task = output.tasks.find((candidate) => candidate.id === taskId);
+        return task ? `- ${task.id} ${task.title}` : `- ${taskId}`;
+      }).join("\n")
+    : "- No execution wave has been generated yet.";
+  const waveSummary = output.executionWaves.map((wave) => {
+    return `- ${wave.id}: ${wave.goal} (${wave.taskIds.length} tasks)`;
+  }).join("\n") || "- None";
+
+  return renderTemplate(repoRoot, "templates/project-template.md", {
+    projectName: input.projectName,
+    summary: input.summary,
+    plannerProfile: output.plannerProfile,
+    phase: output.phase,
+    path: output.path,
+    intakeCompleteness: output.intakeCompleteness,
+    dataSensitivity: input.dataSensitivity || "low",
+    recommendedArchitecture: output.architectureRecommendation.summary,
+    currentWaveId: currentWave ? currentWave.id : "none",
+    currentWaveGoal: currentWave ? currentWave.goal : "No execution wave has been generated yet.",
+    currentWaveTasks,
+    waveSummary,
+    architectureReasons: toMarkdownList(output.architectureRecommendation.reasons || []),
+    risks: toMarkdownList(output.risks),
+    openQuestions: toMarkdownList(output.openQuestions),
+    guidanceAreas: toMarkdownList(output.recommendedGuidanceAreas || []),
+    recommendedArtifacts: toMarkdownList(output.recommendedArtifacts || [])
+  });
 }
 
 function renderIntakeQuestionnaire(repoRoot, input, output) {
@@ -2653,6 +2687,7 @@ function buildHandoffManifest(input, output) {
           promptPath: intakePrompt.path,
           reads: [
             "plan-output.json",
+            "PROJECT.md",
             "intake-questionnaire.md",
             "project-charter.md",
             ".ai/TASKS.md",
@@ -2690,6 +2725,7 @@ function buildHandoffManifest(input, output) {
           promptPath: architecturePrompt.path,
           reads: [
             "plan-output.json",
+            "PROJECT.md",
             "architecture-overview.md",
             ".ai/ARCHITECTURE.md",
             "delivery-plan.md",
@@ -2725,6 +2761,7 @@ function buildHandoffManifest(input, output) {
           promptPath: governancePrompt.path,
           reads: [
             "plan-output.json",
+            "PROJECT.md",
             ".ai/AGENTS.md",
             governancePrompt.path,
             "governance/service-ownership.md",
@@ -2778,6 +2815,7 @@ function buildHandoffManifest(input, output) {
           promptPath: executionPrompt.path,
           reads: [
             "plan-output.json",
+            "PROJECT.md",
             "delivery-plan.md",
             ".ai/TASKS.md",
             executionPrompt.path
@@ -2801,6 +2839,7 @@ function buildHandoffManifest(input, output) {
   const manifestArtifacts = [
     "plan-output.json",
     "structured-input.json",
+    "PROJECT.md",
     "project-charter.md",
     "architecture-overview.md",
     "delivery-plan.md",
@@ -2925,6 +2964,7 @@ function buildRerunReport(mode, previousRun, input, output) {
   const regeneratedArtifacts = [
     "plan-output.json",
     "handoff-manifest.json",
+    "PROJECT.md",
     "project-charter.md",
     "architecture-overview.md",
     "delivery-plan.md",
@@ -3644,6 +3684,7 @@ function main() {
     writePromptArtifacts(promptArtifacts, outdir);
     writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
     writeFile(path.join(outdir, "handoff-manifest.json"), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
+    writeFile(path.join(outdir, "PROJECT.md"), renderProjectIndex(planforgeRoot, input, output));
     writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(planforgeRoot, input, output));
     writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
     writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));

@@ -176,6 +176,7 @@ This creates:
 
 - `out/sample/plan-output.json`
 - `out/sample/structured-input.json`
+- `out/sample/PROJECT.md`
 - `out/sample/intake-questionnaire.md`
 - `out/sample/project-charter.md`
 - `out/sample/architecture-overview.md`

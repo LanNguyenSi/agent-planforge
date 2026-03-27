@@ -87,6 +87,7 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   const runnerContract = readJson(path.join(outdir, "runner-contract.json"));
   const scaffoldkit = readJson(path.join(outdir, "scaffoldkit-input.json"));
   const devreview = readJson(path.join(outdir, ".devreview.json"));
+  const projectIndex = readText(path.join(outdir, "PROJECT.md"));
   const agentsDoc = readText(path.join(outdir, ".ai", "AGENTS.md"));
   const architecturePrompt = readText(path.join(outdir, "prompts", "architecture-analysis.md"));
   const executionPrompt = readText(path.join(outdir, "prompts", "execution-next-wave.md"));
@@ -101,8 +102,13 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
 
   assert.equal(manifest.runnerContractPath, "runner-contract.json");
   assert.ok(manifest.steps.every((step) => step.statusFiles && step.approvalGate && step.blockerPolicy));
+  assert.ok(manifest.sharedArtifacts.includes("PROJECT.md"));
   assert.ok(manifest.sharedArtifacts.includes("scaffoldkit-input.json"));
   assert.ok(manifest.sharedArtifacts.includes(".devreview.json"));
+  assert.match(projectIndex, /# PROJECT: Vendor Access Hub/);
+  assert.match(projectIndex, /\[Project Charter\]\(project-charter\.md\)/);
+  assert.match(projectIndex, /## Current Wave/);
+  assert.match(projectIndex, /## Architecture Guardrails/);
   assert.match(agentsDoc, /## Engineering Model/);
   assert.match(agentsDoc, /Spec-driven planning:/);
   assert.match(architecturePrompt, /Use a spec\/context\/eval lens:/);
@@ -122,6 +128,7 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
     ".ai/ARCHITECTURE.md",
     ".ai/TASKS.md",
     ".ai/DECISIONS.md",
+    "PROJECT.md",
     "governance/service-ownership.md",
     "prompts/governance-setup.md",
     "runner/step-4-wave-1-execution/status.json",
