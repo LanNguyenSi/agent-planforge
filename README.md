@@ -6,6 +6,22 @@ Status: Production-ready. All planned hardening tasks complete. Open enhancement
 
 `agent-planforge` is open source under the MIT license. Contribution, security reporting, and community expectations are documented in this repository.
 
+## Used In Production
+
+**[project-forge](https://github.com/LanNguyenSi/project-forge)** uses `agent-planforge` as its planning backbone. When a user describes a project, project-forge calls the planforge API, runs the full planning pipeline, and surfaces the results — architecture overview, task backlog, delivery plan, and scaffold status — in an interactive preview before any code is generated.
+
+### The Trio
+
+`agent-planforge` works best as part of a three-tool chain:
+
+| Tool | Role |
+|------|------|
+| **agent-planforge** | Planning — turns rough requirements into architecture, tasks, and delivery plan |
+| **[scaffoldkit](https://github.com/LanNguyenSi/scaffoldkit)** | Scaffolding — generates the initial repository structure from the planforge output |
+| **[agent-engineering-playbook](https://github.com/LanNguyenSi/agent-engineering-playbook)** | Execution — provides the coding agent with workflow, testing, and governance playbooks |
+
+planforge produces a `scaffoldkit-input.json` that wires directly into scaffoldkit. The generated `.ai/AGENTS.md` references the applicable playbooks from agent-engineering-playbook so the downstream coding agent has everything it needs from day one.
+
 ## What This Project Does
 
 `agent-planforge` is a lightweight planning layer for the earliest engineering phase of a project.
