@@ -1542,42 +1542,68 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
 
   let candidates;
   let reason;
+  let confidence = "fallback";
+  let manualStructureReason = "";
 
   if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
     if (/(next\.?js|react|vue|angular|frontend|spa|client-side)/.test(combinedText)) {
       candidates = ["symfony-nextjs", "reference-php-app"];
       reason = "PHP/Symfony + JS frontend signals -> symfony-nextjs";
+      confidence = "strong";
     } else if (
       /(api|rest|json endpoint|backend|service|graphql)/.test(combinedText) &&
       !/(frontend|portal|admin ui|dashboard)/.test(combinedText)
     ) {
       candidates = ["symfony-backend", "reference-php-app"];
       reason = "PHP/Symfony backend/API without frontend -> symfony-backend";
+      confidence = "strong";
     } else {
       candidates = ["reference-php-app", "symfony-backend"];
       reason = "Generic PHP/Symfony -> reference-php-app as baseline";
+      confidence = "medium";
+      manualStructureReason = "The framework family is clear, but the generated scaffold may still need manual adaptation for the final repository layout.";
     }
   } else if (/(landing page|marketing site|content site|blog|documentation site|static site)/.test(combinedText)) {
     candidates = ["static-site", "nextjs-frontend", "nextjs-fullstack"];
     reason = "The request reads like a content-oriented or marketing-style site rather than an application backend.";
+    confidence = "strong";
   } else if (/(cli|command line|terminal tool|developer tool|code generator|scaffold)/.test(combinedText)) {
     candidates = ["cli-tool", "express-api", "rest-api"];
     reason = "The request reads like an internal or developer-facing tool with command-style workflows.";
+    confidence = "strong";
   } else if (/typescript web application/.test(techStack)) {
     candidates = ["nextjs-fullstack", "saas-dashboard", "nextjs-frontend"];
     reason = "The plan points to a TypeScript web application with product-style UI surfaces.";
+    confidence = "strong";
   } else if (/typescript service stack/.test(techStack)) {
     candidates = ["express-api", "rest-api"];
     reason = "The plan points to a TypeScript service-oriented implementation.";
+    confidence = "strong";
+  } else if (/\b(django|django rest|drf)\b/.test(combinedText)) {
+    candidates = ["rest-api", "express-api"];
+    reason = "The request points to a Django-style backend, but only the generic REST API scaffold is currently available.";
+    confidence = "weak";
+    manualStructureReason = "Use the generated scaffold only as a starting point. The agent should expect to create or adapt the Django-specific project structure manually.";
+  } else if (/python application/.test(techStack)) {
+    candidates = ["rest-api", "cli-tool"];
+    reason = "The request points to a Python application, but there is no Python app scaffold that cleanly matches the requested shape.";
+    confidence = "weak";
+    manualStructureReason = "The recommendation is only a partial fit. The agent should expect to create or adapt the repository structure manually.";
   } else if (/small service-oriented split/.test(output.architectureRecommendation.shape)) {
     candidates = ["rest-api", "express-api"];
     reason = "The architecture recommendation is service-oriented, so an API-first scaffold is the closest fit.";
+    confidence = "medium";
+    manualStructureReason = "Treat the scaffold as a baseline, not as the complete repository layout.";
   } else if (output.plannerProfile === "platform") {
     candidates = ["rest-api", "cli-tool", "express-api"];
     reason = "Platform work maps better to API or tool-oriented scaffolds than to product UI blueprints.";
+    confidence = "medium";
+    manualStructureReason = "Treat the scaffold as a baseline, not as the complete repository layout.";
   } else {
     candidates = ["rest-api", "express-api", "nextjs-fullstack"];
     reason = "No stronger scaffold signal was found, so the fallback stays close to the recommended architecture and stack.";
+    confidence = "weak";
+    manualStructureReason = "No blueprint closely matches the request. The agent should expect to create or adapt the project structure manually.";
   }
 
   const blueprint = scaffoldkitContext.root
@@ -1588,8 +1614,25 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
     blueprint,
     candidates,
     reason,
+    confidence,
+    agentMustCreateStructure: confidence === "weak",
+    manualStructureReason,
     validatedLocally: scaffoldkitContext.root ? available.has(blueprint) : false,
     scaffoldkitRoot: scaffoldkitContext.root || ""
+  };
+}
+
+function scaffoldkitExecutionGuidance(input, output, scaffoldkitContext) {
+  const recommendation = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
+  const summary = recommendation.agentMustCreateStructure
+    ? "Treat the scaffold recommendation as a partial fit. Create or adapt the repository structure deliberately before feature work begins."
+    : recommendation.confidence === "medium"
+      ? "Use the scaffold as the starting point, but verify the generated layout against the plan before implementation expands."
+      : "Use the recommended scaffold as the baseline repository structure, then refine it against the plan.";
+
+  return {
+    ...recommendation,
+    summary
   };
 }
 
@@ -2255,6 +2298,7 @@ ${toMarkdownList(item.affects)}`;
 }
 
 function renderArchitectureOverview(input, output) {
+  const scaffoldGuidance = scaffoldkitExecutionGuidance(input, output, { root: "", availableBlueprints: [] });
   const options = output.architectureOptions.map((option) => {
     const scores = [
       `- Delivery speed: ${option.scores.deliverySpeed}/5`,
@@ -2293,6 +2337,13 @@ Recommended option: ${output.architectureRecommendation.optionId}
 ## Reasons
 
 ${toMarkdownList(output.architectureRecommendation.reasons)}
+
+## Scaffold Guidance
+
+- Recommended blueprint: ${scaffoldGuidance.blueprint}
+- Confidence: ${scaffoldGuidance.confidence}
+- ${scaffoldGuidance.summary}
+${scaffoldGuidance.manualStructureReason ? `- ${scaffoldGuidance.manualStructureReason}` : ""}
 
 ## Applicable Playbooks
 
@@ -3042,7 +3093,8 @@ function buildRerunReport(mode, previousRun, input, output) {
   };
 }
 
-function renderAiAgents(input, output) {
+function renderAiAgents(input, output, scaffoldkitContext) {
+  const scaffoldGuidance = scaffoldkitExecutionGuidance(input, output, scaffoldkitContext);
   return `# AGENTS
 
 ## Engineering Model
@@ -3063,8 +3115,9 @@ ${output.path === "enterprise" ? "- Governance lead: owns control artifacts, acc
 
 1. Read \`.ai/ARCHITECTURE.md\`, \`.ai/TASKS.md\`, and the current prompt export before changing code.
 2. Follow the applicable playbooks listed below for workflow, testing, documentation, and governance expectations.
-3. Keep diffs small, update tests with the change, and avoid bundling unrelated work.
-4. Escalate blockers or scope changes instead of silently improvising around them.
+3. ${scaffoldGuidance.summary}
+4. Keep diffs small, update tests with the change, and avoid bundling unrelated work.
+5. Escalate blockers or scope changes instead of silently improvising around them.
 
 ## Applicable Playbooks
 
@@ -3082,10 +3135,14 @@ ${toMarkdownList(output.recommendedPlaybooks)}
 - Planner profile: ${output.plannerProfile}
 - Phase: ${output.phase}
 - Path: ${output.path}
+- Scaffold blueprint: ${scaffoldGuidance.blueprint}
+- Scaffold confidence: ${scaffoldGuidance.confidence}
+${scaffoldGuidance.manualStructureReason ? `- Scaffold note: ${scaffoldGuidance.manualStructureReason}` : ""}
 `;
 }
 
-function renderAiArchitecture(input, output) {
+function renderAiArchitecture(input, output, scaffoldkitContext) {
+  const scaffoldGuidance = scaffoldkitExecutionGuidance(input, output, scaffoldkitContext);
   const modules = [
     "user-facing application surface",
     "domain and business logic modules",
@@ -3108,6 +3165,13 @@ ${input.summary}
 - Tech stack hint: ${inferTechStack(input)}
 - Phase: ${output.phase}
 - Path: ${output.path}
+
+## Scaffold Guidance
+
+- Recommended blueprint: ${scaffoldGuidance.blueprint}
+- Confidence: ${scaffoldGuidance.confidence}
+- ${scaffoldGuidance.summary}
+${scaffoldGuidance.manualStructureReason ? `- ${scaffoldGuidance.manualStructureReason}` : ""}
 
 ## Key Modules
 
@@ -3172,15 +3236,15 @@ function writePromptArtifacts(promptArtifacts, outdir) {
   });
 }
 
-function writeAiArtifacts(input, output, outdir) {
-  writeFile(path.join(outdir, ".ai", "AGENTS.md"), renderAiAgents(input, output));
-  writeFile(path.join(outdir, ".ai", "ARCHITECTURE.md"), renderAiArchitecture(input, output));
+function writeAiArtifacts(input, output, outdir, scaffoldkitContext) {
+  writeFile(path.join(outdir, ".ai", "AGENTS.md"), renderAiAgents(input, output, scaffoldkitContext));
+  writeFile(path.join(outdir, ".ai", "ARCHITECTURE.md"), renderAiArchitecture(input, output, scaffoldkitContext));
   writeFile(path.join(outdir, ".ai", "TASKS.md"), renderAiTasks(output));
   writeFile(path.join(outdir, ".ai", "DECISIONS.md"), renderAiDecisions(output));
 }
 
 function renderScaffoldKitInput(input, output, scaffoldkitContext) {
-  const recommendation = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
+  const recommendation = scaffoldkitExecutionGuidance(input, output, scaffoldkitContext);
   return {
     version: "1.1",
     exportedBy: "agent-planforge",
@@ -3189,7 +3253,11 @@ function renderScaffoldKitInput(input, output, scaffoldkitContext) {
     blueprint: recommendation.blueprint,
     blueprintCandidates: recommendation.candidates,
     blueprintReason: recommendation.reason,
+    blueprintConfidence: recommendation.confidence,
     blueprintValidatedLocally: recommendation.validatedLocally,
+    agentMustCreateStructure: recommendation.agentMustCreateStructure,
+    scaffoldExecutionSummary: recommendation.summary,
+    scaffoldExecutionReason: recommendation.manualStructureReason,
     plannerProfile: output.plannerProfile,
     architecture: {
       shape: output.architectureRecommendation.shape,
@@ -3689,7 +3757,7 @@ function main() {
     writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
     writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
     writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
-    writeAiArtifacts(input, output, outdir);
+    writeAiArtifacts(input, output, outdir, scaffoldkitContext);
     writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldkitContext);
     writeTemplateArtifacts(planforgeRoot, input, output, outdir, config);
     if (shouldWriteRuntimeTemplates(input, output, outdir)) {

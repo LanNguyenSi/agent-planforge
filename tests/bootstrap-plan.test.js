@@ -119,6 +119,8 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.equal(scaffoldkit.version, "1.1");
   assert.equal(scaffoldkit.blueprint, "nextjs-fullstack");
   assert.ok(scaffoldkit.blueprintCandidates.includes("nextjs-fullstack"));
+  assert.equal(scaffoldkit.blueprintConfidence, "strong");
+  assert.equal(scaffoldkit.agentMustCreateStructure, false);
   assert.equal(scaffoldkit.suggestedVariables.project_name, "vendor-access-hub");
   assert.equal(scaffoldkit.suggestedVariables.ai_context, true);
   assert.equal(devreview.minimumScore, 8);
@@ -260,6 +262,42 @@ runCase("php symfony plus react dashboard plans recommend the symfony nextjs blu
   assert.equal(scaffoldkit.blueprint, "symfony-nextjs");
   assert.equal(scaffoldkit.suggestedVariables.php_version, "8.3");
   assert.equal(scaffoldkit.suggestedVariables.symfony_version, "7");
+});
+
+runCase("django plans emit a weak scaffold match and tell the agent to create or adapt structure manually", () => {
+  const fixtureDir = tempDir("planforge-django-weak-match-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Case Workflow Django API",
+    summary: "Django REST backend for secure case workflows and operator review queues.",
+    targetUsers: ["operations team"],
+    coreFeatures: [
+      "Django REST API for case management",
+      "review queue for operators",
+      "workflow audit history"
+    ],
+    constraints: [
+      "Python 3.12",
+      "must run in Docker"
+    ]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const scaffoldkit = readJson(path.join(outdir, "scaffoldkit-input.json"));
+  const architectureOverview = readText(path.join(outdir, "architecture-overview.md"));
+  const agentsDoc = readText(path.join(outdir, ".ai", "AGENTS.md"));
+
+  assert.equal(scaffoldkit.blueprint, "rest-api");
+  assert.equal(scaffoldkit.blueprintConfidence, "weak");
+  assert.equal(scaffoldkit.agentMustCreateStructure, true);
+  assert.match(scaffoldkit.scaffoldExecutionSummary, /partial fit/i);
+  assert.match(scaffoldkit.scaffoldExecutionReason, /django-specific project structure manually/i);
+  assert.match(architectureOverview, /## Scaffold Guidance/);
+  assert.match(architectureOverview, /Confidence: weak/);
+  assert.match(agentsDoc, /Scaffold confidence: weak/);
+  assert.match(agentsDoc, /create or adapt the Django-specific project structure manually/i);
 });
 
 runCase("config overrides merge onto the base config without replacing entire sections", () => {
