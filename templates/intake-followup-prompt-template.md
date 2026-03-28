@@ -10,6 +10,10 @@ Clarify the missing planning inputs before deeper architecture and task executio
 
 - Completeness: {{intakeCompleteness}}
 
+## Starting Point
+
+{{startingPoint}}
+
 ## Questions To Resolve
 
 {{questions}}

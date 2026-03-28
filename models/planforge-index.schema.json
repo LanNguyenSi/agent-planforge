@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PlanforgeIndex",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "generatedBy",
+    "summary",
+    "context",
+    "rootFiles",
+    "directories",
+    "planning",
+    "handoff",
+    "exports",
+    "ai"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "generatedBy": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plannerProfile",
+        "phase",
+        "path"
+      ],
+      "properties": {
+        "plannerProfile": {
+          "type": "string",
+          "enum": [
+            "startup",
+            "product",
+            "enterprise",
+            "platform"
+          ]
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "phase_0",
+            "phase_1",
+            "phase_2",
+            "phase_3"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "enum": [
+            "core",
+            "enterprise"
+          ]
+        }
+      }
+    },
+    "rootFiles": {
+      "$ref": "#/$defs/pathMap"
+    },
+    "directories": {
+      "$ref": "#/$defs/pathMap"
+    },
+    "planning": {
+      "$ref": "#/$defs/pathMap"
+    },
+    "handoff": {
+      "$ref": "#/$defs/pathMap"
+    },
+    "exports": {
+      "$ref": "#/$defs/pathMap"
+    },
+    "ai": {
+      "$ref": "#/$defs/pathMap"
+    }
+  },
+  "$defs": {
+    "pathMap": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9]*$": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

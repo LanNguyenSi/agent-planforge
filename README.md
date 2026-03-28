@@ -20,7 +20,7 @@ Status: Production-ready. All planned hardening tasks complete. Open enhancement
 | **[scaffoldkit](https://github.com/LanNguyenSi/scaffoldkit)** | Scaffolding — generates the initial repository structure from the planforge output |
 | **[agent-engineering-playbook](https://github.com/LanNguyenSi/agent-engineering-playbook)** | Execution — provides the coding agent with workflow, testing, and governance playbooks |
 
-planforge produces a `scaffoldkit-input.json` that wires directly into scaffoldkit. The generated `.ai/AGENTS.md` references the applicable playbooks from agent-engineering-playbook so the downstream coding agent has everything it needs from day one.
+planforge produces an `exports/scaffoldkit-input.json` that wires directly into scaffoldkit. The generated root `AGENTS.md` points agents into `.ai/` and the grouped planning outputs so the downstream coding agent has a clean starting point from day one.
 
 ## What This Project Does
 
@@ -190,28 +190,39 @@ node scripts/bootstrap-plan.js \
 
 This creates:
 
-- `out/sample/plan-output.json`
-- `out/sample/structured-input.json`
+- `out/sample/AGENTS.md`
+- `out/sample/CLAUDE.md`
+- `out/sample/planforge-index.json`
+- `out/sample/planning/plan-output.json`
+- `out/sample/planning/structured-input.json`
 - `out/sample/PROJECT.md`
 - `out/sample/intake-questionnaire.md`
 - `out/sample/project-charter.md`
 - `out/sample/architecture-overview.md`
 - `out/sample/delivery-plan.md`
-- `out/sample/runner-contract.json`
-- `out/sample/rerun-report.json`
-- `out/sample/rerun-summary.md`
-- `out/sample/scaffoldkit-input.json`
-- `out/sample/.devreview.json`
+- `out/sample/handoff/runner-contract.json`
+- `out/sample/planning/rerun-report.json`
+- `out/sample/planning/rerun-summary.md`
+- `out/sample/exports/scaffoldkit-input.json`
+- `out/sample/exports/devreview.json`
 - `out/sample/.ai/`
 - `out/sample/prompts/`
 - `out/sample/specs/clarifications.md` when `--clarify` or `--auto-clarify` is used
-- `out/sample/handoff-manifest.json`
-- `out/sample/runner/`
+- `out/sample/handoff/manifest.json`
+- `out/sample/handoff/runner/`
 - `out/sample/adrs/`
 - `out/sample/tasks/`
 - `out/sample/outputs/consistency-report.md` when `analyze-artifacts.js` is run
 - `out/sample/governance/` for enterprise-path starter docs when relevant
 - `out/sample/runbooks/` for production-oriented starter runbooks when relevant
+
+`out/` is intentionally gitignored. To refresh the local example outputs so they match the current generator behavior, run:
+
+```bash
+npm run plan:refresh-examples
+```
+
+If you are updating scripts or agents from the older flat root layout, see [docs/output-layout-migration.md](/home/lan/git/pandora/agent-planforge/docs/output-layout-migration.md).
 
 ## Repository Structure
 
