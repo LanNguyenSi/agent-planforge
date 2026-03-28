@@ -19,6 +19,10 @@ Use a spec/context/eval lens:
 - Path: {{path}}
 - Recommended architecture: {{recommendedArchitecture}}
 
+## Starting Point
+
+{{startingPoint}}
+
 ## Architecture Options
 
 {{architectureOptions}}

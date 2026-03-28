@@ -8,6 +8,22 @@ const repoRoot = path.resolve(__dirname, "..");
 const scriptPath = path.join(repoRoot, "scripts", "bootstrap-plan.js");
 const analyzeScriptPath = path.join(repoRoot, "scripts", "analyze-artifacts.js");
 
+function planningFile(root, name) {
+  return path.join(root, "planning", name);
+}
+
+function handoffFile(root, name) {
+  return path.join(root, "handoff", name);
+}
+
+function handoffRunnerFile(root, ...segments) {
+  return path.join(root, "handoff", "runner", ...segments);
+}
+
+function exportsFile(root, name) {
+  return path.join(root, "exports", name);
+}
+
 function tempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
@@ -82,12 +98,15 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
 
   assert.equal(result.status, 0, result.stderr);
 
-  const output = readJson(path.join(outdir, "plan-output.json"));
-  const manifest = readJson(path.join(outdir, "handoff-manifest.json"));
-  const runnerContract = readJson(path.join(outdir, "runner-contract.json"));
-  const scaffoldkit = readJson(path.join(outdir, "scaffoldkit-input.json"));
-  const devreview = readJson(path.join(outdir, ".devreview.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+  const manifest = readJson(handoffFile(outdir, "manifest.json"));
+  const runnerContract = readJson(handoffFile(outdir, "runner-contract.json"));
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
+  const devreview = readJson(exportsFile(outdir, "devreview.json"));
   const projectIndex = readText(path.join(outdir, "PROJECT.md"));
+  const rootAgentsDoc = readText(path.join(outdir, "AGENTS.md"));
+  const claudeDoc = readText(path.join(outdir, "CLAUDE.md"));
+  const planforgeIndex = readJson(path.join(outdir, "planforge-index.json"));
   const agentsDoc = readText(path.join(outdir, ".ai", "AGENTS.md"));
   const architecturePrompt = readText(path.join(outdir, "prompts", "architecture-analysis.md"));
   const executionPrompt = readText(path.join(outdir, "prompts", "execution-next-wave.md"));
@@ -100,15 +119,19 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.ok(output.recommendedPlaybooks.some((entry) => entry.endsWith("playbooks/10-security-and-governance.md")));
   assert.ok(output.tasks.every((task) => Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0));
 
-  assert.equal(manifest.runnerContractPath, "runner-contract.json");
+  assert.equal(manifest.runnerContractPath, "handoff/runner-contract.json");
   assert.ok(manifest.steps.every((step) => step.statusFiles && step.approvalGate && step.blockerPolicy));
   assert.ok(manifest.sharedArtifacts.includes("PROJECT.md"));
-  assert.ok(manifest.sharedArtifacts.includes("scaffoldkit-input.json"));
-  assert.ok(manifest.sharedArtifacts.includes(".devreview.json"));
+  assert.ok(manifest.sharedArtifacts.includes("planforge-index.json"));
+  assert.ok(manifest.sharedArtifacts.includes("exports/scaffoldkit-input.json"));
+  assert.ok(manifest.sharedArtifacts.includes("exports/devreview.json"));
   assert.match(projectIndex, /# PROJECT: Vendor Access Hub/);
   assert.match(projectIndex, /\[Project Charter\]\(project-charter\.md\)/);
   assert.match(projectIndex, /## Current Wave/);
   assert.match(projectIndex, /## Architecture Guardrails/);
+  assert.match(rootAgentsDoc, /Primary agent instructions live in `\.ai\/AGENTS\.md`/);
+  assert.match(rootAgentsDoc, /planforge-index\.json/);
+  assert.match(claudeDoc, /Use `AGENTS\.md` in the project root as the primary entry point\./);
   assert.match(agentsDoc, /## Engineering Model/);
   assert.match(agentsDoc, /Spec-driven planning:/);
   assert.match(architecturePrompt, /Use a spec\/context\/eval lens:/);
@@ -124,8 +147,17 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.equal(scaffoldkit.suggestedVariables.project_name, "vendor-access-hub");
   assert.equal(scaffoldkit.suggestedVariables.ai_context, true);
   assert.equal(devreview.minimumScore, 8);
+  assert.equal(planforgeIndex.planning.planOutput, "planning/plan-output.json");
+  assert.equal(planforgeIndex.handoff.manifest, "handoff/manifest.json");
+  assert.equal(planforgeIndex.exports.scaffoldkit, "exports/scaffoldkit-input.json");
+  assert.equal(planforgeIndex.rootFiles.agents, "AGENTS.md");
+  assert.equal(planforgeIndex.directories.ai, ".ai");
+  assert.equal(planforgeIndex.ai.tasks, ".ai/TASKS.md");
 
   [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "planforge-index.json",
     ".ai/AGENTS.md",
     ".ai/ARCHITECTURE.md",
     ".ai/TASKS.md",
@@ -133,9 +165,9 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
     "PROJECT.md",
     "governance/service-ownership.md",
     "prompts/governance-setup.md",
-    "runner/step-4-wave-1-execution/status.json",
-    "structured-input.json",
-    "rerun-report.json"
+    "handoff/runner/step-4-wave-1-execution/status.json",
+    "planning/structured-input.json",
+    "planning/rerun-report.json"
   ].forEach((relativePath) => {
     assert.ok(fs.existsSync(path.join(outdir, relativePath)), `missing ${relativePath}`);
   });
@@ -156,7 +188,7 @@ runCase("service-oriented plans export a real scaffoldkit backend blueprint", ()
   const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
   assert.equal(result.status, 0, result.stderr);
 
-  const scaffoldkit = readJson(path.join(fixtureDir, "out", "scaffoldkit-input.json"));
+  const scaffoldkit = readJson(exportsFile(path.join(fixtureDir, "out"), "scaffoldkit-input.json"));
   assert.equal(scaffoldkit.blueprint, "express-api");
   assert.equal(scaffoldkit.suggestedVariables.use_queue, true);
 });
@@ -186,8 +218,8 @@ runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database
   assert.equal(result.status, 0, result.stderr);
 
   const outdir = path.join(fixtureDir, "out");
-  const output = readJson(path.join(outdir, "plan-output.json"));
-  const scaffoldkit = readJson(path.join(outdir, "scaffoldkit-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
   const adr002 = readText(path.join(outdir, "adrs", "002-primary-data-store.md"));
 
   assert.equal(scaffoldkit.blueprint, "cli-tool");
@@ -228,7 +260,7 @@ runCase("php symfony backend plans recommend the symfony backend blueprint", () 
   const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
   assert.equal(result.status, 0, result.stderr);
 
-  const scaffoldkit = readJson(path.join(fixtureDir, "out", "scaffoldkit-input.json"));
+  const scaffoldkit = readJson(exportsFile(path.join(fixtureDir, "out"), "scaffoldkit-input.json"));
   assert.equal(scaffoldkit.blueprint, "symfony-backend");
   assert.equal(scaffoldkit.stack.hint, "PHP/Symfony application");
   assert.equal(scaffoldkit.suggestedVariables.php_version, "8.3");
@@ -258,7 +290,7 @@ runCase("php symfony plus react dashboard plans recommend the symfony nextjs blu
   const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
   assert.equal(result.status, 0, result.stderr);
 
-  const scaffoldkit = readJson(path.join(fixtureDir, "out", "scaffoldkit-input.json"));
+  const scaffoldkit = readJson(exportsFile(path.join(fixtureDir, "out"), "scaffoldkit-input.json"));
   assert.equal(scaffoldkit.blueprint, "symfony-nextjs");
   assert.equal(scaffoldkit.suggestedVariables.php_version, "8.3");
   assert.equal(scaffoldkit.suggestedVariables.symfony_version, "7");
@@ -285,7 +317,7 @@ runCase("django plans emit a weak scaffold match and tell the agent to create or
   assert.equal(result.status, 0, result.stderr);
 
   const outdir = path.join(fixtureDir, "out");
-  const scaffoldkit = readJson(path.join(outdir, "scaffoldkit-input.json"));
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
   const architectureOverview = readText(path.join(outdir, "architecture-overview.md"));
   const agentsDoc = readText(path.join(outdir, ".ai", "AGENTS.md"));
 
@@ -313,7 +345,7 @@ runCase("config overrides merge onto the base config without replacing entire se
 
   assert.equal(result.status, 0, result.stderr);
 
-  const output = readJson(path.join(outdir, "plan-output.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
   assert.equal(output.plannerProfile, "startup");
   assert.ok(output.recommendedGuidanceAreas.includes("third-party risk review"));
   assert.ok(output.recommendedGuidanceAreas.includes("security and governance"));
@@ -333,8 +365,8 @@ runCase("markdown input is parsed heuristically and written as structured input"
 
   assert.equal(result.status, 0, result.stderr);
 
-  const output = readJson(path.join(outdir, "plan-output.json"));
-  const structuredInput = readJson(path.join(outdir, "structured-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+  const structuredInput = readJson(planningFile(outdir, "structured-input.json"));
 
   assert.equal(output.inputFormat, "markdown");
   assert.equal(structuredInput.projectName, "Vendor Access Hub");
@@ -352,9 +384,9 @@ runCase("summary mode works with text input", () => {
   const result = runPlanner(["--input", inputPath, "--format", "text", "--outdir", outdir, "--summary"]);
 
   assert.equal(result.status, 0, result.stderr);
-  const output = readJson(path.join(outdir, "plan-output.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
   assert.equal(output.inputFormat, "text");
-  assert.ok(fs.existsSync(path.join(outdir, "structured-input.json")));
+  assert.ok(fs.existsSync(planningFile(outdir, "structured-input.json")));
 });
 
 runCase("alert-focused features no longer fall into pipeline-monitoring matches", () => {
@@ -372,7 +404,7 @@ runCase("alert-focused features no longer fall into pipeline-monitoring matches"
   const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
   assert.equal(result.status, 0, result.stderr);
 
-  const output = readJson(path.join(outdir, "plan-output.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
   const featureTask = output.tasks.find((task) => task.category === "feature");
 
   assert.ok(featureTask.files.some((file) => file.includes("alerts")));
@@ -431,7 +463,7 @@ runCase("clarify mode applies provided answers before generating the plan", () =
   result = runPlanner(["--input", "input.json", "--outdir", "out", "--clarify"], { cwd: fixtureDir });
   assert.equal(result.status, 0, result.stderr);
 
-  const output = readJson(path.join(fixtureDir, "out", "plan-output.json"));
+  const output = readJson(planningFile(path.join(fixtureDir, "out"), "plan-output.json"));
   assert.ok(output.inputSnapshot.constraints.includes("Authentication strategy: internal SSO only"));
   assert.ok(output.inputSnapshot.constraints.includes("Primary data model: operators, incidents, and audit events in Postgres"));
   assert.ok(output.inputSnapshot.constraints.includes("Deployment target: kubernetes"));
@@ -453,7 +485,7 @@ runCase("auto-clarify accepts defaults and proceeds without waiting", () => {
   assert.equal(result.status, 0, result.stderr);
 
   const clarifications = fs.readFileSync(path.join(fixtureDir, "out", "specs", "clarifications.md"), "utf8");
-  const output = readJson(path.join(fixtureDir, "out", "plan-output.json"));
+  const output = readJson(planningFile(path.join(fixtureDir, "out"), "plan-output.json"));
 
   assert.match(clarifications, /Answer: approval-based email\/password authentication/);
   assert.ok(output.inputSnapshot.constraints.some((item) => item.startsWith("Authentication strategy:")));
@@ -465,7 +497,7 @@ runCase("resume-from writes rerun metadata and preserves runner state", () => {
   let result = runPlanner(["--input", "examples/sample-input.json", "--outdir", baseOutdir]);
   assert.equal(result.status, 0, result.stderr);
 
-  const extraRunnerFile = path.join(baseOutdir, "runner", "custom-note.txt");
+  const extraRunnerFile = handoffRunnerFile(baseOutdir, "custom-note.txt");
   fs.writeFileSync(extraRunnerFile, "keep me\n");
 
   const modifiedInputPath = path.join(tempDir("planforge-resume-input-"), "modified-input.json");
@@ -485,11 +517,11 @@ runCase("resume-from writes rerun metadata and preserves runner state", () => {
 
   assert.equal(result.status, 0, result.stderr);
 
-  const rerunReport = readJson(path.join(resumedOutdir, "rerun-report.json"));
+  const rerunReport = readJson(planningFile(resumedOutdir, "rerun-report.json"));
   assert.equal(rerunReport.mode, "resume");
   assert.ok(rerunReport.changedAssumptions.includes("summary"));
-  assert.ok(rerunReport.preservedArtifacts.includes("runner"));
-  assert.ok(fs.existsSync(path.join(resumedOutdir, "runner", "custom-note.txt")));
+  assert.ok(rerunReport.preservedArtifacts.includes("handoff/runner"));
+  assert.ok(fs.existsSync(handoffRunnerFile(resumedOutdir, "custom-note.txt")));
 });
 
 runCase("planner fails when npm install is requested and package.json is invalid", () => {
@@ -525,7 +557,7 @@ runCase("planner succeeds with --no-install even if output package.json is inval
   ]);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.ok(fs.existsSync(path.join(outdir, "plan-output.json")));
+  assert.ok(fs.existsSync(planningFile(outdir, "plan-output.json")));
 });
 
 runCase("validate-only mode succeeds without writing artifacts", () => {
@@ -539,7 +571,7 @@ runCase("validate-only mode succeeds without writing artifacts", () => {
   ]);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.existsSync(path.join(outdir, "plan-output.json")), false);
+  assert.equal(fs.existsSync(planningFile(outdir, "plan-output.json")), false);
 });
 
 runCase("analyze-artifacts reports clean generated output", () => {
@@ -581,7 +613,7 @@ runCase("analyze-artifacts exits non-zero on wave ordering and pattern mismatche
   let result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
   assert.equal(result.status, 0, result.stderr);
 
-  const outputPath = path.join(fixtureDir, "out", "plan-output.json");
+  const outputPath = planningFile(path.join(fixtureDir, "out"), "plan-output.json");
   const output = readJson(outputPath);
   const githubTask = output.tasks.find((task) => task.title === "Implement github repository health dashboard");
   const waveThreeTask = output.tasks.find((task) => task.wave === "wave-3");

@@ -19,6 +19,10 @@ Use a spec/context/eval lens:
 - Wave goal: {{waveGoal}}
 - Critical path: {{criticalPath}}
 
+## Starting Point
+
+{{startingPoint}}
+
 ## Tasks In Scope
 
 {{tasks}}

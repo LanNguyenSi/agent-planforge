@@ -27,7 +27,7 @@ Current responsibilities:
 - generate ADRs in `adrs/`
 - generate task documents in `tasks/`
 - generate prompt exports in `prompts/`
-- generate orchestration files such as `handoff-manifest.json`, `runner-contract.json`, and `runner/`
+- generate orchestration files such as `handoff/manifest.json`, `handoff/runner-contract.json`, and `handoff/runner/`
 - generate `.ai/` context files for downstream coding agents
 - generate governance starter artifacts for enterprise-path plans
 
@@ -35,6 +35,8 @@ Important: `agent-planforge` does not generate `package.json`.
 If a `package.json` already exists in the output directory, `--install` will run `npm install` there after artifact generation.
 
 ## File Ownership Model
+
+If you are updating older automation that expected root-level JSON artifacts, read `docs/output-layout-migration.md` before wiring the new output paths.
 
 ### scaffoldkit Owns First
 
@@ -45,23 +47,26 @@ If a `package.json` already exists in the output directory, `--install` will run
 
 ### planforge Generates Or Replaces
 
-- `plan-output.json`
-- `structured-input.json`
+- `planning/plan-output.json`
+- `planning/structured-input.json`
 - `project-charter.md`
 - `architecture-overview.md`
 - `delivery-plan.md`
 - `adrs/*.md`
 - `tasks/*.md`
 - `prompts/*.md`
+- `AGENTS.md`
 - `.ai/AGENTS.md`
 - `.ai/ARCHITECTURE.md`
 - `.ai/TASKS.md`
 - `.ai/DECISIONS.md`
-- `handoff-manifest.json`
-- `runner-contract.json`
-- `runner/`
-- `rerun-report.json`
-- `rerun-summary.md`
+- `handoff/manifest.json`
+- `handoff/runner-contract.json`
+- `handoff/runner/`
+- `planning/rerun-report.json`
+- `planning/rerun-summary.md`
+- `exports/scaffoldkit-input.json`
+- `exports/devreview.json`
 - `governance/` when the enterprise path applies
 - `runbooks/` when production-oriented phases apply
 
@@ -140,20 +145,24 @@ Use `--no-install` when you only want the planning artifacts.
 
 Start with:
 
-- `structured-input.json`
-- `plan-output.json`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `planforge-index.json`
+- `planning/structured-input.json`
+- `planning/plan-output.json`
 - `project-charter.md`
 - `architecture-overview.md`
 - `delivery-plan.md`
+- `AGENTS.md`
 - `.ai/AGENTS.md`
-- `handoff-manifest.json`
+- `handoff/manifest.json`
 
 Then inspect:
 
 - `adrs/`
 - `tasks/`
 - `prompts/`
-- `runner/`
+- `handoff/runner/`
 - `governance/` when present
 - `runbooks/` when present
 
@@ -165,17 +174,17 @@ Commit the generated artifacts once the plan looks credible.
 
 Use:
 
-- `handoff-manifest.json` for orchestration order, dependencies, and approval gates
-- `runner-contract.json` for step status conventions
+- `handoff/manifest.json` for orchestration order, dependencies, and approval gates
+- `handoff/runner-contract.json` for step status conventions
 - `prompts/` for role-specific prompt inputs
 - `.ai/` for shared coding context
 
 ## Import Into ScaffoldKit
 
-If local ScaffoldKit is available, you can use the generated `scaffoldkit-input.json` directly:
+If local ScaffoldKit is available, you can use the generated `exports/scaffoldkit-input.json` directly:
 
 ```bash
-scaffoldkit from-planforge /path/to/my-app/scaffoldkit-input.json --target /path/to/my-app
+scaffoldkit from-planforge /path/to/my-app/exports/scaffoldkit-input.json --target /path/to/my-app
 ```
 
 `agent-planforge` now recommends real ScaffoldKit blueprints and includes `suggestedVariables` so ScaffoldKit can scaffold from the plan without manual re-entry.

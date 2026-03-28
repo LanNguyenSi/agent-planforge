@@ -137,6 +137,18 @@ function writeFile(targetPath, contents) {
   fs.writeFileSync(targetPath, contents, "utf8");
 }
 
+function planningPath(...segments) {
+  return path.join("planning", ...segments);
+}
+
+function handoffPath(...segments) {
+  return path.join("handoff", ...segments);
+}
+
+function exportsPath(...segments) {
+  return path.join("exports", ...segments);
+}
+
 function writeStderrLine(message) {
   fs.writeSync(2, `${message}\n`);
 }
@@ -2532,6 +2544,7 @@ function renderArchitecturePrompt(repoRoot, input, output) {
     path: output.path,
     recommendedArchitecture: output.architectureRecommendation.summary,
     architectureOptions: options,
+    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then read `AGENTS.md` and `.ai/ARCHITECTURE.md` before challenging the current recommendation.",
     risks: toMarkdownList(output.risks),
     openQuestions: toMarkdownList(output.openQuestions),
     applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
@@ -2554,6 +2567,7 @@ function renderExecutionPrompt(repoRoot, input, output) {
     phase: output.phase,
     waveId: wave ? wave.id : "none",
     waveGoal: wave ? wave.goal : "No wave selected",
+    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then read `AGENTS.md`, `.ai/TASKS.md`, and the task docs for the current wave.",
     criticalPath: output.dependencyGraph.criticalPathTaskIds.join(" -> ") || "None",
     tasks,
     constraints: toMarkdownList(input.constraints),
@@ -2568,6 +2582,7 @@ function renderGovernancePrompt(repoRoot, input, output) {
     plannerProfile: output.plannerProfile,
     phase: output.phase,
     dataSensitivity: input.dataSensitivity || "low",
+    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then read `AGENTS.md`, `.ai/AGENTS.md`, and the governance starter docs.",
     enterpriseRequirements: toMarkdownList(input.enterpriseRequirements || []),
     artifacts: toMarkdownList([
       "service ownership",
@@ -2590,6 +2605,7 @@ function renderIntakeFollowupPrompt(repoRoot, input, output) {
   return renderTemplate(repoRoot, "templates/intake-followup-prompt-template.md", {
     projectName: input.projectName,
     intakeCompleteness: output.intakeCompleteness,
+    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then review `AGENTS.md`, `intake-questionnaire.md`, and the current planning docs.",
     questions,
     applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
   });
@@ -2669,10 +2685,10 @@ function profileExecutionPolicy(profile) {
 
 function stepStatusFiles(stepId) {
   return {
-    input: `runner/${stepId}/input.json`,
-    status: `runner/${stepId}/status.json`,
-    result: `runner/${stepId}/result.json`,
-    blockers: `runner/${stepId}/blockers.json`
+    input: handoffPath("runner", stepId, "input.json"),
+    status: handoffPath("runner", stepId, "status.json"),
+    result: handoffPath("runner", stepId, "result.json"),
+    blockers: handoffPath("runner", stepId, "blockers.json")
   };
 }
 
@@ -2737,7 +2753,8 @@ function buildHandoffManifest(input, output) {
           promptExportId: intakePrompt.id,
           promptPath: intakePrompt.path,
           reads: [
-            "plan-output.json",
+            "planforge-index.json",
+            planningPath("plan-output.json"),
             "PROJECT.md",
             "intake-questionnaire.md",
             "project-charter.md",
@@ -2775,7 +2792,8 @@ function buildHandoffManifest(input, output) {
           promptExportId: architecturePrompt.id,
           promptPath: architecturePrompt.path,
           reads: [
-            "plan-output.json",
+            "planforge-index.json",
+            planningPath("plan-output.json"),
             "PROJECT.md",
             "architecture-overview.md",
             ".ai/ARCHITECTURE.md",
@@ -2811,7 +2829,8 @@ function buildHandoffManifest(input, output) {
           promptExportId: governancePrompt.id,
           promptPath: governancePrompt.path,
           reads: [
-            "plan-output.json",
+            "planforge-index.json",
+            planningPath("plan-output.json"),
             "PROJECT.md",
             ".ai/AGENTS.md",
             governancePrompt.path,
@@ -2865,7 +2884,8 @@ function buildHandoffManifest(input, output) {
           promptExportId: executionPrompt.id,
           promptPath: executionPrompt.path,
           reads: [
-            "plan-output.json",
+            "planforge-index.json",
+            planningPath("plan-output.json"),
             "PROJECT.md",
             "delivery-plan.md",
             ".ai/TASKS.md",
@@ -2888,15 +2908,17 @@ function buildHandoffManifest(input, output) {
   const policyAwareSteps = steps.map((step) => Object.assign({}, step, makeStepPolicy(step, output)));
 
   const manifestArtifacts = [
-    "plan-output.json",
-    "structured-input.json",
+    "AGENTS.md",
+    "planforge-index.json",
+    planningPath("plan-output.json"),
+    planningPath("structured-input.json"),
     "PROJECT.md",
     "project-charter.md",
     "architecture-overview.md",
     "delivery-plan.md",
-    "runner-contract.json",
-    ".devreview.json",
-    "scaffoldkit-input.json",
+    handoffPath("runner-contract.json"),
+    exportsPath("devreview.json"),
+    exportsPath("scaffoldkit-input.json"),
     ".ai/AGENTS.md",
     ".ai/ARCHITECTURE.md",
     ".ai/TASKS.md",
@@ -2915,7 +2937,7 @@ function buildHandoffManifest(input, output) {
     version: "1.0",
     summary: "Coordinate downstream planning, governance, and execution agents from a single generated manifest.",
     policySummary: `Use ${output.plannerProfile} profile policies for concurrency, blocker escalation, and approval gating.`,
-    runnerContractPath: "runner-contract.json",
+    runnerContractPath: handoffPath("runner-contract.json"),
     coordinationStrategy: intakePrompt
       ? "Resolve intake blockers first, then run planning review steps in parallel where possible, then begin execution."
       : "Use planning review steps in parallel where possible, then move into execution on the first delivery wave.",
@@ -2985,9 +3007,18 @@ function resolveRunDirectory(repoRoot, runPath) {
     return resolvedPath;
   }
   if (path.basename(resolvedPath) === "plan-output.json") {
-    return path.dirname(resolvedPath);
+    const parentDir = path.dirname(resolvedPath);
+    return path.basename(parentDir) === "planning" ? path.dirname(parentDir) : parentDir;
   }
   throw new CliError("Previous run path must be a directory or plan-output.json.", EXIT_CODES.USAGE);
+}
+
+function resolvePlanOutputPath(runDir) {
+  const candidates = [
+    path.join(runDir, planningPath("plan-output.json")),
+    path.join(runDir, "plan-output.json")
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
 }
 
 function loadPreviousRun(repoRoot, runPath) {
@@ -2996,9 +3027,9 @@ function loadPreviousRun(repoRoot, runPath) {
   }
 
   const dir = resolveRunDirectory(repoRoot, runPath);
-  const planOutputPath = path.join(dir, "plan-output.json");
+  const planOutputPath = resolvePlanOutputPath(dir);
   if (!fs.existsSync(planOutputPath)) {
-    throw new CliError(`Previous run is missing plan-output.json: ${dir}`, EXIT_CODES.RUNTIME);
+    throw new CliError(`Previous run is missing ${planningPath("plan-output.json")}: ${dir}`, EXIT_CODES.RUNTIME);
   }
 
   return {
@@ -3013,15 +3044,15 @@ function valuesEqual(left, right) {
 
 function buildRerunReport(mode, previousRun, input, output) {
   const regeneratedArtifacts = [
-    "plan-output.json",
-    "handoff-manifest.json",
+    planningPath("plan-output.json"),
+    handoffPath("manifest.json"),
     "PROJECT.md",
     "project-charter.md",
     "architecture-overview.md",
     "delivery-plan.md",
-    "runner-contract.json",
-    "scaffoldkit-input.json",
-    ".devreview.json"
+    handoffPath("runner-contract.json"),
+    exportsPath("scaffoldkit-input.json"),
+    exportsPath("devreview.json")
   ];
 
   if (!previousRun) {
@@ -3075,11 +3106,12 @@ function buildRerunReport(mode, previousRun, input, output) {
   }
 
   const preservedCandidates = [
-    "runner",
+    handoffPath("runner"),
     "handoff-status.json",
     "resume-notes.md",
     "reviews",
-    "notes"
+    "notes",
+    "runner"
   ];
   const preservedArtifacts = preservedCandidates.filter((entry) => fs.existsSync(path.join(previousRun.dir, entry)));
 
@@ -3139,6 +3171,127 @@ ${toMarkdownList(output.recommendedPlaybooks)}
 - Scaffold confidence: ${scaffoldGuidance.confidence}
 ${scaffoldGuidance.manualStructureReason ? `- Scaffold note: ${scaffoldGuidance.manualStructureReason}` : ""}
 `;
+}
+
+function renderRootAgents(output) {
+  return `# AGENTS
+
+Primary agent instructions live in \`.ai/AGENTS.md\`.
+
+For machine-readable path discovery, read \`planforge-index.json\`.
+
+## Read Order
+
+1. \`PROJECT.md\`
+2. \`.ai/AGENTS.md\`
+3. \`.ai/ARCHITECTURE.md\`
+4. \`.ai/TASKS.md\`
+5. \`.ai/DECISIONS.md\`
+
+## Generated Directories
+
+- Planning state: \`planning/\`
+- Handoff and runner state: \`handoff/\`
+- Tool exports: \`exports/\`
+- Prompts: \`prompts/\`
+- Clarifications: \`specs/\`
+- ADRs: \`adrs/\`
+- Tasks: \`tasks/\`
+
+## Important Files
+
+- Machine-readable index: \`planforge-index.json\`
+- Planning output: \`${planningPath("plan-output.json")}\`
+- Structured input snapshot: \`${planningPath("structured-input.json")}\`
+- Rerun metadata: \`${planningPath("rerun-report.json")}\`
+- Handoff manifest: \`${handoffPath("manifest.json")}\`
+- Runner contract: \`${handoffPath("runner-contract.json")}\`
+- Scaffold export: \`${exportsPath("scaffoldkit-input.json")}\`
+- Review policy export: \`${exportsPath("devreview.json")}\`
+
+## Working Notes
+
+- Start with the overview docs and \`.ai/\`, then move into \`tasks/\`, \`adrs/\`, and \`handoff/\` as needed.
+- Use \`${handoffPath("runner")}/\` for step status and result tracking.
+- Treat generated artifacts as guidance, not as permission to skip engineering judgment.
+
+## Current Plan Context
+
+- Planner profile: ${output.plannerProfile}
+- Phase: ${output.phase}
+- Path: ${output.path}
+`;
+}
+
+function renderClaudeShim() {
+  return `# CLAUDE
+
+Use \`AGENTS.md\` in the project root as the primary entry point.
+For machine-readable path discovery, use \`planforge-index.json\`.
+
+Primary references:
+
+1. \`AGENTS.md\`
+2. \`.ai/AGENTS.md\`
+3. \`.ai/ARCHITECTURE.md\`
+4. \`.ai/TASKS.md\`
+5. \`.ai/DECISIONS.md\`
+`;
+}
+
+function renderPlanforgeIndex(output) {
+  return {
+    version: "1.0",
+    generatedBy: "agent-planforge",
+    summary: "Machine-readable index of the generated planforge artifact layout.",
+    context: {
+      plannerProfile: output.plannerProfile,
+      phase: output.phase,
+      path: output.path
+    },
+    rootFiles: {
+      agents: "AGENTS.md",
+      claude: "CLAUDE.md",
+      project: "PROJECT.md",
+      charter: "project-charter.md",
+      architecture: "architecture-overview.md",
+      deliveryPlan: "delivery-plan.md",
+      intakeQuestionnaire: "intake-questionnaire.md"
+    },
+    directories: {
+      ai: ".ai",
+      planning: "planning",
+      handoff: "handoff",
+      exports: "exports",
+      prompts: "prompts",
+      specs: "specs",
+      adrs: "adrs",
+      tasks: "tasks",
+      governance: "governance",
+      runbooks: "runbooks"
+    },
+    planning: {
+      planOutput: planningPath("plan-output.json"),
+      structuredInput: planningPath("structured-input.json"),
+      rerunReport: planningPath("rerun-report.json"),
+      rerunSummary: planningPath("rerun-summary.md")
+    },
+    handoff: {
+      manifest: handoffPath("manifest.json"),
+      runnerContract: handoffPath("runner-contract.json"),
+      runnerDirectory: handoffPath("runner")
+    },
+    exports: {
+      scaffoldkit: exportsPath("scaffoldkit-input.json"),
+      devreview: exportsPath("devreview.json")
+    },
+    ai: {
+      agents: ".ai/AGENTS.md",
+      architecture: ".ai/ARCHITECTURE.md",
+      tasks: ".ai/TASKS.md",
+      decisions: ".ai/DECISIONS.md"
+    }
+  };
 }
 
 function renderAiArchitecture(input, output, scaffoldkitContext) {
@@ -3236,7 +3389,10 @@ function writePromptArtifacts(promptArtifacts, outdir) {
   });
 }
 
-function writeAiArtifacts(input, output, outdir, scaffoldkitContext) {
+function writeAiArtifacts(input, output, outdir, scaffoldkitContext, planforgeIndex) {
+  writeFile(path.join(outdir, "AGENTS.md"), renderRootAgents(output));
+  writeFile(path.join(outdir, "CLAUDE.md"), renderClaudeShim());
+  writeFile(path.join(outdir, "planforge-index.json"), `${JSON.stringify(planforgeIndex, null, 2)}\n`);
   writeFile(path.join(outdir, ".ai", "AGENTS.md"), renderAiAgents(input, output, scaffoldkitContext));
   writeFile(path.join(outdir, ".ai", "ARCHITECTURE.md"), renderAiArchitecture(input, output, scaffoldkitContext));
   writeFile(path.join(outdir, ".ai", "TASKS.md"), renderAiTasks(output));
@@ -3372,7 +3528,7 @@ function renderDevReviewConfig(input, output) {
 
 function writeRunnerArtifacts(output, outdir) {
   const contract = buildRunnerContract(output);
-  writeFile(path.join(outdir, "runner-contract.json"), `${JSON.stringify(contract, null, 2)}\n`);
+  writeFile(path.join(outdir, handoffPath("runner-contract.json")), `${JSON.stringify(contract, null, 2)}\n`);
 
   contract.stepContracts.forEach((stepContract) => {
     writeFile(
@@ -3469,14 +3625,14 @@ ${toMarkdownList(rerunReport.preservedArtifacts)}
 }
 
 function writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldkitContext) {
-  writeFile(path.join(outdir, "structured-input.json"), `${JSON.stringify(output.inputSnapshot, null, 2)}\n`);
+  writeFile(path.join(outdir, planningPath("structured-input.json")), `${JSON.stringify(output.inputSnapshot, null, 2)}\n`);
   writeFile(
-    path.join(outdir, "scaffoldkit-input.json"),
+    path.join(outdir, exportsPath("scaffoldkit-input.json")),
     `${JSON.stringify(renderScaffoldKitInput(input, output, scaffoldkitContext), null, 2)}\n`
   );
-  writeFile(path.join(outdir, ".devreview.json"), `${JSON.stringify(renderDevReviewConfig(input, output), null, 2)}\n`);
-  writeFile(path.join(outdir, "rerun-report.json"), `${JSON.stringify(rerunReport, null, 2)}\n`);
-  writeFile(path.join(outdir, "rerun-summary.md"), renderRerunSummary(rerunReport));
+  writeFile(path.join(outdir, exportsPath("devreview.json")), `${JSON.stringify(renderDevReviewConfig(input, output), null, 2)}\n`);
+  writeFile(path.join(outdir, planningPath("rerun-report.json")), `${JSON.stringify(rerunReport, null, 2)}\n`);
+  writeFile(path.join(outdir, planningPath("rerun-summary.md")), renderRerunSummary(rerunReport));
   writeRunnerArtifacts(output, outdir);
 }
 
@@ -3512,7 +3668,9 @@ function writeMakefile(repoRoot, outdir) {
 }
 
 function readScaffoldkitBlueprint(outdir) {
-  const scaffoldkitInputPath = path.join(outdir, "scaffoldkit-input.json");
+  const scaffoldkitInputPath = fs.existsSync(path.join(outdir, exportsPath("scaffoldkit-input.json")))
+    ? path.join(outdir, exportsPath("scaffoldkit-input.json"))
+    : path.join(outdir, "scaffoldkit-input.json");
 
   if (!fs.existsSync(scaffoldkitInputPath)) {
     return "";
@@ -3721,12 +3879,14 @@ function main() {
     const rerunMode = args.resumeFrom ? "resume" : args.rerunFrom ? "rerun" : "fresh";
     const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata);
     const promptArtifacts = buildPromptArtifacts(planforgeRoot, input, output);
+    const planforgeIndex = renderPlanforgeIndex(output);
 
     output.promptExports = promptArtifacts.map(({ contents, ...metadata }) => metadata);
     output.handoffManifest = buildHandoffManifest(input, output);
     const rerunReport = buildRerunReport(rerunMode, previousRun, input, output);
 
     validateWithSchema(planforgeRoot, "models/planning-output.schema.json", output, "generated planning output");
+    validateWithSchema(planforgeRoot, "models/planforge-index.schema.json", planforgeIndex, "generated planforge index");
 
     if (args.validateOnly) {
       if (args.summary) {
@@ -3750,14 +3910,14 @@ function main() {
     }
     
     writePromptArtifacts(promptArtifacts, outdir);
-    writeFile(path.join(outdir, "plan-output.json"), `${JSON.stringify(output, null, 2)}\n`);
-    writeFile(path.join(outdir, "handoff-manifest.json"), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
+    writeFile(path.join(outdir, planningPath("plan-output.json")), `${JSON.stringify(output, null, 2)}\n`);
+    writeFile(path.join(outdir, handoffPath("manifest.json")), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
     writeFile(path.join(outdir, "PROJECT.md"), renderProjectIndex(planforgeRoot, input, output));
     writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(planforgeRoot, input, output));
     writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
     writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
     writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
-    writeAiArtifacts(input, output, outdir, scaffoldkitContext);
+    writeAiArtifacts(input, output, outdir, scaffoldkitContext, planforgeIndex);
     writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldkitContext);
     writeTemplateArtifacts(planforgeRoot, input, output, outdir, config);
     if (shouldWriteRuntimeTemplates(input, output, outdir)) {

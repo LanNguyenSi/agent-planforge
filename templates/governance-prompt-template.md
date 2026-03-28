@@ -19,6 +19,10 @@ Use a spec/context/eval lens:
 - Enterprise requirements:
 {{enterpriseRequirements}}
 
+## Starting Point
+
+{{startingPoint}}
+
 ## Required Governance Artifacts
 
 {{artifacts}}

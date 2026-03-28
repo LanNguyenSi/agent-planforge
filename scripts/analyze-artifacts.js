@@ -73,6 +73,14 @@ function readJson(filePath) {
   return JSON.parse(readText(filePath));
 }
 
+function resolvePlanOutputPath(projectDir) {
+  const candidates = [
+    path.join(projectDir, "planning", "plan-output.json"),
+    path.join(projectDir, "plan-output.json")
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+}
+
 function toMarkdownList(items) {
   if (!items.length) {
     return "- None";
@@ -202,9 +210,9 @@ function bestAlignedPattern(files, patterns, architectureShape) {
 }
 
 function analyzeArtifacts(projectDir, repoRoot) {
-  const planOutputPath = path.join(projectDir, "plan-output.json");
+  const planOutputPath = resolvePlanOutputPath(projectDir);
   if (!fs.existsSync(planOutputPath)) {
-    throw new CliError(`Missing plan-output.json in ${projectDir}`, EXIT_CODES.RUNTIME);
+    throw new CliError(`Missing planning/plan-output.json in ${projectDir}`, EXIT_CODES.RUNTIME);
   }
 
   const planOutput = readJson(planOutputPath);
@@ -305,7 +313,7 @@ function analyzeArtifacts(projectDir, repoRoot) {
           "delivery-plan-drift",
           `Task ${task.id} is assigned to a different wave in delivery-plan.md`,
           [
-            `plan-output.json: ${task.wave}`,
+            `planning/plan-output.json: ${task.wave}`,
             `delivery-plan.md: ${deliveryPlanWave[0]}`
           ],
           0.92

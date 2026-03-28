@@ -20,16 +20,21 @@ node scripts/bootstrap-plan.js --input examples/minimal-input.json --outdir out/
 
 ## 2. Review The First Planning Package
 
+If you previously relied on root-level JSON artifacts, first read `docs/output-layout-migration.md`.
+
 After each run, review these files first:
 
-- `structured-input.json`
-- `plan-output.json`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `planforge-index.json`
+- `planning/structured-input.json`
+- `planning/plan-output.json`
 - `project-charter.md`
 - `architecture-overview.md`
 - `delivery-plan.md`
-- `rerun-summary.md`
+- `planning/rerun-summary.md`
 
-If the input was parsed from text or markdown, check `structured-input.json` before trusting the backlog.
+If the input was parsed from text or markdown, check `planning/structured-input.json` before trusting the backlog.
 
 When a clarification pass was used, review `specs/clarifications.md` before trusting downstream task slicing.
 
@@ -37,11 +42,11 @@ When a clarification pass was used, review `specs/clarifications.md` before trus
 
 The handoff contract is split across:
 
-- `handoff-manifest.json` for orchestration order, dependencies, policies, and approval gates
-- `runner-contract.json` for status and result file conventions
-- `runner/<step-id>/` for per-step input, status, result, and blocker files
+- `handoff/manifest.json` for orchestration order, dependencies, policies, and approval gates
+- `handoff/runner-contract.json` for status and result file conventions
+- `handoff/runner/<step-id>/` for per-step input, status, result, and blocker files
 
-Agents should read the prompt export for their step, update `runner/<step-id>/status.json` while working, and write final outputs into `runner/<step-id>/result.json`.
+Agents should read the prompt export for their step, update `handoff/runner/<step-id>/status.json` while working, and write final outputs into `handoff/runner/<step-id>/result.json`.
 
 ## 4. Know When Review Is Required
 
@@ -65,7 +70,7 @@ node scripts/bootstrap-plan.js \
   --rerun-from out/sample
 ```
 
-Use `--resume-from` when you want the new run to preserve manual step state such as `runner/`, `reviews/`, or `notes/`:
+Use `--resume-from` when you want the new run to preserve manual step state such as `handoff/runner/`, `reviews/`, or `notes/`:
 
 ```bash
 node scripts/bootstrap-plan.js \
@@ -76,8 +81,8 @@ node scripts/bootstrap-plan.js \
 
 Review:
 
-- `rerun-report.json`
-- `rerun-summary.md`
+- `planning/rerun-report.json`
+- `planning/rerun-summary.md`
 
 These identify changed assumptions, changed recommendations, regenerated artifacts, and preserved run-state artifacts.
 
@@ -85,12 +90,12 @@ These identify changed assumptions, changed recommendations, regenerated artifac
 
 Every run also emits:
 
-- `scaffoldkit-input.json` for codebase scaffolding
-- `.devreview.json` for PR review policy
+- `exports/scaffoldkit-input.json` for codebase scaffolding
+- `exports/devreview.json` for PR review policy
 - `.ai/` context files for coding agents
 
 Treat these as generated derivatives of the planning package. If the plan changes materially, rerun the planner instead of editing them by hand.
-When ScaffoldKit is available, `scaffoldkit-input.json` can be used directly with `scaffoldkit from-planforge`.
+When ScaffoldKit is available, `exports/scaffoldkit-input.json` can be used directly with `scaffoldkit from-planforge`.
 
 ## 7. Run Consistency Analysis Before Implementation
 

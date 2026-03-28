@@ -13,6 +13,7 @@
   "scripts": {
     "plan:bootstrap": "node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/sample",
     "plan:analyze": "node scripts/analyze-artifacts.js --outdir out/sample",
+    "plan:refresh-examples": "node scripts/refresh-example-outputs.js",
     "test": "node tests/bootstrap-plan.test.js"
   },
   "engines": {
