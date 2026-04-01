@@ -264,7 +264,8 @@ runCase("php symfony backend plans recommend the symfony backend blueprint", () 
   assert.equal(scaffoldkit.blueprint, "symfony-backend");
   assert.equal(scaffoldkit.stack.hint, "PHP/Symfony application");
   assert.equal(scaffoldkit.suggestedVariables.php_version, "8.3");
-  assert.equal(scaffoldkit.suggestedVariables.symfony_version, "7");
+  assert.equal(scaffoldkit.suggestedVariables.symfony_version, "7.2");
+  assert.equal(scaffoldkit.suggestedVariables.database, "postgresql");
   assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "language"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "cli_framework"), false);
 });
@@ -293,7 +294,8 @@ runCase("php symfony plus react dashboard plans recommend the symfony nextjs blu
   const scaffoldkit = readJson(exportsFile(path.join(fixtureDir, "out"), "scaffoldkit-input.json"));
   assert.equal(scaffoldkit.blueprint, "symfony-nextjs");
   assert.equal(scaffoldkit.suggestedVariables.php_version, "8.3");
-  assert.equal(scaffoldkit.suggestedVariables.symfony_version, "7");
+  assert.equal(scaffoldkit.suggestedVariables.database, "postgresql");
+  assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "symfony_version"), false);
 });
 
 runCase("django plans emit a weak scaffold match and tell the agent to create or adapt structure manually", () => {
