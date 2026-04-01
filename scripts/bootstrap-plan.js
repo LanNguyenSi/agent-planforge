@@ -1541,6 +1541,40 @@ function inferAuthStrategy(input, blueprint) {
   return "jwt";
 }
 
+function inferSymfonyVersion(input) {
+  const text = [
+    input.summary,
+    ...(input.coreFeatures || []),
+    ...(input.constraints || []),
+    ...(input.openQuestions || [])
+  ].join(" ").toLowerCase();
+
+  if (/symfony(?:\s+|)6(?:\.4)?\b/.test(text)) {
+    return "6.4";
+  }
+  if (/symfony(?:\s+|)7\.1\b/.test(text)) {
+    return "7.1";
+  }
+  return "7.2";
+}
+
+function inferSymfonyDatabase(input, blueprint) {
+  const text = [
+    ...(input.constraints || []),
+    ...(input.nonFunctionalRequirements || []),
+    ...(input.integrations || []),
+    ...(input.coreFeatures || [])
+  ].join(" ").toLowerCase();
+
+  if (/mariadb/.test(text)) {
+    return blueprint === "symfony-backend" ? "mariadb" : "mysql";
+  }
+  if (/mysql/.test(text)) {
+    return "mysql";
+  }
+  return "postgresql";
+}
+
 function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
   const combinedText = [
     input.projectName,
@@ -1689,12 +1723,17 @@ function scaffoldkitSuggestedVariables(input, output, blueprint) {
     suggested.config_format = "json";
     suggested.distribution = suggested.language === "typescript" ? "binary" : "pip-package";
     suggested.description = input.summary || "A developer-facing automation tool";
-  } else if (["reference-php-app", "symfony-backend", "symfony-nextjs"].includes(blueprint)) {
-    suggested.php_version = /php 8\.2/.test(constraintsText) ? "8.2" : "8.3";
-    suggested.symfony_version = /symfony 6/.test(constraintsText) ? "6" : "7";
+  } else if (blueprint === "reference-php-app") {
     suggested.use_docker = /docker|container|compose/.test(combinedText);
-    suggested.use_postgresql = /postgres|postgresql/.test(combinedText);
-    suggested.use_mysql = /mysql|mariadb/.test(combinedText);
+  } else if (blueprint === "symfony-backend") {
+    suggested.php_version = /php 8\.2/.test(constraintsText) ? "8.2" : "8.3";
+    suggested.symfony_version = inferSymfonyVersion(input);
+    suggested.database = inferSymfonyDatabase(input, blueprint);
+    suggested.use_docker = /docker|container|compose/.test(combinedText);
+  } else if (blueprint === "symfony-nextjs") {
+    suggested.php_version = /php 8\.2/.test(constraintsText) ? "8.2" : "8.3";
+    suggested.database = inferSymfonyDatabase(input, blueprint);
+    suggested.use_docker = /docker|container|compose/.test(combinedText);
   } else if (blueprint === "static-site") {
     suggested.description = input.summary || "A static website";
   }
