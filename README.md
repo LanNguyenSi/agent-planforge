@@ -325,9 +325,3 @@ The tests cover:
 - rerun and resume metadata
 - dependency graph, runner contract, and handoff policy structure
 - playbook references and `.ai/` artifact generation
-
-## Docker
-
-```bash
-docker build -t agent-planforge .
-```
