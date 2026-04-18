@@ -5,7 +5,9 @@ on:
     branches:
       - main
       - feat/**
+      - release/**
   pull_request:
+  workflow_call:
 
 jobs:
   cli:
