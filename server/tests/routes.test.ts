@@ -210,6 +210,69 @@ describe("POST /api/generate — happy path", () => {
   );
 
   it(
+    "done event carries an outputTarGz that unpacks to the CLI's expected file layout",
+    async () => {
+      // The tarball is the contract project-forge relies on — it has to
+      // contain the file tree the CLI wrote (planning/, exports/, etc.)
+      // so the client can reconstruct the layout project-forge's
+      // downstream code (resolvePlanforgeOutputPaths, scaffoldkit
+      // invocation) reads from disk.
+      const res = await app.fetch(
+        new Request("http://test/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: AUTH },
+          body: JSON.stringify({ input: sampleInput }),
+        }),
+      );
+      expect(res.status).toBe(200);
+
+      const events = await collectSSE(res.body);
+      const done = events.find((e) => e.event === "done")!.data as {
+        outputTarGz?: string;
+      };
+      expect(typeof done.outputTarGz).toBe("string");
+      expect(done.outputTarGz!.length).toBeGreaterThan(0);
+
+      // Unpack + inspect. Uses the same tools project-forge will use —
+      // system tar via a pipe, no extra deps.
+      const { spawn } = await import("node:child_process");
+      const { mkdtemp, rm, readdir } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { resolve } = await import("node:path");
+
+      const dir = await mkdtemp(resolve(tmpdir(), "planforge-untar-"));
+      try {
+        await new Promise<void>((resolveP, rejectP) => {
+          const child = spawn("tar", ["-xzf", "-", "-C", dir], {
+            stdio: ["pipe", "ignore", "pipe"],
+          });
+          child.on("error", rejectP);
+          child.on("close", (code) => {
+            if (code === 0) resolveP();
+            else rejectP(new Error(`tar exited ${code}`));
+          });
+          child.stdin.end(Buffer.from(done.outputTarGz!, "base64"));
+        });
+
+        const top = await readdir(dir);
+        // planforge-index.json is the sentinel the existing
+        // resolvePlanforgeOutputPaths() keys off of.
+        expect(top).toContain("planforge-index.json");
+        // exports/scaffoldkit-input.json is the handoff file
+        // project-forge feeds to the scaffoldkit CLI.
+        const exportsDir = await readdir(resolve(dir, "exports"));
+        expect(exportsDir).toContain("scaffoldkit-input.json");
+        // planning/plan-output.json — the canonical plan artifact.
+        const planningDir = await readdir(resolve(dir, "planning"));
+        expect(planningDir).toContain("plan-output.json");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it(
     "does not log the request body (secret-safety)",
     async () => {
       // The ticket + ADR-0002 require that we never log request bodies;

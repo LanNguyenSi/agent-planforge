@@ -25,6 +25,10 @@ import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export interface GenerateOptions {
   planforgeRoot: string;
@@ -65,10 +69,46 @@ export interface GenerateEvent {
   /** present on `done` — final artifacts read from the tempdir */
   planOutput?: unknown;
   scaffoldkitInput?: unknown;
+  /**
+   * Base64-encoded gzipped tarball of the CLI's output tempdir. Present on
+   * `done` so callers like project-forge can reconstruct the full file
+   * tree (planforge-index.json, planning/, handoff/, exports/, tasks/,
+   * architecture-overview.md, …) that the CLI wrote on disk. Encoding
+   * choice: base64 inside the SSE `data:` frame keeps the payload as a
+   * single atomic blob — no partial-tar delivery to handle on the client.
+   * Typical size for the sample input is ~60-120 KB; the cap at 10 MiB
+   * below keeps a pathological prompt from OOMing the service.
+   */
+  outputTarGz?: string;
   /** present on `error` */
   message?: string;
   /** subprocess exit code, present on `done` and `error` */
   exitCode?: number;
+}
+
+// Hard cap on the gzipped tarball that the `done` event carries. 10 MiB is
+// generous for a typical plan (~120 KB) and leaves headroom for large
+// handoff trees without letting a pathological run stream an unbounded
+// payload into the client's memory.
+const TARBALL_MAX_BYTES = 10 * 1024 * 1024;
+
+async function tarDir(dir: string): Promise<Buffer> {
+  // `-C dir .` tars the directory's CONTENTS rather than the dir itself —
+  // callers extract straight into their own tempdir without a nested
+  // `out/` layer.
+  //
+  // Note: this shells out to the system `tar`. That's present on every
+  // base image we care about (Debian bookworm-slim ships GNU tar). Going
+  // via shell instead of a Node tar library keeps the dep tree minimal.
+  const { stdout } = await execFileAsync(
+    "tar",
+    ["-czf", "-", "-C", dir, "."],
+    {
+      encoding: "buffer",
+      maxBuffer: TARBALL_MAX_BYTES,
+    },
+  );
+  return stdout;
 }
 
 export async function* runGenerate(
@@ -205,11 +245,39 @@ export async function* runGenerate(
       scaffoldkitInput = null;
     }
 
+    // Tar the full output tree so the caller can reconstruct the file
+    // layout the CLI wrote on disk. project-forge reads ~30 files from
+    // nested subdirectories (planning/, handoff/, exports/, tasks/) and
+    // needs all of them, not just the two JSON blobs above.
+    let outputTarGz: string | undefined;
+    try {
+      const buf = await tarDir(outdir);
+      if (buf.byteLength > TARBALL_MAX_BYTES) {
+        yield {
+          type: "error",
+          requestId,
+          message: `Output tarball exceeds ${TARBALL_MAX_BYTES} bytes`,
+          exitCode: 0,
+        };
+        return;
+      }
+      outputTarGz = buf.toString("base64");
+    } catch (err) {
+      yield {
+        type: "error",
+        requestId,
+        message: `Failed to tar output directory: ${(err as Error).message}`,
+        exitCode: 0,
+      };
+      return;
+    }
+
     yield {
       type: "done",
       requestId,
       planOutput,
       scaffoldkitInput,
+      outputTarGz,
       exitCode: 0,
     };
   } finally {
