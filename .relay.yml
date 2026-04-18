@@ -1,0 +1,7 @@
+name: agent-planforge
+# /healthz is unauth by design (Traefik + ops probe). The service-token
+# gate only guards /api/*.
+health: /healthz
+health_port: 8223
+compose_file: server/Dockerfile
+rollback: true
