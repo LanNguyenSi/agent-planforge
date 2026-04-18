@@ -8,18 +8,18 @@ on:
   pull_request:
 
 jobs:
-  test:
+  cli:
+    # The CLI keeps its Node 18/20 matrix — it's pure CommonJS and we
+    # want to know if a dependency upgrade ever breaks 18 for callers
+    # still on the older LTS.
     runs-on: ubuntu-latest
     strategy:
       matrix:
         node-version: [18, 20]
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -27,8 +27,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run automated tests
-        run: npm test
+      - name: Run CLI tests
+        run: npm run test:cli
 
       - name: Validate sample planning input
         run: node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/ci-sample --validate-only
@@ -38,3 +38,34 @@ jobs:
 
       - name: Check working tree cleanliness
         run: git diff --exit-code
+
+  server:
+    # The HTTP service sub-package ships TypeScript + Hono and targets
+    # Node ≥20 (matches agent-relay / agent-tasks). It has its own npm
+    # install under `server/` because it's a separate package — the
+    # root `npm ci` doesn't reach into sub-packages.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        run: npm ci --prefix server
+
+      - name: Typecheck server
+        run: npm run typecheck --prefix server
+
+      - name: Build server
+        run: npm run build --prefix server
+
+      - name: Run server tests
+        run: npm run test:server
