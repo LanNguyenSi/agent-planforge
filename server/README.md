@@ -26,7 +26,7 @@ Response: `Content-Type: text/event-stream`. Events:
 
 - `progress` — `{ requestId, stream: "stdout" | "stderr", line }` — one per
   CLI log line
-- `done` — `{ requestId, planOutput, scaffoldkitInput: <object> | null, exitCode: 0 }`
+- `done` — `{ requestId, planOutput, scaffoldkitInput: <object> | null, outputTarGz: <base64 gzip tarball>, exitCode: 0 }`. The tarball packs the **contents** of the CLI's output dir (not a nested `out/` folder); untar with `tar -xzf - -C <targetDir>`. Hard cap: 10 MiB (gzipped). Large enough for typical runs (~100 KB) and keeps a pathological prompt from streaming an unbounded blob into the client's memory.
 - `error` — `{ requestId, message, exitCode? }`
 
 ## Environment
