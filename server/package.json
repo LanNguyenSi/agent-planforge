@@ -1,0 +1,29 @@
+{
+  "name": "@agent-planforge/server",
+  "version": "0.1.0",
+  "description": "HTTP service surface around the planforge CLI. Wraps scripts/bootstrap-plan.js so project-forge and agents can drive planning over HTTP instead of shell-out.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "hono": "^4.7.9",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.18",
+    "tsx": "^4.19.4",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.4"
+  }
+}
