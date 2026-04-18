@@ -69,3 +69,52 @@ jobs:
 
       - name: Run server tests
         run: npm run test:server
+
+  docker:
+    # Validate the full image builds end-to-end: node server + TS output +
+    # CLI + scaffoldkit Python venv + blueprint source tree. The smoke
+    # asserts scaffoldkit is wired correctly by invoking it the same way
+    # the HTTP service does at runtime.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: server/Dockerfile
+          tags: agent-planforge:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scaffoldkit CLI smoke via venv python
+        run: |
+          docker run --rm --entrypoint /opt/sk-venv/bin/python3 \
+            agent-planforge:ci -m scaffoldkit.cli --help
+
+      - name: Scaffoldkit CLI smoke via PATH
+        run: |
+          docker run --rm --entrypoint scaffoldkit \
+            agent-planforge:ci --help
+
+      - name: HTTP service boots + healthz green
+        run: |
+          docker run -d --name planforge-smoke \
+            -e PLANFORGE_SERVICE_TOKEN=ci-token \
+            -p 18223:8223 \
+            agent-planforge:ci
+          for i in 1 2 3 4 5; do
+            sleep 2
+            if curl -fsS http://localhost:18223/healthz; then echo; exit 0; fi
+          done
+          echo "healthz never came up"
+          docker logs planforge-smoke
+          exit 1
+
+      - name: Image size report
+        run: docker images agent-planforge:ci --format '{{.Size}}'
