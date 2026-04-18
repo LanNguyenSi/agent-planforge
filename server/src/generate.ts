@@ -1,0 +1,219 @@
+/**
+ * Wraps the planforge CLI (`scripts/bootstrap-plan.js`) in a subprocess-spawn
+ * so the HTTP handler can stream progress over SSE without having to refactor
+ * the ~4k-line CLI script. The CLI remains the canonical behaviour — the
+ * HTTP service is a transport.
+ *
+ * Per-request flow:
+ *   1. Create a fresh tempdir keyed by request-id (concurrent isolation)
+ *   2. Write the incoming `input` JSON to `${tmp}/input.json`
+ *   3. Spawn `node bootstrap-plan.js --input ${tmp}/input.json --outdir ${tmp}/out --no-install`
+ *   4. Forward stdout/stderr lines to the caller as SSE `progress` events
+ *   5. On clean exit: read `out/planning/plan-output.json` + `out/exports/scaffoldkit-input.json`
+ *      and emit a `done` event containing both
+ *   6. Always clean up the tempdir — success OR failure — so we never leak secrets in tmp
+ *
+ * Not handled in v1 (see ADR-0002 § "Risks"):
+ *   - No resumption. A mid-run crash means the caller re-POSTs; no partial recovery.
+ *   - No scaffoldkit invocation. The CLI writes `scaffoldkit-input.json`; running
+ *     scaffoldkit itself stays on project-forge's side during the transition. A
+ *     follow-up ticket extends this endpoint to include scaffolding once the
+ *     Python venv lands in planforge's image.
+ */
+import { spawn } from "node:child_process";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+
+export interface GenerateOptions {
+  planforgeRoot: string;
+  nodeBin: string;
+  /**
+   * When aborted, the CLI subprocess is killed with SIGTERM and the
+   * generator exits on its next `yield`. The `finally` block still runs,
+   * so the tempdir is cleaned up.
+   */
+  abortSignal?: AbortSignal;
+}
+
+/**
+ * Curated env for the CLI subprocess. Starting from `process.env` and
+ * deny-listing the obvious secrets leaks anything we haven't thought of
+ * yet; an allow-list is safer by construction. These are the only vars
+ * the CLI actually reads (checked against `scripts/bootstrap-plan.js`):
+ * PATH for resolving tools, HOME for npm defaults, NODE_ENV for library
+ * defaults. Anything else is explicit opt-in.
+ */
+function buildChildEnv(): NodeJS.ProcessEnv {
+  const allow = ["PATH", "HOME", "NODE_ENV", "TMPDIR", "LANG", "LC_ALL"];
+  const childEnv: NodeJS.ProcessEnv = {};
+  for (const key of allow) {
+    const v = process.env[key];
+    if (v !== undefined) childEnv[key] = v;
+  }
+  return childEnv;
+}
+
+export interface GenerateEvent {
+  type: "progress" | "done" | "error";
+  /** opaque per-request id — callers can correlate multi-stage flows later */
+  requestId: string;
+  /** present on `progress` events — a single stdout/stderr line */
+  line?: string;
+  stream?: "stdout" | "stderr";
+  /** present on `done` — final artifacts read from the tempdir */
+  planOutput?: unknown;
+  scaffoldkitInput?: unknown;
+  /** present on `error` */
+  message?: string;
+  /** subprocess exit code, present on `done` and `error` */
+  exitCode?: number;
+}
+
+export async function* runGenerate(
+  input: unknown,
+  opts: GenerateOptions,
+): AsyncGenerator<GenerateEvent> {
+  const requestId = randomUUID();
+  // Key the tempdir on the request id so logs, open-file debugging, and
+  // crash forensics all correlate cleanly. `mkdtemp` still appends a
+  // random suffix so two requests with an identical (hypothetical)
+  // request id would never collide.
+  const tmp = await mkdtemp(resolve(tmpdir(), `planforge-${requestId}-`));
+  const inputPath = resolve(tmp, "input.json");
+  const outdir = resolve(tmp, "out");
+  const scriptPath = resolve(opts.planforgeRoot, "scripts", "bootstrap-plan.js");
+
+  try {
+    await writeFile(inputPath, JSON.stringify(input), { encoding: "utf8", mode: 0o600 });
+
+    const child = spawn(
+      opts.nodeBin,
+      [scriptPath, "--input", inputPath, "--outdir", outdir, "--no-install"],
+      {
+        cwd: tmp,
+        // Start from an empty env, add back only the vars the CLI needs.
+        // Any secret that isn't explicitly allow-listed never reaches the
+        // 4k-line CLI script.
+        env: buildChildEnv(),
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    // Propagate client disconnect → kill the subprocess. Without this, a
+    // dropped SSE consumer leaves the CLI running to completion on the
+    // server. The tempdir cleanup in the outer `finally` still runs.
+    const onAbort = () => {
+      if (!child.killed) child.kill("SIGTERM");
+    };
+    opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
+
+    // Buffer lines rather than raw chunks so the caller always sees
+    // complete log lines as SSE frames.
+    const queue: GenerateEvent[] = [];
+    let done = false;
+    let resolveWake: (() => void) | null = null;
+    const wake = () => {
+      const r = resolveWake;
+      resolveWake = null;
+      r?.();
+    };
+
+    const attachLineReader = (stream: NodeJS.ReadableStream, tag: "stdout" | "stderr") => {
+      let buf = "";
+      const flush = () => {
+        if (buf.length > 0) {
+          queue.push({ type: "progress", requestId, stream: tag, line: buf });
+          buf = "";
+          wake();
+        }
+      };
+      stream.setEncoding("utf8");
+      stream.on("data", (chunk: string) => {
+        buf += chunk;
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          queue.push({ type: "progress", requestId, stream: tag, line });
+          wake();
+        }
+      });
+      // Flush the last partial line on both normal `end` and stream `error`
+      // so an abrupt process death still surfaces the last log fragment.
+      stream.on("end", flush);
+      stream.on("error", flush);
+    };
+    attachLineReader(child.stdout!, "stdout");
+    attachLineReader(child.stderr!, "stderr");
+
+    let exitCode: number | null = null;
+    child.on("close", (code) => {
+      exitCode = code;
+      done = true;
+      wake();
+    });
+    child.on("error", (err) => {
+      queue.push({ type: "error", requestId, message: err.message });
+      done = true;
+      wake();
+    });
+
+    while (!done || queue.length > 0) {
+      if (queue.length === 0) {
+        await new Promise<void>((r) => {
+          resolveWake = r;
+        });
+      }
+      while (queue.length > 0) {
+        yield queue.shift()!;
+      }
+    }
+
+    if (exitCode !== 0) {
+      yield {
+        type: "error",
+        requestId,
+        message: `planforge CLI exited with code ${exitCode ?? "unknown"}`,
+        exitCode: exitCode ?? undefined,
+      };
+      return;
+    }
+
+    let planOutput: unknown;
+    let scaffoldkitInput: unknown;
+    try {
+      planOutput = JSON.parse(
+        await readFile(resolve(outdir, "planning", "plan-output.json"), "utf8"),
+      );
+    } catch (err) {
+      yield {
+        type: "error",
+        requestId,
+        message: `Failed to read plan-output.json: ${(err as Error).message}`,
+        exitCode: 0,
+      };
+      return;
+    }
+    try {
+      scaffoldkitInput = JSON.parse(
+        await readFile(resolve(outdir, "exports", "scaffoldkit-input.json"), "utf8"),
+      );
+    } catch {
+      // scaffoldkit-input.json is optional — not every input produces one.
+      scaffoldkitInput = null;
+    }
+
+    yield {
+      type: "done",
+      requestId,
+      planOutput,
+      scaffoldkitInput,
+      exitCode: 0,
+    };
+  } finally {
+    opts.abortSignal?.removeEventListener?.("abort", () => {});
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
