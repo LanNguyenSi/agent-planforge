@@ -21,6 +21,19 @@ health_port: 8223
 # `/healthz` on port 8223 from inside it. Path is relative to APPS_DIR
 # (= /apps inside the relay container, = /root/git on the VPS host),
 # resolving to /apps/project-forge/docker-compose.yml.
+#
+# Side effect: agent-relay's preflight reports `containers_running` and
+# `traefik_labels` against PROJECT-FORGE's compose, not agent-planforge's.
+# Functionally correct (this deploy genuinely depends on project-forge
+# state being live) but worth knowing — a "preflight passed" line in
+# the deploy log is reading project-forge's runtime, not ours.
+#
+# Health-check semantics: relay iterates services in `docker compose ps`
+# order (app, planforge) and returns success on the FIRST container that
+# answers /healthz on port 8223. project-forge `app` listens on 3000 →
+# probe fails → relay falls through to planforge → planforge answers →
+# deploy reported green. If `app` ever exposes 8223 internally this
+# stops being a clear signal, but that change would itself be a red flag.
 compose_file: ../project-forge/docker-compose.yml
 
 command: |
