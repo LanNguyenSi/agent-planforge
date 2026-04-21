@@ -16,6 +16,10 @@ const schema = z.object({
   // running Node, so containers that ship a single Node install get the
   // right value without configuration.
   NODE_BIN: z.string().default(process.execPath),
+  // Python binary that runs `scaffoldkit.cli from-planforge` after the
+  // planforge CLI writes `scaffoldkit-input.json`. The Dockerfile lays
+  // down a pinned venv at /opt/sk-venv; local dev / tests override.
+  SCAFFOLDKIT_PYTHON: z.string().default("/opt/sk-venv/bin/python3"),
 });
 
 function loadEnv() {

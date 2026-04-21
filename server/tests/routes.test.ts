@@ -15,6 +15,13 @@ import { env } from "../src/config.js";
 const AUTH = `Bearer ${env.PLANFORGE_SERVICE_TOKEN}`;
 const SAMPLE_INPUT_PATH = resolve(env.PLANFORGE_ROOT, "examples", "sample-input.json");
 
+// Existing happy-path tests don't care about scaffolding — setting
+// `scaffold: false` keeps the server off the (test-env-dependent)
+// scaffoldkit binary. A dedicated describe block below covers the
+// scaffold:true paths explicitly.
+const GENERATE_BODY = (input: unknown, extra: Record<string, unknown> = {}) =>
+  JSON.stringify({ input, scaffold: false, ...extra });
+
 describe("GET /healthz", () => {
   it("is unauth and returns status ok", async () => {
     const res = await app.fetch(new Request("http://test/healthz"));
@@ -142,7 +149,7 @@ describe("POST /api/generate — happy path", () => {
         new Request("http://test/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: AUTH },
-          body: JSON.stringify({ input: sampleInput }),
+          body: GENERATE_BODY(sampleInput),
         }),
       );
       expect(res.status).toBe(200);
@@ -154,12 +161,21 @@ describe("POST /api/generate — happy path", () => {
       expect(types).not.toContain("error");
 
       const done = events.find((e) => e.event === "done")!
-        .data as { planOutput: { summary?: unknown }; scaffoldkitInput: unknown; exitCode: number };
+        .data as {
+          planOutput: { summary?: unknown };
+          scaffoldkitInput: unknown;
+          scaffoldkit: { invoked: boolean; skipped?: string };
+          exitCode: number;
+        };
       expect(done.exitCode).toBe(0);
       expect(done.planOutput).toBeTruthy();
       // The CLI always produces scaffoldkit-input.json on success for this sample
       // — assert it's non-null so a regression that stops writing it is caught.
       expect(done.scaffoldkitInput).toBeTruthy();
+      // scaffold: false was passed — scaffoldkit must have been skipped
+      // with that reason, not silently invoked.
+      expect(done.scaffoldkit.invoked).toBe(false);
+      expect(done.scaffoldkit.skipped).toBe("opt_out");
     },
     // CLI can take a few seconds on the sample input; give generous headroom.
     60_000,
@@ -173,14 +189,14 @@ describe("POST /api/generate — happy path", () => {
           new Request("http://test/api/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: AUTH },
-            body: JSON.stringify({ input: sampleInput }),
+            body: GENERATE_BODY(sampleInput),
           }),
         ),
         app.fetch(
           new Request("http://test/api/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: AUTH },
-            body: JSON.stringify({ input: sampleInput }),
+            body: GENERATE_BODY(sampleInput),
           }),
         ),
       ]);
@@ -221,7 +237,7 @@ describe("POST /api/generate — happy path", () => {
         new Request("http://test/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: AUTH },
-          body: JSON.stringify({ input: sampleInput }),
+          body: GENERATE_BODY(sampleInput),
         }),
       );
       expect(res.status).toBe(200);
@@ -297,7 +313,7 @@ describe("POST /api/generate — happy path", () => {
           new Request("http://test/api/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: AUTH },
-            body: JSON.stringify({ input }),
+            body: GENERATE_BODY(input),
           }),
         );
         // Drain the SSE body so any subprocess-triggered logging has a
@@ -309,6 +325,226 @@ describe("POST /api/generate — happy path", () => {
       }
       const joined = captured.join("\n");
       expect(joined).not.toContain(sentinel);
+    },
+    60_000,
+  );
+});
+
+describe("POST /api/generate — scaffoldkit", () => {
+  let sampleInput: unknown;
+
+  beforeAll(async () => {
+    sampleInput = JSON.parse(await readFile(SAMPLE_INPUT_PATH, "utf8"));
+  });
+
+  async function collectSSE(body: ReadableStream<Uint8Array> | null) {
+    const events: Array<{ event: string; data: unknown }> = [];
+    if (!body) return events;
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let frameEnd: number;
+      while ((frameEnd = buf.indexOf("\n\n")) >= 0) {
+        const frame = buf.slice(0, frameEnd);
+        buf = buf.slice(frameEnd + 2);
+        const lines = frame.split("\n");
+        let event = "message";
+        let data = "";
+        for (const ln of lines) {
+          if (ln.startsWith("event:")) event = ln.slice(6).trim();
+          else if (ln.startsWith("data:")) data += ln.slice(5).trim();
+        }
+        if (data.length > 0) events.push({ event, data: JSON.parse(data) });
+      }
+    }
+    return events;
+  }
+
+  /**
+   * Drive the service through the scaffold-invoke path without needing
+   * the real scaffoldkit venv installed. We override SCAFFOLDKIT_PYTHON
+   * on the env before import-time caching by mutating `env.SCAFFOLDKIT_PYTHON`
+   * directly — the server reads it each generate via the `runGenerate`
+   * options, not a closure.
+   */
+  it(
+    "reports `not_installed` when SCAFFOLDKIT_PYTHON does not exist and scaffold defaults on",
+    async () => {
+      const orig = env.SCAFFOLDKIT_PYTHON;
+      env.SCAFFOLDKIT_PYTHON = "/definitely/does/not/exist/python3";
+      try {
+        const res = await app.fetch(
+          new Request("http://test/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: AUTH },
+            body: JSON.stringify({ input: sampleInput }),
+          }),
+        );
+        expect(res.status).toBe(200);
+        const events = await collectSSE(res.body);
+        expect(events.map((e) => e.event)).not.toContain("error");
+        const done = events.find((e) => e.event === "done")!.data as {
+          scaffoldkit: { invoked: boolean; skipped?: string };
+        };
+        expect(done.scaffoldkit.invoked).toBe(false);
+        expect(done.scaffoldkit.skipped).toBe("not_installed");
+      } finally {
+        env.SCAFFOLDKIT_PYTHON = orig;
+      }
+    },
+    60_000,
+  );
+
+  it(
+    "surfaces scaffoldkit's exit code + stderr in the `done` event when invoked",
+    async () => {
+      // Stub "python" = /bin/sh invoking a script that echoes to stderr
+      // and exits nonzero. Exercises the invoke→capture→surface path
+      // without requiring the real venv.
+      const orig = env.SCAFFOLDKIT_PYTHON;
+      // /bin/sh exits 2 and prints to stderr when given `-c 'echo x >&2; exit 2' ...`,
+      // but we can't pass args through our code path — we spawn with a
+      // fixed argv shape. Instead, use a stub shell script on disk:
+      const { mkdtemp, writeFile, chmod } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { resolve } = await import("node:path");
+      const stubDir = await mkdtemp(resolve(tmpdir(), "scaffoldkit-stub-"));
+      const stub = resolve(stubDir, "python3");
+      await writeFile(
+        stub,
+        "#!/bin/sh\necho 'stub-scaffoldkit: simulated failure' >&2\nexit 7\n",
+        { mode: 0o755 },
+      );
+      await chmod(stub, 0o755);
+      env.SCAFFOLDKIT_PYTHON = stub;
+      try {
+        const res = await app.fetch(
+          new Request("http://test/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: AUTH },
+            body: JSON.stringify({ input: sampleInput }),
+          }),
+        );
+        expect(res.status).toBe(200);
+        const events = await collectSSE(res.body);
+        expect(events.map((e) => e.event)).not.toContain("error");
+        const done = events.find((e) => e.event === "done")!.data as {
+          scaffoldkit: { invoked: boolean; exitCode?: number; stderr?: string };
+        };
+        // Nonzero scaffoldkit exit must NOT fail the whole request —
+        // planning succeeded, that's what the `done` event signals.
+        expect(done.scaffoldkit.invoked).toBe(true);
+        expect(done.scaffoldkit.exitCode).toBe(7);
+        expect(done.scaffoldkit.stderr).toContain("stub-scaffoldkit: simulated failure");
+      } finally {
+        env.SCAFFOLDKIT_PYTHON = orig;
+        const { rm } = await import("node:fs/promises");
+        await rm(stubDir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it(
+    "bundles files written by scaffoldkit into the response tarball",
+    async () => {
+      // Stub "python" = shell script that pretends to be scaffoldkit:
+      // walks argv for `--target`, writes a sentinel file there, exits 0.
+      // Proves the invoked→files-land-in-tarball pipeline end-to-end
+      // without needing the real Python venv.
+      const orig = env.SCAFFOLDKIT_PYTHON;
+      const { mkdtemp, writeFile, chmod, rm } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { resolve } = await import("node:path");
+      const stubDir = await mkdtemp(resolve(tmpdir(), "scaffoldkit-stub-ok-"));
+      const stub = resolve(stubDir, "python3");
+      await writeFile(
+        stub,
+        `#!/bin/sh
+# Walk argv for --target <dir>
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--target" ]; then TARGET="$2"; break; fi
+  shift
+done
+if [ -z "$TARGET" ]; then echo "stub: --target not found" >&2; exit 2; fi
+mkdir -p "$TARGET"
+echo "hello from scaffoldkit stub" > "$TARGET/stub-scaffolded.txt"
+exit 0
+`,
+        { mode: 0o755 },
+      );
+      await chmod(stub, 0o755);
+      env.SCAFFOLDKIT_PYTHON = stub;
+      try {
+        const res = await app.fetch(
+          new Request("http://test/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: AUTH },
+            body: JSON.stringify({ input: sampleInput }),
+          }),
+        );
+        expect(res.status).toBe(200);
+        const events = await collectSSE(res.body);
+        const done = events.find((e) => e.event === "done")!.data as {
+          scaffoldkit: { invoked: boolean; exitCode?: number };
+          outputTarGz?: string;
+        };
+        expect(done.scaffoldkit.invoked).toBe(true);
+        expect(done.scaffoldkit.exitCode).toBe(0);
+        expect(typeof done.outputTarGz).toBe("string");
+
+        // Unpack the tarball and assert the stub's file is in it — proof
+        // the scaffold step ran AND its output was bundled.
+        const { spawn } = await import("node:child_process");
+        const { readdir } = await import("node:fs/promises");
+        const untarDir = await mkdtemp(resolve(tmpdir(), "planforge-untar-"));
+        try {
+          await new Promise<void>((resP, rejP) => {
+            const child = spawn("tar", ["-xzf", "-", "-C", untarDir], {
+              stdio: ["pipe", "ignore", "pipe"],
+            });
+            child.on("error", rejP);
+            child.on("close", (code) =>
+              code === 0 ? resP() : rejP(new Error(`tar ${code}`)),
+            );
+            child.stdin.end(Buffer.from(done.outputTarGz!, "base64"));
+          });
+          const top = await readdir(untarDir);
+          expect(top).toContain("stub-scaffolded.txt");
+          // Planning sentinel still present — scaffoldkit did not wipe.
+          expect(top).toContain("planforge-index.json");
+        } finally {
+          await rm(untarDir, { recursive: true, force: true });
+        }
+      } finally {
+        env.SCAFFOLDKIT_PYTHON = orig;
+        await rm(stubDir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it(
+    "reports `opt_out` when the caller passes scaffold:false",
+    async () => {
+      const res = await app.fetch(
+        new Request("http://test/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: AUTH },
+          body: JSON.stringify({ input: sampleInput, scaffold: false }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const events = await collectSSE(res.body);
+      const done = events.find((e) => e.event === "done")!.data as {
+        scaffoldkit: { invoked: boolean; skipped?: string };
+      };
+      expect(done.scaffoldkit.invoked).toBe(false);
+      expect(done.scaffoldkit.skipped).toBe("opt_out");
     },
     60_000,
   );

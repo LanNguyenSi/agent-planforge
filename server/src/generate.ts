@@ -10,15 +10,15 @@
  *   3. Spawn `node bootstrap-plan.js --input ${tmp}/input.json --outdir ${tmp}/out --no-install`
  *   4. Forward stdout/stderr lines to the caller as SSE `progress` events
  *   5. On clean exit: read `out/planning/plan-output.json` + `out/exports/scaffoldkit-input.json`
- *      and emit a `done` event containing both
- *   6. Always clean up the tempdir — success OR failure — so we never leak secrets in tmp
+ *   6. If scaffolding is enabled (default) AND scaffoldkit-input.json exists,
+ *      invoke `<SCAFFOLDKIT_PYTHON> -m scaffoldkit.cli from-planforge …`
+ *      against the same outdir so the tarball carries scaffolded files
+ *   7. Tar the outdir and emit a `done` event with plan output + scaffoldkit
+ *      metadata (exit code, stderr, skipped-reason if not invoked)
+ *   8. Always clean up the tempdir — success OR failure — so we never leak secrets in tmp
  *
  * Not handled in v1 (see ADR-0002 § "Risks"):
  *   - No resumption. A mid-run crash means the caller re-POSTs; no partial recovery.
- *   - No scaffoldkit invocation. The CLI writes `scaffoldkit-input.json`; running
- *     scaffoldkit itself stays on project-forge's side during the transition. A
- *     follow-up ticket extends this endpoint to include scaffolding once the
- *     Python venv lands in planforge's image.
  */
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
@@ -34,11 +34,45 @@ export interface GenerateOptions {
   planforgeRoot: string;
   nodeBin: string;
   /**
+   * Python binary that runs `scaffoldkit.cli from-planforge` after the
+   * planforge CLI writes `scaffoldkit-input.json`. The container sets
+   * this to the pinned venv; tests override to a stub or skip.
+   */
+  scaffoldkitPython: string;
+  /**
+   * Default true. When false, scaffolding is skipped — the `done` event
+   * still carries the planning tarball, just without scaffolded files.
+   * Callers that only want planning artifacts (e.g. a preview UI that
+   * scaffolds later, or tests) set this to false.
+   */
+  scaffold: boolean;
+  /**
    * When aborted, the CLI subprocess is killed with SIGTERM and the
    * generator exits on its next `yield`. The `finally` block still runs,
    * so the tempdir is cleaned up.
    */
   abortSignal?: AbortSignal;
+}
+
+/**
+ * Describes what happened with scaffoldkit for a given generate run.
+ * Always present on the `done` event so callers can tell the four cases
+ * apart without second-guessing:
+ *   - `invoked: true, exitCode: 0`       — scaffolding ran cleanly
+ *   - `invoked: true, exitCode: nonzero` — ran but failed; planning OK
+ *   - `invoked: false, skipped: "…"`     — intentionally not run
+ */
+export interface ScaffoldkitResult {
+  invoked: boolean;
+  exitCode?: number;
+  stderr?: string;
+  /**
+   * Reason scaffoldkit was not invoked.
+   * - `no_input`      — CLI didn't write scaffoldkit-input.json
+   * - `opt_out`       — caller passed `scaffold: false`
+   * - `not_installed` — SCAFFOLDKIT_PYTHON binary is missing (dev / tests)
+   */
+  skipped?: "no_input" | "opt_out" | "not_installed";
 }
 
 /**
@@ -80,17 +114,146 @@ export interface GenerateEvent {
    * below keeps a pathological prompt from OOMing the service.
    */
   outputTarGz?: string;
+  /** present on `done` — always populated so callers can branch on it */
+  scaffoldkit?: ScaffoldkitResult;
   /** present on `error` */
   message?: string;
   /** subprocess exit code, present on `done` and `error` */
   exitCode?: number;
 }
 
-// Hard cap on the gzipped tarball that the `done` event carries. 10 MiB is
-// generous for a typical plan (~120 KB) and leaves headroom for large
-// handoff trees without letting a pathological run stream an unbounded
-// payload into the client's memory.
-const TARBALL_MAX_BYTES = 10 * 1024 * 1024;
+// Hard cap on the gzipped tarball that the `done` event carries. Raised
+// from 10 MiB → 50 MiB when scaffolding landed: scaffoldkit emits a
+// full project tree (source files, configs, lockfiles) that can easily
+// be several MB gzipped for a mid-size blueprint. 50 MiB still refuses
+// a pathological run that would OOM the client, while leaving ~10×
+// headroom over typical scaffolded output (~2–5 MB).
+//
+// Alternative considered: keep the 10 MiB cap and error loudly when
+// scaffolding blows through it. Rejected because a realistic blueprint
+// exceeding 10 MiB is a normal operating mode, not an anomaly — we'd
+// be shipping a broken-by-default endpoint. The ~5× size bump is
+// acceptable because the only server-side caller today is project-forge's
+// Next.js route handler (not a browser), which has generous heap headroom.
+// Browser callers should opt out via `scaffold: false` and fetch the
+// scaffolded tree out-of-band.
+const TARBALL_MAX_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Wall-clock cap on a single scaffoldkit invocation. 5 minutes is far
+ * longer than any real blueprint needs; anything hitting this is
+ * either hung or a bug, and we'd rather surface a deterministic
+ * `exitCode: -1 + stderr: "timeout …"` on the `done` event than let
+ * the HTTP request block indefinitely. Unitless here because vitest
+ * mocks the clock; plain integer ms.
+ */
+const SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Max captured scaffoldkit stderr that rides out on the `done` event.
+ * Kept deliberately small: scaffoldkit may echo user-supplied input
+ * values in its error messages, and the `done` frame is delivered to
+ * the HTTP caller where it may land in logs. A 4 KiB tail is enough
+ * for a debug signal without amplifying an accidental input leak.
+ * Callers that need the full stderr should run scaffoldkit locally.
+ */
+const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
+
+/**
+ * Invoke scaffoldkit against a planforge-produced `scaffoldkit-input.json`.
+ * Returns the child's exit code + a capped captured stderr; never throws
+ * on a nonzero exit — that's surfaced to the caller as metadata so a
+ * failed scaffold doesn't mask a successful plan.
+ *
+ * Timeout → SIGTERM → SIGKILL, with `exitCode: -1` + a clear stderr
+ * marker so callers can detect the timeout case in `done.scaffoldkit`.
+ *
+ * AbortSignal propagation: when the HTTP client disconnects mid-scaffold,
+ * the subprocess is killed so the server doesn't run orphaned work to
+ * completion.
+ *
+ * ENOENT on the Python binary is re-thrown so the caller can surface
+ * `skipped: "not_installed"` cleanly.
+ */
+async function runScaffoldkit(args: {
+  python: string;
+  inputPath: string;
+  outdir: string;
+  abortSignal?: AbortSignal;
+}): Promise<{ exitCode: number; stderr: string }> {
+  return await new Promise((resolvePromise, rejectPromise) => {
+    // Arg shape mirrors what project-forge has been running in the old
+    // subprocess path: `from-planforge <input> --target <outdir>
+    // --overwrite --no-install`. `--no-install` keeps the service off
+    // the network and prevents scaffoldkit from running `npm install`
+    // inside the HTTP service's tempdir.
+    const child = spawn(
+      args.python,
+      [
+        "-m",
+        "scaffoldkit.cli",
+        "from-planforge",
+        args.inputPath,
+        "--target",
+        args.outdir,
+        "--overwrite",
+        "--no-install",
+      ],
+      {
+        cwd: args.outdir,
+        env: buildChildEnv(),
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+    let stderr = "";
+    let timedOut = false;
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+      if (stderr.length > SCAFFOLDKIT_STDERR_MAX_BYTES) {
+        stderr = stderr.slice(0, SCAFFOLDKIT_STDERR_MAX_BYTES);
+      }
+    });
+
+    // Timeout watchdog: SIGTERM the child after SCAFFOLDKIT_TIMEOUT_MS.
+    // SIGKILL 5s later if it hasn't exited.
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      if (!child.killed) child.kill("SIGTERM");
+      const kill = setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL");
+      }, 5_000);
+      kill.unref?.();
+    }, SCAFFOLDKIT_TIMEOUT_MS);
+    timeout.unref?.();
+
+    // Abort propagation: when the HTTP client disconnects, kill the
+    // scaffold subprocess too. Without this, a hung scaffold keeps
+    // running on the server after the caller gave up.
+    const onAbort = () => {
+      if (!child.killed) child.kill("SIGTERM");
+    };
+    args.abortSignal?.addEventListener("abort", onAbort, { once: true });
+
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      args.abortSignal?.removeEventListener("abort", onAbort);
+      rejectPromise(err);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      args.abortSignal?.removeEventListener("abort", onAbort);
+      if (timedOut) {
+        resolvePromise({
+          exitCode: -1,
+          stderr: `scaffoldkit timed out after ${SCAFFOLDKIT_TIMEOUT_MS}ms (${signal ?? "terminated"})`,
+        });
+        return;
+      }
+      resolvePromise({ exitCode: code ?? -1, stderr });
+    });
+  });
+}
 
 async function tarDir(dir: string): Promise<Buffer> {
   // `-C dir .` tars the directory's CONTENTS rather than the dir itself —
@@ -236,13 +399,48 @@ export async function* runGenerate(
       };
       return;
     }
+    const scaffoldkitInputPath = resolve(outdir, "exports", "scaffoldkit-input.json");
     try {
-      scaffoldkitInput = JSON.parse(
-        await readFile(resolve(outdir, "exports", "scaffoldkit-input.json"), "utf8"),
-      );
+      scaffoldkitInput = JSON.parse(await readFile(scaffoldkitInputPath, "utf8"));
     } catch {
       // scaffoldkit-input.json is optional — not every input produces one.
       scaffoldkitInput = null;
+    }
+
+    // Run scaffoldkit if the CLI produced an input and the caller didn't
+    // opt out. Populate `scaffoldkit` metadata unconditionally so the
+    // caller can always branch on why files did/didn't end up in the tar.
+    let scaffoldkit: ScaffoldkitResult;
+    if (!opts.scaffold) {
+      scaffoldkit = { invoked: false, skipped: "opt_out" };
+    } else if (scaffoldkitInput === null) {
+      scaffoldkit = { invoked: false, skipped: "no_input" };
+    } else {
+      try {
+        const { exitCode, stderr } = await runScaffoldkit({
+          python: opts.scaffoldkitPython,
+          inputPath: scaffoldkitInputPath,
+          outdir,
+          abortSignal: opts.abortSignal,
+        });
+        scaffoldkit = { invoked: true, exitCode, stderr };
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") {
+          // Scaffoldkit python is not installed in this environment.
+          // Still emit `done` so planning artifacts aren't discarded;
+          // callers inspect `scaffoldkit.skipped` to decide.
+          scaffoldkit = { invoked: false, skipped: "not_installed" };
+        } else {
+          yield {
+            type: "error",
+            requestId,
+            message: `Failed to spawn scaffoldkit: ${(err as Error).message}`,
+            exitCode: 0,
+          };
+          return;
+        }
+      }
     }
 
     // Tar the full output tree so the caller can reconstruct the file
@@ -277,6 +475,7 @@ export async function* runGenerate(
       requestId,
       planOutput,
       scaffoldkitInput,
+      scaffoldkit,
       outputTarGz,
       exitCode: 0,
     };

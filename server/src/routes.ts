@@ -61,9 +61,16 @@ api.use("*", async (c, next) => {
 // POST /api/generate — runs the planforge CLI in an isolated tempdir and
 // streams progress via SSE. Response content-type is text/event-stream.
 //
+// Request body: { input: <planning-input>, scaffold?: boolean }
+//   - `scaffold` (default true): after the CLI writes scaffoldkit-input.json,
+//     invoke scaffoldkit against the outdir so the `done` tarball contains
+//     scaffolded project files. Set `false` for planning-only runs.
+//
 // Events emitted:
 //   - `progress` — { requestId, stream: "stdout"|"stderr", line }
-//   - `done`     — { requestId, planOutput, scaffoldkitInput | null, exitCode: 0 }
+//   - `done`     — { requestId, planOutput, scaffoldkitInput | null,
+//                     scaffoldkit: { invoked, exitCode?, stderr?, skipped? },
+//                     outputTarGz, exitCode: 0 }
 //   - `error`    — { requestId, message, exitCode? }
 //
 // The CLI's stdout lines are the authoritative progress feed today; when the
@@ -78,7 +85,7 @@ api.post("/generate", async (c) => {
   }
   if (!body || typeof body !== "object" || !("input" in body)) {
     return c.json(
-      { error: "bad_request", message: "Body must be { input: <planning-input>, options?: {} }" },
+      { error: "bad_request", message: "Body must be { input: <planning-input>, scaffold?: boolean }" },
       400,
     );
   }
@@ -87,6 +94,9 @@ api.post("/generate", async (c) => {
   // become secrets downstream. Only the request id + timing + outcome are
   // log-worthy. See ADR-0002 § "Secret handling".
   const input = (body as { input: unknown }).input;
+  // Default scaffold=true. An explicit `false` opts out; any other value
+  // (including omission) preserves back-compat by scaffolding on.
+  const scaffold = (body as { scaffold?: unknown }).scaffold !== false;
 
   // Wire the HTTP client's AbortSignal through to the CLI subprocess so a
   // mid-stream disconnect doesn't leave an orphan node process + tempdir
@@ -103,6 +113,8 @@ api.post("/generate", async (c) => {
       for await (const ev of runGenerate(input, {
         planforgeRoot: env.PLANFORGE_ROOT,
         nodeBin: env.NODE_BIN,
+        scaffoldkitPython: env.SCAFFOLDKIT_PYTHON,
+        scaffold,
         abortSignal: controller.signal,
       })) {
         requestId = ev.requestId;
