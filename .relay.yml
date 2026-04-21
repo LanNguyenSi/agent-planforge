@@ -1,7 +1,50 @@
 name: agent-planforge
+
+# agent-planforge does not run as its own container — it lives as a service
+# inside project-forge's docker-compose (`build.context: ../agent-planforge`,
+# `dockerfile: server/Dockerfile`). "Deploy" via the panel therefore means
+# rebuild project-forge's planforge image with the latest agent-planforge
+# source and recreate just that one service.
+#
+# This routes through agent-relay's `command:` mode, which skips the
+# default-flow `compose build` (which would try to docker-compose-build a
+# Dockerfile and fail with `cli.named` parse errors). The command does the
+# git pull itself because customCommandDeploy doesn't auto-pull.
+
 # /healthz is unauth by design (Traefik + ops probe). The service-token
 # gate only guards /api/*.
 health: /healthz
 health_port: 8223
-compose_file: server/Dockerfile
-rollback: true
+
+# Pointed at project-forge's compose so the relay's post-command health
+# check can `docker compose ps` the planforge service container and probe
+# `/healthz` on port 8223 from inside it. Path is relative to APPS_DIR
+# (= /apps inside the relay container, = /root/git on the VPS host),
+# resolving to /apps/project-forge/docker-compose.yml.
+#
+# Side effect: agent-relay's preflight reports `containers_running` and
+# `traefik_labels` against PROJECT-FORGE's compose, not agent-planforge's.
+# Functionally correct (this deploy genuinely depends on project-forge
+# state being live) but worth knowing — a "preflight passed" line in
+# the deploy log is reading project-forge's runtime, not ours.
+#
+# Health-check semantics: relay iterates services in `docker compose ps`
+# order (app, planforge) and returns success on the FIRST container that
+# answers /healthz on port 8223. project-forge `app` listens on 3000 →
+# probe fails → relay falls through to planforge → planforge answers →
+# deploy reported green. If `app` ever exposes 8223 internally this
+# stops being a clear signal, but that change would itself be a red flag.
+compose_file: ../project-forge/docker-compose.yml
+
+command: |
+  set -e
+  git pull --ff-only origin main
+  cd /apps/project-forge
+  docker compose build planforge
+  docker compose up -d planforge
+
+# Auto-rollback would `git reset --hard` agent-planforge to the pre-deploy
+# SHA but cannot undo project-forge's image rebuild + container recreate.
+# The rollback would be a lie. Operator intervention if a real rollback is
+# needed (revert + re-deploy).
+rollback: false
