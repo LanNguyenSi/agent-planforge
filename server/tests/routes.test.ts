@@ -450,6 +450,85 @@ describe("POST /api/generate — scaffoldkit", () => {
   );
 
   it(
+    "bundles files written by scaffoldkit into the response tarball",
+    async () => {
+      // Stub "python" = shell script that pretends to be scaffoldkit:
+      // walks argv for `--target`, writes a sentinel file there, exits 0.
+      // Proves the invoked→files-land-in-tarball pipeline end-to-end
+      // without needing the real Python venv.
+      const orig = env.SCAFFOLDKIT_PYTHON;
+      const { mkdtemp, writeFile, chmod, rm } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { resolve } = await import("node:path");
+      const stubDir = await mkdtemp(resolve(tmpdir(), "scaffoldkit-stub-ok-"));
+      const stub = resolve(stubDir, "python3");
+      await writeFile(
+        stub,
+        `#!/bin/sh
+# Walk argv for --target <dir>
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--target" ]; then TARGET="$2"; break; fi
+  shift
+done
+if [ -z "$TARGET" ]; then echo "stub: --target not found" >&2; exit 2; fi
+mkdir -p "$TARGET"
+echo "hello from scaffoldkit stub" > "$TARGET/stub-scaffolded.txt"
+exit 0
+`,
+        { mode: 0o755 },
+      );
+      await chmod(stub, 0o755);
+      env.SCAFFOLDKIT_PYTHON = stub;
+      try {
+        const res = await app.fetch(
+          new Request("http://test/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: AUTH },
+            body: JSON.stringify({ input: sampleInput }),
+          }),
+        );
+        expect(res.status).toBe(200);
+        const events = await collectSSE(res.body);
+        const done = events.find((e) => e.event === "done")!.data as {
+          scaffoldkit: { invoked: boolean; exitCode?: number };
+          outputTarGz?: string;
+        };
+        expect(done.scaffoldkit.invoked).toBe(true);
+        expect(done.scaffoldkit.exitCode).toBe(0);
+        expect(typeof done.outputTarGz).toBe("string");
+
+        // Unpack the tarball and assert the stub's file is in it — proof
+        // the scaffold step ran AND its output was bundled.
+        const { spawn } = await import("node:child_process");
+        const { readdir } = await import("node:fs/promises");
+        const untarDir = await mkdtemp(resolve(tmpdir(), "planforge-untar-"));
+        try {
+          await new Promise<void>((resP, rejP) => {
+            const child = spawn("tar", ["-xzf", "-", "-C", untarDir], {
+              stdio: ["pipe", "ignore", "pipe"],
+            });
+            child.on("error", rejP);
+            child.on("close", (code) =>
+              code === 0 ? resP() : rejP(new Error(`tar ${code}`)),
+            );
+            child.stdin.end(Buffer.from(done.outputTarGz!, "base64"));
+          });
+          const top = await readdir(untarDir);
+          expect(top).toContain("stub-scaffolded.txt");
+          // Planning sentinel still present — scaffoldkit did not wipe.
+          expect(top).toContain("planforge-index.json");
+        } finally {
+          await rm(untarDir, { recursive: true, force: true });
+        }
+      } finally {
+        env.SCAFFOLDKIT_PYTHON = orig;
+        await rm(stubDir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it(
     "reports `opt_out` when the caller passes scaffold:false",
     async () => {
       const res = await app.fetch(

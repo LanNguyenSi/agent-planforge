@@ -122,28 +122,64 @@ export interface GenerateEvent {
   exitCode?: number;
 }
 
-// Hard cap on the gzipped tarball that the `done` event carries. The cap
-// was raised from 10 MiB → 50 MiB when scaffolding landed: scaffoldkit
-// emits a full project tree (source files, configs, lockfiles) that can
-// easily be several MB gzipped for a mid-size blueprint. 50 MiB still
-// refuses a pathological run that would OOM the client, while leaving
-// headroom ~10× typical scaffolded output (~2–5 MB).
+// Hard cap on the gzipped tarball that the `done` event carries. Raised
+// from 10 MiB → 50 MiB when scaffolding landed: scaffoldkit emits a
+// full project tree (source files, configs, lockfiles) that can easily
+// be several MB gzipped for a mid-size blueprint. 50 MiB still refuses
+// a pathological run that would OOM the client, while leaving ~10×
+// headroom over typical scaffolded output (~2–5 MB).
+//
+// Alternative considered: keep the 10 MiB cap and error loudly when
+// scaffolding blows through it. Rejected because a realistic blueprint
+// exceeding 10 MiB is a normal operating mode, not an anomaly — we'd
+// be shipping a broken-by-default endpoint. The ~5× size bump is
+// acceptable because the only server-side caller today is project-forge's
+// Next.js route handler (not a browser), which has generous heap headroom.
+// Browser callers should opt out via `scaffold: false` and fetch the
+// scaffolded tree out-of-band.
 const TARBALL_MAX_BYTES = 50 * 1024 * 1024;
 
 /**
+ * Wall-clock cap on a single scaffoldkit invocation. 5 minutes is far
+ * longer than any real blueprint needs; anything hitting this is
+ * either hung or a bug, and we'd rather surface a deterministic
+ * `exitCode: -1 + stderr: "timeout …"` on the `done` event than let
+ * the HTTP request block indefinitely. Unitless here because vitest
+ * mocks the clock; plain integer ms.
+ */
+const SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Max captured scaffoldkit stderr that rides out on the `done` event.
+ * Kept deliberately small: scaffoldkit may echo user-supplied input
+ * values in its error messages, and the `done` frame is delivered to
+ * the HTTP caller where it may land in logs. A 4 KiB tail is enough
+ * for a debug signal without amplifying an accidental input leak.
+ * Callers that need the full stderr should run scaffoldkit locally.
+ */
+const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
+
+/**
  * Invoke scaffoldkit against a planforge-produced `scaffoldkit-input.json`.
- * Returns the child's exit code + captured stderr; never throws on a
- * nonzero exit — that's surfaced to the caller as metadata so a failed
- * scaffold doesn't mask a successful plan.
+ * Returns the child's exit code + a capped captured stderr; never throws
+ * on a nonzero exit — that's surfaced to the caller as metadata so a
+ * failed scaffold doesn't mask a successful plan.
  *
- * ENOENT on the Python binary is re-thrown with a tagged message so the
- * caller can distinguish "scaffoldkit not installed" from "scaffoldkit
- * ran and failed".
+ * Timeout → SIGTERM → SIGKILL, with `exitCode: -1` + a clear stderr
+ * marker so callers can detect the timeout case in `done.scaffoldkit`.
+ *
+ * AbortSignal propagation: when the HTTP client disconnects mid-scaffold,
+ * the subprocess is killed so the server doesn't run orphaned work to
+ * completion.
+ *
+ * ENOENT on the Python binary is re-thrown so the caller can surface
+ * `skipped: "not_installed"` cleanly.
  */
 async function runScaffoldkit(args: {
   python: string;
   inputPath: string;
   outdir: string;
+  abortSignal?: AbortSignal;
 }): Promise<{ exitCode: number; stderr: string }> {
   return await new Promise((resolvePromise, rejectPromise) => {
     // Arg shape mirrors what project-forge has been running in the old
@@ -170,15 +206,50 @@ async function runScaffoldkit(args: {
       },
     );
     let stderr = "";
+    let timedOut = false;
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
-      // Cap captured stderr at 64 KiB so a chatty scaffoldkit failure
-      // can't blow up the `done` event payload.
-      if (stderr.length > 65536) stderr = stderr.slice(0, 65536);
+      if (stderr.length > SCAFFOLDKIT_STDERR_MAX_BYTES) {
+        stderr = stderr.slice(0, SCAFFOLDKIT_STDERR_MAX_BYTES);
+      }
     });
-    child.on("error", (err) => rejectPromise(err));
-    child.on("close", (code) => {
+
+    // Timeout watchdog: SIGTERM the child after SCAFFOLDKIT_TIMEOUT_MS.
+    // SIGKILL 5s later if it hasn't exited.
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      if (!child.killed) child.kill("SIGTERM");
+      const kill = setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL");
+      }, 5_000);
+      kill.unref?.();
+    }, SCAFFOLDKIT_TIMEOUT_MS);
+    timeout.unref?.();
+
+    // Abort propagation: when the HTTP client disconnects, kill the
+    // scaffold subprocess too. Without this, a hung scaffold keeps
+    // running on the server after the caller gave up.
+    const onAbort = () => {
+      if (!child.killed) child.kill("SIGTERM");
+    };
+    args.abortSignal?.addEventListener("abort", onAbort, { once: true });
+
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      args.abortSignal?.removeEventListener("abort", onAbort);
+      rejectPromise(err);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      args.abortSignal?.removeEventListener("abort", onAbort);
+      if (timedOut) {
+        resolvePromise({
+          exitCode: -1,
+          stderr: `scaffoldkit timed out after ${SCAFFOLDKIT_TIMEOUT_MS}ms (${signal ?? "terminated"})`,
+        });
+        return;
+      }
       resolvePromise({ exitCode: code ?? -1, stderr });
     });
   });
@@ -350,6 +421,7 @@ export async function* runGenerate(
           python: opts.scaffoldkitPython,
           inputPath: scaffoldkitInputPath,
           outdir,
+          abortSignal: opts.abortSignal,
         });
         scaffoldkit = { invoked: true, exitCode, stderr };
       } catch (err) {
