@@ -112,11 +112,52 @@ jobs:
             agent-planforge:ci
           for i in 1 2 3 4 5; do
             sleep 2
-            if curl -fsS http://localhost:18223/healthz; then echo; exit 0; fi
+            if curl -fsS http://localhost:18223/healthz; then echo; break; fi
+            if [ "$i" = "5" ]; then
+              echo "healthz never came up"
+              docker logs planforge-smoke
+              exit 1
+            fi
           done
-          echo "healthz never came up"
-          docker logs planforge-smoke
-          exit 1
+
+      - name: Generate emits scaffolded files in the tarball
+        run: |
+          # Drive POST /api/generate against the running container with the
+          # repo's sample input. Assert the SSE `done` event's outputTarGz
+          # unpacks to a tree containing both planning artifacts AND
+          # scaffolded files — end-to-end proof that the HTTP service
+          # invokes scaffoldkit (venv shebang, blueprint copy, from-planforge
+          # wiring). Without this step, a broken scaffoldkit wiring would
+          # only surface once a real project-forge deploy tried it.
+          set -euo pipefail
+          BODY=$(jq -n --slurpfile input examples/sample-input.json '{input: $input[0]}')
+          RAW=$(mktemp)
+          curl -fsS --max-time 120 \
+            -H "Authorization: Bearer ci-token" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            http://localhost:18223/api/generate -o "$RAW"
+          # Pull the `done` frame out of the SSE stream.
+          DONE_DATA=$(awk 'BEGIN{RS="\n\n"} /^event: done/' "$RAW" | sed -n 's/^data: //p')
+          if [ -z "$DONE_DATA" ]; then
+            echo "No done event in SSE stream:"; cat "$RAW"; exit 1
+          fi
+          echo "$DONE_DATA" | jq -e '.scaffoldkit.invoked == true' \
+            || { echo "scaffoldkit was not invoked:"; echo "$DONE_DATA" | jq .scaffoldkit; exit 1; }
+          echo "$DONE_DATA" | jq -e '.scaffoldkit.exitCode == 0' \
+            || { echo "scaffoldkit exited nonzero:"; echo "$DONE_DATA" | jq .scaffoldkit; exit 1; }
+
+          OUTDIR=$(mktemp -d)
+          echo "$DONE_DATA" | jq -r '.outputTarGz' | base64 -d | tar -xzf - -C "$OUTDIR"
+          # Planning artifact — sentinel for the untouched pre-scaffold tree.
+          test -f "$OUTDIR/planforge-index.json" || { echo "missing planforge-index.json"; ls -la "$OUTDIR"; exit 1; }
+          # Scaffolded output — scaffoldkit's `from-planforge` writes a
+          # project tree alongside planforge's own `planning/` and
+          # `exports/`. A README.md at the top level is a stable
+          # scaffoldkit signature across blueprints.
+          test -f "$OUTDIR/README.md" || { echo "no scaffolded README.md at outdir top:"; find "$OUTDIR" -maxdepth 2 -type f | head -50; exit 1; }
+          echo "scaffolded tree sample:"
+          find "$OUTDIR" -maxdepth 2 -type f | head -30
 
       - name: Image size report
         run: docker images agent-planforge:ci --format '{{.Size}}'
