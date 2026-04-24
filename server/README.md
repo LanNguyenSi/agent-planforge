@@ -56,6 +56,14 @@ Request:
   - Attachments are **not** forwarded to the CLI's `input.json` as a
     separate field; they stay in the service layer so the CLI schema
     stays stable across slices.
+  - **Side effect worth knowing**: `input.summary` is *also* regex-scanned
+    by the CLI for architecture heuristics (e.g. database-store inference
+    via phrases like `filesystem is the source of truth` or `no external
+    database` in `scripts/bootstrap-plan.js`). Attachment content
+    containing those phrases will influence those decisions. That's by
+    design — real architectural text SHOULD shape the plan — but clients
+    surfacing this upload in a UI should make it clear that attached
+    documents influence the generated plan beyond prompt interpolation.
 
 Response: `Content-Type: text/event-stream`. Events:
 
