@@ -1,6 +1,6 @@
 {
   "name": "@agent-planforge/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "HTTP service surface around the planforge CLI. Wraps scripts/bootstrap-plan.js so project-forge and agents can drive planning over HTTP instead of shell-out.",
   "private": true,
   "type": "module",

@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-04-24
+
+**Headline: The HTTP server gained a full scaffolding path and an
+attachments contract. Consumers (project-forge) no longer need Python
+or the scaffoldkit venv on their own host — planforge runs it
+in-container and bundles the result into the response tarball.
+Attachments (uploaded arc42 / RFC / charter documents) become a
+planning input via a top-level `attachments[]` field on
+`POST /api/generate`, with text-tier content prepended onto
+`input.summary` so it flows into every CLI prompt template slot.**
+
+### Added
+
+#### HTTP server
+
+- `scaffoldkit` subprocess now runs inside the service container
+  (Dockerfile pulls in `/opt/sk-venv`). `done` events carry a new
+  `scaffoldkit: { invoked, exitCode?, stderr?, skipped? }` field so
+  callers can tell four cases apart: ran cleanly, ran and failed,
+  opted out, or not installed. Scaffolded files ride along in the
+  response tarball — raised from 10 MiB → 50 MiB cap.
+- `POST /api/generate` accepts optional top-level
+  `attachments?: Attachment[]` where each entry is
+  `{ name, mimeType, tier: "text" | "diagram" | "structured", inlineText?, contentRef? }`.
+  Shape-validated at the edge; malformed returns **400 bad_request**.
+- **Text-tier ingest**: attachments with `tier: "text"` and non-empty
+  `inlineText` are concatenated into an "Additional context from
+  attachment: &lt;name&gt;" markdown block and prepended onto
+  `input.summary` before the CLI runs. The augmented summary flows
+  through the existing `{{summary}}` template slots in every prompt
+  the CLI emits, so no CLI schema change was needed.
+- Total-char cap across all text-tier `inlineText`: **50,000 chars**.
+  Exceeding returns **400 attachments_too_large**. Fail-fast chosen
+  over silent truncation to avoid dropping architecturally important
+  sections from an arc42 doc.
+- Diagram + structured tiers are shape-validated but remain no-ops at
+  the prompt level until later slices.
+
+#### Exports
+
+- `buildAdditionalContextBlock`, `augmentInputWithContext`, and the
+  `ATTACHMENTS_MAX_TOTAL_CHARS` constant are exported from
+  `server/src/routes.ts` for direct unit testing.
+
+### Changed
+
+- Panel-triggered `deploy agent-planforge` now routes through
+  project-forge's compose stack. `.relay.yml` switched to
+  `command:`-mode with `compose_file: ../project-forge/docker-compose.yml`,
+  which the agent-relay v0.1.1 filesystem-aware containment accepts.
+
+### Side effect worth knowing
+
+`input.summary` is also regex-scanned by the CLI's architecture
+heuristics (e.g. database-store inference in `scripts/bootstrap-plan.js`).
+Attachment content containing phrases like `filesystem is the source
+of truth` or `no external database` will influence those decisions.
+By design — real architectural text should shape the plan — but UI
+clients surfacing the upload should make users aware their attached
+documents materially influence plan generation.
+
+### Notes
+
+- v0.1.0 clients that send no `attachments` field continue to work
+  byte-identically; the only change on the wire is the optional field.
+
 ## [0.1.0] - 2026-04-18
 
 **Headline: First tagged release of agent-planforge — a planning bootstrap
