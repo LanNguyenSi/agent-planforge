@@ -105,6 +105,149 @@ describe("POST /api/generate — auth", () => {
   });
 });
 
+describe("POST /api/generate — attachments validation (v0.1a contract stub)", () => {
+  const MALFORMED_CASES: Array<{ label: string; attachments: unknown; expect: string }> = [
+    { label: "non-array", attachments: "oops", expect: "must be an array" },
+    { label: "entry not an object", attachments: ["raw string"], expect: "must be an object" },
+    {
+      label: "missing name",
+      attachments: [{ mimeType: "text/markdown", tier: "text" }],
+      expect: "name must be a non-empty string",
+    },
+    {
+      label: "empty name",
+      attachments: [{ name: "", mimeType: "text/markdown", tier: "text" }],
+      expect: "name must be a non-empty string",
+    },
+    {
+      label: "missing mimeType",
+      attachments: [{ name: "a.md", tier: "text" }],
+      expect: "mimeType must be a non-empty string",
+    },
+    {
+      label: "unknown tier",
+      attachments: [{ name: "a.md", mimeType: "text/markdown", tier: "magic" }],
+      expect: "tier must be one of",
+    },
+    {
+      label: "non-string inlineText",
+      attachments: [
+        { name: "a.md", mimeType: "text/markdown", tier: "text", inlineText: 42 },
+      ],
+      expect: "inlineText must be a string",
+    },
+  ];
+
+  for (const tc of MALFORMED_CASES) {
+    it(`rejects attachments with ${tc.label} (400)`, async () => {
+      const res = await app.fetch(
+        new Request("http://test/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: AUTH },
+          body: JSON.stringify({ input: {}, attachments: tc.attachments }),
+        }),
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; message: string };
+      expect(body.error).toBe("bad_request");
+      expect(body.message).toContain(tc.expect);
+    });
+  }
+
+  it("accepts an empty attachments array (200, field ignored in v0.1a)", async () => {
+    // Well-formed empty array is a valid degenerate case — no CLI needs to
+    // spin up because the input is empty. We use a sample input and assert
+    // only that the request reaches the CLI layer (i.e. gets past edge
+    // validation). Drive through the full stream by using scaffold:false
+    // so it's cheap.
+    const sampleInput = JSON.parse(
+      await readFile(SAMPLE_INPUT_PATH, "utf8"),
+    );
+    const res = await app.fetch(
+      new Request("http://test/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: AUTH },
+        body: JSON.stringify({ input: sampleInput, scaffold: false, attachments: [] }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    // Drain but do not assert on plan shape — the existing happy-path
+    // covers that. The point here is: empty attachments[] does not change
+    // the response status or stream contract.
+    const reader = res.body!.getReader();
+    while (!(await reader.read()).done) {
+      /* drain */
+    }
+  }, 60_000);
+
+  it(
+    "accepts a well-formed text-tier attachment and returns 200 with unchanged plan shape (v0.1a: field present but ignored)",
+    async () => {
+      const sampleInput = JSON.parse(
+        await readFile(SAMPLE_INPUT_PATH, "utf8"),
+      );
+      const res = await app.fetch(
+        new Request("http://test/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: AUTH },
+          body: JSON.stringify({
+            input: sampleInput,
+            scaffold: false,
+            attachments: [
+              {
+                name: "arc42-snippet.md",
+                mimeType: "text/markdown",
+                tier: "text",
+                inlineText: "# Architecture\n\nWe use Postgres for primary storage.",
+              },
+            ],
+          }),
+        }),
+      );
+      expect(res.status).toBe(200);
+
+      // Reuse the ad-hoc SSE collector the happy-path tests use. Consume
+      // the full stream and assert it completes with `done`, not `error`,
+      // proving that the attachments field didn't perturb the CLI call.
+      const events: Array<{ event: string; data: unknown }> = [];
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let frameEnd: number;
+        while ((frameEnd = buf.indexOf("\n\n")) >= 0) {
+          const frame = buf.slice(0, frameEnd);
+          buf = buf.slice(frameEnd + 2);
+          const lines = frame.split("\n");
+          let event = "message";
+          let data = "";
+          for (const ln of lines) {
+            if (ln.startsWith("event:")) event = ln.slice(6).trim();
+            else if (ln.startsWith("data:")) data += ln.slice(5).trim();
+          }
+          if (data.length > 0) events.push({ event, data: JSON.parse(data) });
+        }
+      }
+      expect(events.map((e) => e.event)).toContain("done");
+      expect(events.map((e) => e.event)).not.toContain("error");
+
+      // v0.1a invariant: plan output carries no attachment trace yet.
+      // When v0.1b adds ingest, a new test will assert positive presence.
+      const done = events.find((e) => e.event === "done")!.data as {
+        planOutput: Record<string, unknown>;
+      };
+      const serialized = JSON.stringify(done.planOutput);
+      expect(serialized).not.toContain("arc42-snippet.md");
+      expect(serialized).not.toContain("Postgres for primary storage");
+    },
+    60_000,
+  );
+});
+
 describe("POST /api/generate — happy path", () => {
   let sampleInput: unknown;
 

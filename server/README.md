@@ -21,7 +21,15 @@ Request:
 ```json
 {
   "input": { /* planning input — same schema the CLI's --input accepts */ },
-  "scaffold": true
+  "scaffold": true,
+  "attachments": [
+    {
+      "name": "arc42.md",
+      "mimeType": "text/markdown",
+      "tier": "text",
+      "inlineText": "# Architecture\n..."
+    }
+  ]
 }
 ```
 
@@ -30,6 +38,14 @@ Request:
   the resulting project tree lands in the response tarball alongside the
   planning artifacts. Set to `false` for planning-only runs (preview UIs,
   callers that scaffold separately, tests).
+- `attachments` — optional. Array of `{ name, mimeType, tier, inlineText?, contentRef? }`
+  where `tier` is one of `text | diagram | structured`. Shape is validated
+  at the edge (400 on malformed entries). **v0.1a status: field accepted
+  but ignored** — the plan output is identical whether attachments are
+  sent or not. v0.1b will inject text-tier `inlineText` into the planning
+  prompt; later slices handle diagram and structured tiers. Attachments
+  are **not** forwarded to the CLI's `input.json`; they stay in the
+  service layer so the CLI schema remains stable across slices.
 
 Response: `Content-Type: text/event-stream`. Events:
 
