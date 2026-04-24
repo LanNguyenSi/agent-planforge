@@ -105,6 +105,132 @@ describe("POST /api/generate — auth", () => {
   });
 });
 
+describe("attachments helpers (unit — v0.1b text-tier ingest)", () => {
+  // Import via dynamic-inside-block so the test file still runs if these
+  // helpers get renamed in a future refactor — TS compile-time would catch
+  // it anyway, but static `import` here would break test discovery.
+  it("buildAdditionalContextBlock returns empty string for no attachments", async () => {
+    const { buildAdditionalContextBlock } = await import("../src/routes.js");
+    expect(buildAdditionalContextBlock(undefined)).toEqual({ ok: true, block: "" });
+    expect(buildAdditionalContextBlock([])).toEqual({ ok: true, block: "" });
+  });
+
+  it("buildAdditionalContextBlock skips diagram/structured tiers and attachments without inlineText", async () => {
+    const { buildAdditionalContextBlock } = await import("../src/routes.js");
+    const result = buildAdditionalContextBlock([
+      { name: "architecture.png", mimeType: "image/png", tier: "diagram" },
+      { name: "model.drawio", mimeType: "application/vnd.jgraph.mxfile", tier: "structured" },
+      { name: "empty.md", mimeType: "text/markdown", tier: "text", inlineText: "" },
+      { name: "notext.md", mimeType: "text/markdown", tier: "text" },
+    ]);
+    expect(result).toEqual({ ok: true, block: "" });
+  });
+
+  it("buildAdditionalContextBlock formats a single text-tier attachment", async () => {
+    const { buildAdditionalContextBlock } = await import("../src/routes.js");
+    const result = buildAdditionalContextBlock([
+      { name: "arc42.md", mimeType: "text/markdown", tier: "text", inlineText: "We use Postgres." },
+    ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.block).toBe(
+        "## Additional context from attachment: arc42.md\n\nWe use Postgres.\n\n---",
+      );
+    }
+  });
+
+  it("buildAdditionalContextBlock concatenates multiple text-tier attachments with double-newlines", async () => {
+    const { buildAdditionalContextBlock } = await import("../src/routes.js");
+    const result = buildAdditionalContextBlock([
+      { name: "a.md", mimeType: "text/markdown", tier: "text", inlineText: "alpha" },
+      { name: "b.md", mimeType: "text/markdown", tier: "text", inlineText: "beta" },
+    ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // The "\n\n" separator between blocks means the `---` break from
+      // block A is followed by a blank line then block B's heading — a
+      // reader or LLM sees a clean section break, not two adjacent
+      // headings mashed together.
+      expect(result.block).toBe(
+        "## Additional context from attachment: a.md\n\nalpha\n\n---\n\n## Additional context from attachment: b.md\n\nbeta\n\n---",
+      );
+    }
+  });
+
+  it("buildAdditionalContextBlock rejects when total chars exceed the cap", async () => {
+    const { buildAdditionalContextBlock, ATTACHMENTS_MAX_TOTAL_CHARS } = await import(
+      "../src/routes.js"
+    );
+    const big = "x".repeat(ATTACHMENTS_MAX_TOTAL_CHARS + 1);
+    const result = buildAdditionalContextBlock([
+      { name: "huge.md", mimeType: "text/markdown", tier: "text", inlineText: big },
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain(String(ATTACHMENTS_MAX_TOTAL_CHARS));
+      expect(result.message).toContain("split or resample");
+    }
+  });
+
+  it("buildAdditionalContextBlock rejects when summed chars across attachments exceed the cap", async () => {
+    const { buildAdditionalContextBlock, ATTACHMENTS_MAX_TOTAL_CHARS } = await import(
+      "../src/routes.js"
+    );
+    // Split one oversized payload across two attachments to prove the
+    // cap is applied to the SUM, not per-entry — otherwise a caller
+    // could bypass the limit by chunking client-side.
+    const half = "y".repeat(Math.ceil(ATTACHMENTS_MAX_TOTAL_CHARS / 2) + 1);
+    const result = buildAdditionalContextBlock([
+      { name: "a.md", mimeType: "text/markdown", tier: "text", inlineText: half },
+      { name: "b.md", mimeType: "text/markdown", tier: "text", inlineText: half },
+    ]);
+    expect(result.ok).toBe(false);
+  });
+
+  it("augmentInputWithContext returns input unchanged when block is empty", async () => {
+    const { augmentInputWithContext } = await import("../src/routes.js");
+    const input = { summary: "original", projectName: "Test" };
+    const result = augmentInputWithContext(input, "");
+    // Same reference — hot path for no-attachments case stays allocation-free.
+    expect(result).toBe(input);
+  });
+
+  it("augmentInputWithContext prepends block onto existing summary, preserves other fields", async () => {
+    const { augmentInputWithContext } = await import("../src/routes.js");
+    const input = { summary: "original summary", projectName: "Test", extra: [1, 2] };
+    const result = augmentInputWithContext(input, "CONTEXT BLOCK") as Record<string, unknown>;
+    expect(result).not.toBe(input); // copy-on-write, not mutation
+    expect((input as Record<string, unknown>).summary).toBe("original summary"); // caller's object untouched
+    expect(result.summary).toBe("CONTEXT BLOCK\n\noriginal summary");
+    expect(result.projectName).toBe("Test");
+    expect(result.extra).toEqual([1, 2]);
+  });
+
+  it("augmentInputWithContext seeds summary when input had no summary string", async () => {
+    const { augmentInputWithContext } = await import("../src/routes.js");
+    const input = { projectName: "Test" };
+    const result = augmentInputWithContext(input, "CONTEXT BLOCK") as Record<string, unknown>;
+    expect(result.summary).toBe("CONTEXT BLOCK");
+    expect(result.projectName).toBe("Test");
+  });
+
+  it("augmentInputWithContext seeds summary when summary is a non-string (defensive)", async () => {
+    const { augmentInputWithContext } = await import("../src/routes.js");
+    const input = { summary: null };
+    const result = augmentInputWithContext(input, "CONTEXT") as Record<string, unknown>;
+    expect(result.summary).toBe("CONTEXT");
+  });
+
+  it("augmentInputWithContext wraps non-object input in a synthetic { summary } object", async () => {
+    const { augmentInputWithContext } = await import("../src/routes.js");
+    const result = augmentInputWithContext("I am a bare string", "CONTEXT") as Record<
+      string,
+      unknown
+    >;
+    expect(result).toEqual({ summary: "CONTEXT" });
+  });
+});
+
 describe("POST /api/generate — attachments validation (v0.1a contract stub)", () => {
   const MALFORMED_CASES: Array<{ label: string; attachments: unknown; expect: string }> = [
     { label: "non-array", attachments: "oops", expect: "must be an array" },
@@ -182,7 +308,7 @@ describe("POST /api/generate — attachments validation (v0.1a contract stub)", 
   }, 60_000);
 
   it(
-    "accepts a well-formed text-tier attachment and returns 200 with unchanged plan shape (v0.1a: field present but ignored)",
+    "accepts a well-formed text-tier attachment and streams to done (v0.1b: attachment augments prompt, still succeeds)",
     async () => {
       const sampleInput = JSON.parse(
         await readFile(SAMPLE_INPUT_PATH, "utf8"),
@@ -235,16 +361,48 @@ describe("POST /api/generate — attachments validation (v0.1a contract stub)", 
       expect(events.map((e) => e.event)).toContain("done");
       expect(events.map((e) => e.event)).not.toContain("error");
 
-      // v0.1a invariant: plan output carries no attachment trace yet.
-      // When v0.1b adds ingest, a new test will assert positive presence.
+      // v0.1b invariant: the prompt is augmented with the attachment text
+      // (unit tests above cover the string transformation deterministically).
+      // Here we only assert the CLI runs to completion through the augmented
+      // input; whether the LLM-free CLI surfaces the attachment content in
+      // plan-output is an LLM-layer smoke test, out of scope for unit runs.
       const done = events.find((e) => e.event === "done")!.data as {
         planOutput: Record<string, unknown>;
+        exitCode: number;
       };
-      const serialized = JSON.stringify(done.planOutput);
-      expect(serialized).not.toContain("arc42-snippet.md");
-      expect(serialized).not.toContain("Postgres for primary storage");
+      expect(done.exitCode).toBe(0);
+      expect(done.planOutput).toBeTruthy();
     },
     60_000,
+  );
+
+  it(
+    "rejects attachments whose total inlineText exceeds the char cap (400 attachments_too_large)",
+    async () => {
+      const { ATTACHMENTS_MAX_TOTAL_CHARS } = await import("../src/routes.js");
+      const overflow = "x".repeat(ATTACHMENTS_MAX_TOTAL_CHARS + 1);
+      const res = await app.fetch(
+        new Request("http://test/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: AUTH },
+          body: JSON.stringify({
+            input: {},
+            attachments: [
+              {
+                name: "huge.md",
+                mimeType: "text/markdown",
+                tier: "text",
+                inlineText: overflow,
+              },
+            ],
+          }),
+        }),
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; message: string };
+      expect(body.error).toBe("attachments_too_large");
+      expect(body.message).toContain(String(ATTACHMENTS_MAX_TOTAL_CHARS));
+    },
   );
 });
 
