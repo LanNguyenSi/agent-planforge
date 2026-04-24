@@ -7,6 +7,74 @@ import { runGenerate } from "./generate.js";
 export const app = new Hono();
 
 /**
+ * Attachment tiers the service contract recognises. v0.1a accepts shape
+ * only — no tier triggers any processing yet. v0.1b will add text-tier
+ * prompt enrichment; later slices bring diagram + structured handling.
+ */
+const ATTACHMENT_TIERS = ["text", "diagram", "structured"] as const;
+type AttachmentTier = (typeof ATTACHMENT_TIERS)[number];
+
+export interface Attachment {
+  name: string;
+  mimeType: string;
+  tier: AttachmentTier;
+  inlineText?: string;
+  contentRef?: string;
+}
+
+/**
+ * Edge-validation for the optional `attachments` field on POST /api/generate.
+ * Returns `{ ok: true, attachments }` on a shape-valid payload (including the
+ * "field absent" case, which yields `undefined`); returns `{ ok: false, message }`
+ * for any malformed input so the caller can 400 with an actionable error.
+ *
+ * Accepting `undefined` here keeps the field optional without the caller
+ * having to check for it first.
+ */
+function parseAttachments(
+  raw: unknown,
+): { ok: true; attachments: Attachment[] | undefined } | { ok: false; message: string } {
+  if (raw === undefined || raw === null) return { ok: true, attachments: undefined };
+  if (!Array.isArray(raw)) {
+    return { ok: false, message: "`attachments` must be an array when present" };
+  }
+  const out: Attachment[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const a = raw[i];
+    if (!a || typeof a !== "object") {
+      return { ok: false, message: `attachments[${i}] must be an object` };
+    }
+    const rec = a as Record<string, unknown>;
+    if (typeof rec.name !== "string" || rec.name.length === 0) {
+      return { ok: false, message: `attachments[${i}].name must be a non-empty string` };
+    }
+    if (typeof rec.mimeType !== "string" || rec.mimeType.length === 0) {
+      return { ok: false, message: `attachments[${i}].mimeType must be a non-empty string` };
+    }
+    if (typeof rec.tier !== "string" || !ATTACHMENT_TIERS.includes(rec.tier as AttachmentTier)) {
+      return {
+        ok: false,
+        message: `attachments[${i}].tier must be one of ${ATTACHMENT_TIERS.join(", ")}`,
+      };
+    }
+    if (rec.inlineText !== undefined && typeof rec.inlineText !== "string") {
+      return { ok: false, message: `attachments[${i}].inlineText must be a string when present` };
+    }
+    if (rec.contentRef !== undefined && typeof rec.contentRef !== "string") {
+      return { ok: false, message: `attachments[${i}].contentRef must be a string when present` };
+    }
+    out.push({
+      name: rec.name,
+      mimeType: rec.mimeType,
+      tier: rec.tier as AttachmentTier,
+      inlineText: rec.inlineText as string | undefined,
+      contentRef: rec.contentRef as string | undefined,
+    });
+  }
+  return { ok: true, attachments: out };
+}
+
+/**
  * Constant-time bearer compare. Short-circuit `!==` on a shared service
  * token is a well-known timing oracle; `timingSafeEqual` requires same-
  * length buffers, so pre-check length and substitute a same-length dummy
@@ -85,7 +153,10 @@ api.post("/generate", async (c) => {
   }
   if (!body || typeof body !== "object" || !("input" in body)) {
     return c.json(
-      { error: "bad_request", message: "Body must be { input: <planning-input>, scaffold?: boolean }" },
+      {
+        error: "bad_request",
+        message: "Body must be { input: <planning-input>, scaffold?: boolean, attachments?: Attachment[] }",
+      },
       400,
     );
   }
@@ -97,6 +168,19 @@ api.post("/generate", async (c) => {
   // Default scaffold=true. An explicit `false` opts out; any other value
   // (including omission) preserves back-compat by scaffolding on.
   const scaffold = (body as { scaffold?: unknown }).scaffold !== false;
+
+  // v0.1a attachments contract: shape-validate at the edge, then drop.
+  // The field is part of the HTTP-service contract, NOT the CLI's input
+  // schema — it stays top-level on the request body. v0.1b will pre-process
+  // text-tier attachments into the planning prompt from here, still without
+  // changing input.json. Top-level placement keeps the CLI's schema stable
+  // across attachment slices and matches how `scaffold` sits.
+  const attachmentsParsed = parseAttachments((body as { attachments?: unknown }).attachments);
+  if (!attachmentsParsed.ok) {
+    return c.json({ error: "bad_request", message: attachmentsParsed.message }, 400);
+  }
+  // attachments intentionally unused in v0.1a — field accepted, not forwarded.
+  void attachmentsParsed.attachments;
 
   // Wire the HTTP client's AbortSignal through to the CLI subprocess so a
   // mid-stream disconnect doesn't leave an orphan node process + tempdir
