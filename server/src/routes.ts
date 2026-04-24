@@ -23,6 +23,20 @@ export interface Attachment {
 }
 
 /**
+ * Hard cap on total char length across all text-tier `inlineText` values
+ * in a single request. Chosen over summarization/chunking for v0.1b because
+ * silent truncation risks dropping architecturally important sections from
+ * an arc42 doc in ways the caller can't see. Fail-fast with 400 keeps the
+ * contract honest: oversize means "resample or split into smaller
+ * attachments", not "we quietly kept half of it".
+ *
+ * At ~4 chars/token this is ~12.5k tokens — well inside a planning-context
+ * budget for current-generation models and leaves headroom for the CLI's
+ * own prompt scaffolding (template, questionnaire, clarifications).
+ */
+export const ATTACHMENTS_MAX_TOTAL_CHARS = 50_000;
+
+/**
  * Edge-validation for the optional `attachments` field on POST /api/generate.
  * Returns `{ ok: true, attachments }` on a shape-valid payload (including the
  * "field absent" case, which yields `undefined`); returns `{ ok: false, message }`
@@ -72,6 +86,78 @@ function parseAttachments(
     });
   }
   return { ok: true, attachments: out };
+}
+
+/**
+ * v0.1b text-tier ingest. Builds the "Additional context" markdown block
+ * that gets prepended to `input.summary` before the CLI runs. Returns an
+ * empty string when there is nothing to inject (no attachments, none are
+ * text-tier, or none carry inlineText) — callers can test for `.length > 0`
+ * to decide whether to touch the input at all.
+ *
+ * Enforces the total-char cap across *all* text-tier `inlineText` entries
+ * combined (not per-entry) so a caller can't split a 500k arc42 doc across
+ * ten attachments and sneak past the guardrail.
+ *
+ * Diagram + structured tiers are intentionally ignored here. They're
+ * accepted by the shape validator, carried past v0.1b as no-ops, and will
+ * be wired up in later slices (vision pass, drawio/puml parsers).
+ */
+export function buildAdditionalContextBlock(
+  attachments: Attachment[] | undefined,
+): { ok: true; block: string } | { ok: false; message: string } {
+  if (!attachments || attachments.length === 0) return { ok: true, block: "" };
+  let totalChars = 0;
+  const parts: string[] = [];
+  for (const a of attachments) {
+    if (a.tier !== "text") continue;
+    if (typeof a.inlineText !== "string" || a.inlineText.length === 0) continue;
+    totalChars += a.inlineText.length;
+    if (totalChars > ATTACHMENTS_MAX_TOTAL_CHARS) {
+      return {
+        ok: false,
+        message: `attachments exceed the ${ATTACHMENTS_MAX_TOTAL_CHARS}-char total cap for text-tier inlineText; split or resample`,
+      };
+    }
+    // Use the per-attachment format the v0.1b spec agreed on. `---` is a
+    // markdown thematic break, which renders cleanly both in the raw
+    // prompt the CLI sees and in any downstream markdown-rendered view.
+    parts.push(`## Additional context from attachment: ${a.name}\n\n${a.inlineText}\n\n---`);
+  }
+  return { ok: true, block: parts.join("\n\n") };
+}
+
+/**
+ * Prepend the additional-context block onto `input.summary` (or seed
+ * summary with the block if the caller didn't supply one). Returns the
+ * same `input` reference when there's nothing to inject, so the hot path
+ * for callers without attachments stays allocation-free.
+ *
+ * Why mutate summary rather than adding a new input field (e.g.
+ * `input.additionalContext`):
+ *   - `summary` already flows into every relevant CLI prompt template
+ *     slot (`clarify-prompt-template.md:{{summary}}`, architecture prompt,
+ *     heuristic text-matchers at bootstrap-plan.js:1470).
+ *   - Adding a new input field would require touching the CLI's 4k-line
+ *     script AND every downstream template, inverting the v0.1a
+ *     "service layer owns attachment→input translation" commitment.
+ *   - Copy-on-write (spread into a new object) — never mutates the
+ *     caller's object.
+ */
+export function augmentInputWithContext(input: unknown, contextBlock: string): unknown {
+  if (contextBlock.length === 0) return input;
+  if (!input || typeof input !== "object") {
+    // Defensive fallback: if `input` isn't an object, we have no summary
+    // to prepend onto. Return a synthetic wrapper so the CLI still sees
+    // the attachment text; the CLI's input validator will surface any
+    // remaining shape problems with its usual error message.
+    return { summary: contextBlock };
+  }
+  const rec = input as Record<string, unknown>;
+  const originalSummary = typeof rec.summary === "string" ? rec.summary : "";
+  const combined =
+    originalSummary.length > 0 ? `${contextBlock}\n\n${originalSummary}` : contextBlock;
+  return { ...rec, summary: combined };
 }
 
 /**
@@ -169,18 +255,22 @@ api.post("/generate", async (c) => {
   // (including omission) preserves back-compat by scaffolding on.
   const scaffold = (body as { scaffold?: unknown }).scaffold !== false;
 
-  // v0.1a attachments contract: shape-validate at the edge, then drop.
-  // The field is part of the HTTP-service contract, NOT the CLI's input
-  // schema — it stays top-level on the request body. v0.1b will pre-process
-  // text-tier attachments into the planning prompt from here, still without
-  // changing input.json. Top-level placement keeps the CLI's schema stable
-  // across attachment slices and matches how `scaffold` sits.
+  // Attachments contract: shape-validate at the edge, then — for text-tier
+  // entries with inlineText — prepend the content as an "Additional context"
+  // block onto `input.summary` before writing input.json. The field itself
+  // stays top-level on the request body and is NOT forwarded into the CLI's
+  // input.json, so the CLI schema stays stable across attachment slices
+  // (matches how `scaffold` sits). Diagram + structured tiers are shape-
+  // validated but remain no-ops at the prompt level until later slices.
   const attachmentsParsed = parseAttachments((body as { attachments?: unknown }).attachments);
   if (!attachmentsParsed.ok) {
     return c.json({ error: "bad_request", message: attachmentsParsed.message }, 400);
   }
-  // attachments intentionally unused in v0.1a — field accepted, not forwarded.
-  void attachmentsParsed.attachments;
+  const contextBuild = buildAdditionalContextBlock(attachmentsParsed.attachments);
+  if (!contextBuild.ok) {
+    return c.json({ error: "attachments_too_large", message: contextBuild.message }, 400);
+  }
+  const augmentedInput = augmentInputWithContext(input, contextBuild.block);
 
   // Wire the HTTP client's AbortSignal through to the CLI subprocess so a
   // mid-stream disconnect doesn't leave an orphan node process + tempdir
@@ -194,7 +284,7 @@ api.post("/generate", async (c) => {
   return streamSSE(c, async (stream) => {
     let requestId: string | undefined;
     try {
-      for await (const ev of runGenerate(input, {
+      for await (const ev of runGenerate(augmentedInput, {
         planforgeRoot: env.PLANFORGE_ROOT,
         nodeBin: env.NODE_BIN,
         scaffoldkitPython: env.SCAFFOLDKIT_PYTHON,

@@ -40,12 +40,30 @@ Request:
   callers that scaffold separately, tests).
 - `attachments` — optional. Array of `{ name, mimeType, tier, inlineText?, contentRef? }`
   where `tier` is one of `text | diagram | structured`. Shape is validated
-  at the edge (400 on malformed entries). **v0.1a status: field accepted
-  but ignored** — the plan output is identical whether attachments are
-  sent or not. v0.1b will inject text-tier `inlineText` into the planning
-  prompt; later slices handle diagram and structured tiers. Attachments
-  are **not** forwarded to the CLI's `input.json`; they stay in the
-  service layer so the CLI schema remains stable across slices.
+  at the edge (400 `bad_request` on malformed entries).
+  - **Text tier** (`tier: "text"`, `inlineText` present): the service
+    prepends each entry as an "Additional context from attachment: &lt;name&gt;"
+    markdown block onto `input.summary` before invoking the CLI. The
+    augmented summary flows through every existing CLI prompt template
+    slot (clarify, architecture, intake) without schema changes.
+  - **Total-char cap**: sum of all text-tier `inlineText` lengths must
+    be ≤ 50,000 chars. Exceeding it returns 400 `attachments_too_large`.
+    Fail-fast by design — silent truncation risks dropping architecturally
+    important sections.
+  - **Diagram / structured tiers** are shape-validated but remain no-ops
+    at the prompt level until later slices (vision pass, drawio/puml
+    parsers).
+  - Attachments are **not** forwarded to the CLI's `input.json` as a
+    separate field; they stay in the service layer so the CLI schema
+    stays stable across slices.
+  - **Side effect worth knowing**: `input.summary` is *also* regex-scanned
+    by the CLI for architecture heuristics (e.g. database-store inference
+    via phrases like `filesystem is the source of truth` or `no external
+    database` in `scripts/bootstrap-plan.js`). Attachment content
+    containing those phrases will influence those decisions. That's by
+    design — real architectural text SHOULD shape the plan — but clients
+    surfacing this upload in a UI should make it clear that attached
+    documents influence the generated plan beyond prompt interpolation.
 
 Response: `Content-Type: text/event-stream`. Events:
 
