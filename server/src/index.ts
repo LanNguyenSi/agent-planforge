@@ -1,6 +1,9 @@
 import { serve } from "@hono/node-server";
 import { env } from "./config.js";
+import { reportScaffoldkitStatusOnBoot } from "./boot-guard.js";
 import { app } from "./routes.js";
+
+reportScaffoldkitStatusOnBoot();
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(

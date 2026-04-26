@@ -26,9 +26,19 @@ describe("GET /healthz", () => {
   it("is unauth and returns status ok", async () => {
     const res = await app.fetch(new Request("http://test/healthz"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; service: string };
+    const body = (await res.json()) as {
+      status: string;
+      service: string;
+      scaffoldkitPython: string;
+    };
     expect(body.status).toBe("ok");
     expect(body.service).toBe("agent-planforge");
+    // The scaffoldkitPython probe is exposed so the ops dashboard can flag
+    // a misconfigured deployment. In the test env the default
+    // /opt/sk-venv/bin/python3 doesn't exist, so the field reports
+    // "missing"; production where the Dockerfile lays down the venv
+    // reports "ok".
+    expect(body.scaffoldkitPython).toBe("missing");
   });
 
   it("is reachable even without the bearer token", async () => {

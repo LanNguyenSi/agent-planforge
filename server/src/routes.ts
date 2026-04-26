@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { timingSafeEqual } from "node:crypto";
 import { env } from "./config.js";
+import { getScaffoldkitStatus } from "./boot-guard.js";
 import { runGenerate } from "./generate.js";
 
 export const app = new Hono();
@@ -187,6 +188,12 @@ app.get("/healthz", (c) =>
     status: "ok",
     service: "agent-planforge",
     uptime: process.uptime(),
+    // Surface the SCAFFOLDKIT_PYTHON probe so the ops dashboard can flag a
+    // misconfigured deployment without having to inspect logs. "missing"
+    // does not flip `status` to non-ok — the service still answers /generate
+    // requests, scaffolding just silently skips. Treat this as a deployment-
+    // health indicator rather than a liveness signal.
+    scaffoldkitPython: getScaffoldkitStatus(),
   }),
 );
 
