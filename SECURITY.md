@@ -8,9 +8,7 @@ This project is still in early development. Only the latest state of `main` is c
 
 Do not open a public issue for a suspected vulnerability.
 
-Report it privately to the project maintainers using the repository hosting platform's private security reporting or direct maintainer contact channel.
-
-Include:
+Email **contact@lan-nguyen-si.de** with:
 
 - affected component or file
 - impact and attack scenario
