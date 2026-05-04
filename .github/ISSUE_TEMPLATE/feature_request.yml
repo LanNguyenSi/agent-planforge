@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a planning capability, output mode, or schema change
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - planner heuristic
+        - output schema / artifact shape
+        - new planning mode
+        - orchestration model
+        - governance / compliance surface
+        - other / unsure
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: What problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Sketch the API, output, or workflow change.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

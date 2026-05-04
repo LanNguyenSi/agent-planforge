@@ -27,6 +27,6 @@ Repeated or severe violations may result in temporary or permanent exclusion fro
 
 ## Reporting
 
-If you experience or witness unacceptable behavior, contact the project maintainers through the repository hosting platform's private contact or moderation features.
+If you experience or witness unacceptable behavior, email **contact@lan-nguyen-si.de**. Reports are kept confidential.
 
 For security issues, use the process in [SECURITY.md](SECURITY.md) instead of public discussion.
