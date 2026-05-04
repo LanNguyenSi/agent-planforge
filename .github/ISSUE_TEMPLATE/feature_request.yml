@@ -28,6 +28,11 @@ body:
       label: Proposed solution
       description: Sketch the API, output, or workflow change.
   - type: textarea
+    id: scope_fit
+    attributes:
+      label: Scope fit
+      description: Why does this belong in agent-planforge rather than a downstream tool? CONTRIBUTING.md scopes the project deliberately.
+  - type: textarea
     id: alternatives
     attributes:
       label: Alternatives considered
