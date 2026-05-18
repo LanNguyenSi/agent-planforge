@@ -7,10 +7,12 @@
  * as the input and assert on the SSE event stream.
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { app } from "../src/routes.js";
 import { env } from "../src/config.js";
+import { runGenerate, type GenerateEvent } from "../src/generate.js";
 
 const AUTH = `Bearer ${env.PLANFORGE_SERVICE_TOKEN}`;
 const SAMPLE_INPUT_PATH = resolve(env.PLANFORGE_ROOT, "examples", "sample-input.json");
@@ -858,5 +860,194 @@ exit 0
       expect(done.scaffoldkit.skipped).toBe("opt_out");
     },
     60_000,
+  );
+});
+
+/**
+ * Direct-runGenerate tests that exercise two branches the route-driven
+ * tests above cannot reach without a real planforge CLI:
+ *
+ *   - `scaffoldkit.skipped: "no_input"` when the CLI runs successfully but
+ *     does not write `exports/scaffoldkit-input.json`. Reproduced with a
+ *     stub bootstrap-plan.js that writes the planning sentinel only.
+ *
+ *   - The byte-length cap on the gzipped tarball. The module constant
+ *     TARBALL_MAX_BYTES is 50 MiB; writing 50 MiB of incompressible data
+ *     would also trip the `tar` subprocess's maxBuffer safety net first.
+ *     Instead we lower the cap via the `tarballMaxBytes` opt and assert the
+ *     "Output tarball exceeds N bytes" message fires from the post-tar
+ *     byte-length check at generate.ts.
+ *
+ * These deliberately bypass the HTTP route — `runGenerate` is the function
+ * under test and the SSE/streamSSE plumbing already has coverage above.
+ */
+describe("runGenerate — guard rails (PR #62 follow-up)", () => {
+  /**
+   * Lay down a temp `planforgeRoot` containing a stub `scripts/bootstrap-plan.js`
+   * that mimics the real CLI's on-disk output shape. The caller chooses
+   * which artifacts the stub writes so we can reach each branch of the
+   * post-CLI handling in generate.ts deterministically.
+   */
+  async function setupStubCli(opts: {
+    writeScaffoldInput: boolean;
+    extraBytes?: number;
+  }): Promise<{ planforgeRoot: string; cleanup: () => Promise<void> }> {
+    const root = await mkdtemp(resolve(tmpdir(), "planforge-stub-cli-"));
+    const scriptDir = resolve(root, "scripts");
+    await mkdir(scriptDir, { recursive: true });
+    const script = `#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const crypto = require("node:crypto");
+const args = process.argv.slice(2);
+const outIdx = args.indexOf("--outdir");
+if (outIdx < 0 || !args[outIdx + 1]) {
+  console.error("stub bootstrap-plan: --outdir is required");
+  process.exit(2);
+}
+const outdir = args[outIdx + 1];
+fs.mkdirSync(path.join(outdir, "planning"), { recursive: true });
+fs.writeFileSync(
+  path.join(outdir, "planning", "plan-output.json"),
+  JSON.stringify({ stub: true }),
+);
+${
+  opts.writeScaffoldInput
+    ? `fs.mkdirSync(path.join(outdir, "exports"), { recursive: true });
+fs.writeFileSync(
+  path.join(outdir, "exports", "scaffoldkit-input.json"),
+  JSON.stringify({ stub: true }),
+);
+`
+    : ""
+}
+${
+  opts.extraBytes
+    ? `fs.writeFileSync(
+  path.join(outdir, "ballast.bin"),
+  crypto.randomBytes(${opts.extraBytes}),
+);
+`
+    : ""
+}
+process.exit(0);
+`;
+    await writeFile(resolve(scriptDir, "bootstrap-plan.js"), script);
+    return {
+      planforgeRoot: root,
+      cleanup: () => rm(root, { recursive: true, force: true }),
+    };
+  }
+
+  async function drain(
+    iter: AsyncGenerator<GenerateEvent>,
+  ): Promise<GenerateEvent[]> {
+    const events: GenerateEvent[] = [];
+    for await (const ev of iter) {
+      events.push(ev);
+    }
+    return events;
+  }
+
+  it(
+    "reports `skipped: no_input` when the CLI does not write scaffoldkit-input.json",
+    async () => {
+      const stub = await setupStubCli({ writeScaffoldInput: false });
+      try {
+        const events = await drain(
+          runGenerate(
+            {},
+            {
+              planforgeRoot: stub.planforgeRoot,
+              nodeBin: process.execPath,
+              // Path exists (the stub script) but is never invoked — the
+              // no_input branch short-circuits before runScaffoldkit. We
+              // still pass a real path so the assertion isn't accidentally
+              // satisfied by an unrelated "not_installed" branch.
+              scaffoldkitPython: process.execPath,
+              scaffold: true,
+            },
+          ),
+        );
+        expect(events.map((e) => e.type)).not.toContain("error");
+        const done = events.find((e) => e.type === "done")!;
+        expect(done.scaffoldkit?.invoked).toBe(false);
+        expect(done.scaffoldkit?.skipped).toBe("no_input");
+        // scaffoldkitInput is the field that drove the branch; surface it
+        // so a regression in the JSON.parse / ENOENT split is visible.
+        expect(done.scaffoldkitInput).toBeNull();
+      } finally {
+        await stub.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    "emits an `error` event with the overflow message when the tarball exceeds the byte cap",
+    async () => {
+      // Add 8 KiB of incompressible (random) ballast so the gzipped tarball
+      // is comfortably above the 256-byte cap below. The 256-byte cap is
+      // still well under TARBALL_MAX_BYTES, so the `tar` maxBuffer safety
+      // net never trips — the byte-length check at generate.ts is the only
+      // code path that can fire.
+      const stub = await setupStubCli({
+        writeScaffoldInput: false,
+        extraBytes: 8192,
+      });
+      try {
+        const events = await drain(
+          runGenerate(
+            {},
+            {
+              planforgeRoot: stub.planforgeRoot,
+              nodeBin: process.execPath,
+              scaffoldkitPython: process.execPath,
+              scaffold: false,
+              tarballMaxBytes: 256,
+            },
+          ),
+        );
+        const err = events.find((e) => e.type === "error");
+        expect(err).toBeDefined();
+        expect(err?.message).toMatch(/Output tarball exceeds 256 bytes/);
+        // No `done` should follow once the byte-length check returns.
+        expect(events.find((e) => e.type === "done")).toBeUndefined();
+      } finally {
+        await stub.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    "succeeds when the tarball stays within the byte cap",
+    async () => {
+      // Mirror-image of the previous test: prove the assertion is meaningful
+      // by confirming the same setup with a generous cap still produces a
+      // `done` event. Without this, the negative case above could pass
+      // because of an unrelated short-circuit.
+      const stub = await setupStubCli({ writeScaffoldInput: false });
+      try {
+        const events = await drain(
+          runGenerate(
+            {},
+            {
+              planforgeRoot: stub.planforgeRoot,
+              nodeBin: process.execPath,
+              scaffoldkitPython: process.execPath,
+              scaffold: false,
+              tarballMaxBytes: 50 * 1024 * 1024,
+            },
+          ),
+        );
+        expect(events.map((e) => e.type)).not.toContain("error");
+        const done = events.find((e) => e.type === "done")!;
+        expect(typeof done.outputTarGz).toBe("string");
+      } finally {
+        await stub.cleanup();
+      }
+    },
+    30_000,
   );
 });

@@ -52,6 +52,15 @@ export interface GenerateOptions {
    * so the tempdir is cleaned up.
    */
   abortSignal?: AbortSignal;
+  /**
+   * Override the gzipped-tarball byte cap on the `done` event. Defaults
+   * to TARBALL_MAX_BYTES (50 MiB). The `tar` subprocess's `maxBuffer`
+   * safety net stays at the module constant so this override can only
+   * lower the effective cap, never raise it past the hard limit. Used
+   * by the regression test that verifies the byte-length check fires
+   * with the documented "Output tarball exceeds N bytes" message.
+   */
+  tarballMaxBytes?: number;
 }
 
 /**
@@ -449,12 +458,13 @@ export async function* runGenerate(
     // needs all of them, not just the two JSON blobs above.
     let outputTarGz: string | undefined;
     try {
+      const tarballCap = opts.tarballMaxBytes ?? TARBALL_MAX_BYTES;
       const buf = await tarDir(outdir);
-      if (buf.byteLength > TARBALL_MAX_BYTES) {
+      if (buf.byteLength > tarballCap) {
         yield {
           type: "error",
           requestId,
-          message: `Output tarball exceeds ${TARBALL_MAX_BYTES} bytes`,
+          message: `Output tarball exceeds ${tarballCap} bytes`,
           exitCode: 0,
         };
         return;
