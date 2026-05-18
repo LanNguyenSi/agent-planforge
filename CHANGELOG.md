@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- HTTP server: `scaffoldkit.skipped` on the `done` event gains a fifth
+  value `"input_unreadable"` plus an optional `inputReadError?: string`
+  field. Previously every failure reading `exports/scaffoldkit-input.json`
+  (ENOENT, EACCES, malformed JSON) collapsed into `skipped: "no_input"`,
+  hiding a broken CLI behind a normal-path no-op. ENOENT still maps to
+  `"no_input"`; any other read or `JSON.parse` failure now reports
+  `"input_unreadable"` with the underlying error message in
+  `inputReadError`. The field is optional and additive — existing
+  consumers ignoring it are unaffected.
+
 ## [0.2.0] - 2026-04-24
 
 **Headline: The HTTP server gained a full scaffolding path and an

@@ -68,11 +68,11 @@ export interface GenerateOptions {
 
 /**
  * Describes what happened with scaffoldkit for a given generate run.
- * Always present on the `done` event so callers can tell the four cases
+ * Always present on the `done` event so callers can tell the cases
  * apart without second-guessing:
  *   - `invoked: true, exitCode: 0`       — scaffolding ran cleanly
  *   - `invoked: true, exitCode: nonzero` — ran but failed; planning OK
- *   - `invoked: false, skipped: "…"`     — intentionally not run
+ *   - `invoked: false, skipped: "…"`     — not run; see `skipped` field
  */
 export interface ScaffoldkitResult {
   invoked: boolean;
