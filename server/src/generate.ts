@@ -55,10 +55,13 @@ export interface GenerateOptions {
   /**
    * Override the gzipped-tarball byte cap on the `done` event. Defaults
    * to TARBALL_MAX_BYTES (50 MiB). The `tar` subprocess's `maxBuffer`
-   * safety net stays at the module constant so this override can only
-   * lower the effective cap, never raise it past the hard limit. Used
-   * by the regression test that verifies the byte-length check fires
-   * with the documented "Output tarball exceeds N bytes" message.
+   * safety net stays at the module constant — an override larger than
+   * TARBALL_MAX_BYTES is effectively no-op because the upstream tar call
+   * rejects bytes past the hard limit with a different ("Failed to tar
+   * output directory: …maxBuffer length exceeded") error. Intended for
+   * the regression test that verifies the byte-length check fires with
+   * the documented "Output tarball exceeds N bytes" message; production
+   * callers should not pass this.
    */
   tarballMaxBytes?: number;
 }
