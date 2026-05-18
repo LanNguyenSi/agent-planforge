@@ -890,11 +890,21 @@ describe("runGenerate — guard rails (PR #62 follow-up)", () => {
    */
   async function setupStubCli(opts: {
     writeScaffoldInput: boolean;
+    /**
+     * When provided, the stub writes this exact byte sequence as the
+     * contents of `exports/scaffoldkit-input.json` instead of valid JSON.
+     * Implies the parent directory is created (i.e. as if
+     * `writeScaffoldInput: true` was set), but the content bypasses
+     * JSON.stringify so a malformed payload like `{not json` reaches
+     * the JSON.parse error path.
+     */
+    rawScaffoldInputBody?: string;
     extraBytes?: number;
   }): Promise<{ planforgeRoot: string; cleanup: () => Promise<void> }> {
     const root = await mkdtemp(resolve(tmpdir(), "planforge-stub-cli-"));
     const scriptDir = resolve(root, "scripts");
     await mkdir(scriptDir, { recursive: true });
+    const writeMalformed = typeof opts.rawScaffoldInputBody === "string";
     const script = `#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
@@ -917,6 +927,16 @@ ${
 fs.writeFileSync(
   path.join(outdir, "exports", "scaffoldkit-input.json"),
   JSON.stringify({ stub: true }),
+);
+`
+    : ""
+}
+${
+  writeMalformed
+    ? `fs.mkdirSync(path.join(outdir, "exports"), { recursive: true });
+fs.writeFileSync(
+  path.join(outdir, "exports", "scaffoldkit-input.json"),
+  ${JSON.stringify(opts.rawScaffoldInputBody)},
 );
 `
     : ""
@@ -975,6 +995,53 @@ process.exit(0);
         expect(done.scaffoldkit?.skipped).toBe("no_input");
         // scaffoldkitInput is the field that drove the branch; surface it
         // so a regression in the JSON.parse / ENOENT split is visible.
+        expect(done.scaffoldkitInput).toBeNull();
+        // The no_input branch must NOT carry a parse error — that's the
+        // diagnostic-bearing sibling branch (`input_unreadable`).
+        expect(done.scaffoldkit?.inputReadError).toBeUndefined();
+      } finally {
+        await stub.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    "reports `skipped: input_unreadable` with the parse error when scaffoldkit-input.json is malformed",
+    async () => {
+      // Distinguish "file absent" (skipped: no_input) from "file present
+      // but unreadable" (skipped: input_unreadable). The second is the
+      // diagnostic case — a silent CLI bug that previously collapsed into
+      // the same no-op branch as a normal missing file.
+      const stub = await setupStubCli({
+        writeScaffoldInput: false,
+        rawScaffoldInputBody: "{not valid json",
+      });
+      try {
+        const events = await drain(
+          runGenerate(
+            {},
+            {
+              planforgeRoot: stub.planforgeRoot,
+              nodeBin: process.execPath,
+              scaffoldkitPython: process.execPath,
+              scaffold: true,
+            },
+          ),
+        );
+        expect(events.map((e) => e.type)).not.toContain("error");
+        const done = events.find((e) => e.type === "done")!;
+        expect(done.scaffoldkit?.invoked).toBe(false);
+        expect(done.scaffoldkit?.skipped).toBe("input_unreadable");
+        expect(done.scaffoldkit?.inputReadError).toBeDefined();
+        // Loose match — the exact JSON.parse phrasing varies by Node
+        // version. Both pre-22 ("Unexpected token") and 22+ ("Expected
+        // property name") wording mention JSON or the offending token.
+        expect(done.scaffoldkit?.inputReadError).toMatch(/JSON|token|property/i);
+        // The file existed, so the planning artifact still rides through
+        // and scaffoldkitInput stays null (parse failed). Surface both
+        // so a regression that, e.g., starts re-treating malformed as
+        // valid surfaces immediately.
         expect(done.scaffoldkitInput).toBeNull();
       } finally {
         await stub.cleanup();

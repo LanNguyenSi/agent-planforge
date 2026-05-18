@@ -230,7 +230,7 @@ api.use("*", async (c, next) => {
 // Events emitted:
 //   - `progress` — { requestId, stream: "stdout"|"stderr", line }
 //   - `done`     — { requestId, planOutput, scaffoldkitInput | null,
-//                     scaffoldkit: { invoked, exitCode?, stderr?, skipped? },
+//                     scaffoldkit: { invoked, exitCode?, stderr?, skipped?, inputReadError? },
 //                     outputTarGz, exitCode: 0 }
 //   - `error`    — { requestId, message, exitCode? }
 //

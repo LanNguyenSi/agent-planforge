@@ -68,11 +68,11 @@ export interface GenerateOptions {
 
 /**
  * Describes what happened with scaffoldkit for a given generate run.
- * Always present on the `done` event so callers can tell the four cases
+ * Always present on the `done` event so callers can tell the cases
  * apart without second-guessing:
  *   - `invoked: true, exitCode: 0`       — scaffolding ran cleanly
  *   - `invoked: true, exitCode: nonzero` — ran but failed; planning OK
- *   - `invoked: false, skipped: "…"`     — intentionally not run
+ *   - `invoked: false, skipped: "…"`     — not run; see `skipped` field
  */
 export interface ScaffoldkitResult {
   invoked: boolean;
@@ -80,11 +80,20 @@ export interface ScaffoldkitResult {
   stderr?: string;
   /**
    * Reason scaffoldkit was not invoked.
-   * - `no_input`      — CLI didn't write scaffoldkit-input.json
-   * - `opt_out`       — caller passed `scaffold: false`
-   * - `not_installed` — SCAFFOLDKIT_PYTHON binary is missing (dev / tests)
+   * - `no_input`         — CLI didn't write scaffoldkit-input.json (ENOENT)
+   * - `input_unreadable` — file exists but JSON.parse / IO failed (CLI bug)
+   * - `opt_out`          — caller passed `scaffold: false`
+   * - `not_installed`    — SCAFFOLDKIT_PYTHON binary is missing (dev / tests)
    */
-  skipped?: "no_input" | "opt_out" | "not_installed";
+  skipped?: "no_input" | "input_unreadable" | "opt_out" | "not_installed";
+  /**
+   * Populated only when `skipped === "input_unreadable"`. Carries the
+   * underlying error message (e.g. `Unexpected token } in JSON at position 12`)
+   * so the caller can distinguish a JSON-parse bug from a permission-denied
+   * read. The full path is intentionally omitted — it lives in the server's
+   * tempdir, not anything the caller can act on.
+   */
+  inputReadError?: string;
 }
 
 /**
@@ -412,11 +421,19 @@ export async function* runGenerate(
       return;
     }
     const scaffoldkitInputPath = resolve(outdir, "exports", "scaffoldkit-input.json");
+    // Distinguish "file does not exist" (common — not every planning input
+    // produces a scaffoldkit input) from "file exists but is unreadable /
+    // malformed" (rare — almost certainly a CLI bug). The first case is
+    // a normal skip; the second is diagnostic information the caller wants
+    // surfaced so a silently broken CLI doesn't masquerade as no-op.
+    let scaffoldkitInputReadError: string | null = null;
     try {
       scaffoldkitInput = JSON.parse(await readFile(scaffoldkitInputPath, "utf8"));
-    } catch {
-      // scaffoldkit-input.json is optional — not every input produces one.
+    } catch (err) {
       scaffoldkitInput = null;
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        scaffoldkitInputReadError = (err as Error).message;
+      }
     }
 
     // Run scaffoldkit if the CLI produced an input and the caller didn't
@@ -425,6 +442,12 @@ export async function* runGenerate(
     let scaffoldkit: ScaffoldkitResult;
     if (!opts.scaffold) {
       scaffoldkit = { invoked: false, skipped: "opt_out" };
+    } else if (scaffoldkitInputReadError !== null) {
+      scaffoldkit = {
+        invoked: false,
+        skipped: "input_unreadable",
+        inputReadError: scaffoldkitInputReadError,
+      };
     } else if (scaffoldkitInput === null) {
       scaffoldkit = { invoked: false, skipped: "no_input" };
     } else {

@@ -69,7 +69,7 @@ Response: `Content-Type: text/event-stream`. Events:
 
 - `progress` — `{ requestId, stream: "stdout" | "stderr", line }` — one per
   CLI log line
-- `done` — `{ requestId, planOutput, scaffoldkitInput: <object> | null, scaffoldkit: { invoked, exitCode?, stderr?, skipped? }, outputTarGz: <base64 gzip tarball>, exitCode: 0 }`. The tarball packs the **contents** of the CLI's output dir (not a nested `out/` folder); untar with `tar -xzf - -C <targetDir>`. Hard cap: 50 MiB (gzipped) — raised from 10 MiB when scaffolding landed because a scaffolded project tree can be several MB. Large enough for typical runs and keeps a pathological prompt from streaming an unbounded blob into the client's memory.
+- `done` — `{ requestId, planOutput, scaffoldkitInput: <object> | null, scaffoldkit: { invoked, exitCode?, stderr?, skipped?, inputReadError? }, outputTarGz: <base64 gzip tarball>, exitCode: 0 }`. The tarball packs the **contents** of the CLI's output dir (not a nested `out/` folder); untar with `tar -xzf - -C <targetDir>`. Hard cap: 50 MiB (gzipped) — raised from 10 MiB when scaffolding landed because a scaffolded project tree can be several MB. Large enough for typical runs and keeps a pathological prompt from streaming an unbounded blob into the client's memory.
 - `error` — `{ requestId, message, exitCode? }`
 
 The `scaffoldkit` field on `done` always exists. Its `skipped` value
@@ -79,6 +79,7 @@ tells callers why scaffolding was not performed:
 | --- | --- |
 | `opt_out` | Caller passed `scaffold: false` |
 | `no_input` | CLI did not write `scaffoldkit-input.json` (not every input produces one) |
+| `input_unreadable` | `scaffoldkit-input.json` exists but read / `JSON.parse` failed — almost always a CLI bug. The underlying error message is in `inputReadError` so callers can distinguish a parse failure from a permission issue. |
 | `not_installed` | `SCAFFOLDKIT_PYTHON` is missing — dev env without the venv; production containers always have it |
 
 A nonzero `scaffoldkit.exitCode` does **not** fail the request — planning
