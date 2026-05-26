@@ -222,7 +222,7 @@ This creates:
 npm run plan:refresh-examples
 ```
 
-If you are updating scripts or agents from the older flat root layout, see [docs/output-layout-migration.md](/home/lan/git/pandora/agent-planforge/docs/output-layout-migration.md).
+If you are updating scripts or agents from the older flat root layout, see [docs/output-layout-migration.md](docs/output-layout-migration.md).
 
 ## Repository Structure
 
