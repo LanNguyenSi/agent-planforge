@@ -70,13 +70,14 @@ If you are updating older automation that expected root-level JSON artifacts, re
 - `governance/` when the enterprise path applies
 - `runbooks/` when production-oriented phases apply
 
-### Shared By Convention
+### planforge Tooling Templates (under `.planforge/tooling/`)
 
-- `Makefile`
-- Docker dev files
-- pre-commit helper files
+- `.planforge/tooling/Makefile`
+- `.planforge/tooling/Dockerfile.dev`, `.planforge/tooling/docker-compose.dev.yml`, `.planforge/tooling/.dockerignore`
+- `.planforge/tooling/.husky-pre-commit`, `.planforge/tooling/lint-staged.config.js`
+- `.planforge/tooling/BRANCH_INFO.md`
 
-If scaffoldkit already created these files, planforge may overwrite them with its bundled templates. Review generated diffs instead of assuming merge behavior.
+planforge writes its generic tooling templates under `.planforge/tooling/`, so they no longer overwrite scaffoldkit's blueprint-specific root `Makefile`, Docker, or pre-commit files. scaffoldkit owns the root copies; treat planforge's as reference templates to wire in deliberately.
 
 ## End-To-End Workflow
 

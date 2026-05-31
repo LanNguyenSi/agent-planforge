@@ -153,6 +153,10 @@ function docsPath(...segments) {
   return path.join(".planforge", "docs", ...segments);
 }
 
+function toolingPath(...segments) {
+  return path.join(".planforge", "tooling", ...segments);
+}
+
 function writeStderrLine(message) {
   fs.writeSync(2, `${message}\n`);
 }
@@ -3282,7 +3286,7 @@ Primary references:
 `;
 }
 
-function renderPlanforgeIndex(output) {
+function renderPlanforgeIndex(output, presence = {}) {
   return {
     version: "1.0",
     generatedBy: "agent-planforge",
@@ -3304,15 +3308,18 @@ function renderPlanforgeIndex(output) {
     directories: {
       ai: ".ai",
       docs: docsPath(),
+      tooling: toolingPath(),
       planning: "planning",
       handoff: "handoff",
       exports: "exports",
       prompts: "prompts",
-      specs: "specs",
       adrs: "adrs",
       tasks: "tasks",
-      governance: "governance",
-      runbooks: "runbooks"
+      // Conditional directories: emitted only when actually generated, so the
+      // index never advertises a directory that is absent on disk.
+      ...(presence.specs ? { specs: "specs" } : {}),
+      ...(presence.runbooks ? { runbooks: "runbooks" } : {}),
+      ...(presence.governance ? { governance: "governance" } : {})
     },
     planning: {
       planOutput: planningPath("plan-output.json"),
@@ -3708,7 +3715,7 @@ function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
 function writeMakefile(repoRoot, outdir) {
   const templatePath = path.join(repoRoot, "templates", "Makefile.template");
   const makefileContent = readText(templatePath, "Makefile.template");
-  writeFile(path.join(outdir, "Makefile"), makefileContent);
+  writeFile(path.join(outdir, toolingPath("Makefile")), makefileContent);
 }
 
 function readScaffoldkitBlueprint(outdir) {
@@ -3765,9 +3772,9 @@ function writeDockerFiles(repoRoot, outdir) {
   const dockerfileContent = readText(dockerfilePath, "Dockerfile.dev.template");
   const dockerignoreContent = readText(dockerignorePath, ".dockerignore.template");
   
-  writeFile(path.join(outdir, "docker-compose.dev.yml"), dockerComposeContent);
-  writeFile(path.join(outdir, "Dockerfile.dev"), dockerfileContent);
-  writeFile(path.join(outdir, ".dockerignore"), dockerignoreContent);
+  writeFile(path.join(outdir, toolingPath("docker-compose.dev.yml")), dockerComposeContent);
+  writeFile(path.join(outdir, toolingPath("Dockerfile.dev")), dockerfileContent);
+  writeFile(path.join(outdir, toolingPath(".dockerignore")), dockerignoreContent);
 }
 
 function writePreCommitHooks(repoRoot, outdir) {
@@ -3777,8 +3784,8 @@ function writePreCommitHooks(repoRoot, outdir) {
   const huskyPreCommitContent = readText(huskyPreCommitPath, ".husky-pre-commit.template");
   const lintStagedConfigContent = readText(lintStagedConfigPath, "lint-staged.config.js.template");
   
-  writeFile(path.join(outdir, ".husky-pre-commit"), huskyPreCommitContent);
-  writeFile(path.join(outdir, "lint-staged.config.js"), lintStagedConfigContent);
+  writeFile(path.join(outdir, toolingPath(".husky-pre-commit")), huskyPreCommitContent);
+  writeFile(path.join(outdir, toolingPath("lint-staged.config.js")), lintStagedConfigContent);
 }
 
 function writeBranchInfo(repoRoot, outdir, defaultBranch, autoDetected) {
@@ -3793,7 +3800,7 @@ function writeBranchInfo(repoRoot, outdir, defaultBranch, autoDetected) {
   content = content.replace(/{{defaultBranch}}/g, defaultBranch);
   content = content.replace(/{{detectionMethod}}/g, detectionMethod);
   
-  writeFile(path.join(outdir, "BRANCH_INFO.md"), content);
+  writeFile(path.join(outdir, toolingPath("BRANCH_INFO.md")), content);
 }
 
 function detectDefaultBranch(outdir) {
@@ -3923,7 +3930,11 @@ function main() {
     const rerunMode = args.resumeFrom ? "resume" : args.rerunFrom ? "rerun" : "fresh";
     const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata);
     const promptArtifacts = buildPromptArtifacts(planforgeRoot, input, output);
-    const planforgeIndex = renderPlanforgeIndex(output);
+    const planforgeIndex = renderPlanforgeIndex(output, {
+      governance: output.path === "enterprise",
+      runbooks: output.phase === "phase_2" || output.phase === "phase_3",
+      specs: args.clarify === true
+    });
 
     output.promptExports = promptArtifacts.map(({ contents, ...metadata }) => metadata);
     output.handoffManifest = buildHandoffManifest(input, output);

@@ -32,6 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `analyze-artifacts` resolves the docs from the new location and still
   reads legacy root-level outputs. First step of a phased output-layout
   redesign; see `docs/output-layout-migration.md`.
+- Output layout: the generated tooling templates (`Makefile`,
+  `Dockerfile.dev`, `docker-compose.dev.yml`, `.dockerignore`,
+  `.husky-pre-commit`, `lint-staged.config.js`, `BRANCH_INFO.md`) now
+  generate under `.planforge/tooling/` instead of the project root. This
+  declutters the root and stops planforge's generic copies from overwriting
+  scaffoldkit's blueprint-specific root files. `planforge-index.json` gains a
+  `directories.tooling` entry; the individual tooling files stay out of the
+  index as before, and the index `version` is unchanged.
+- `planforge-index.json` `directories` is now presence-accurate: the
+  conditional `governance`, `runbooks`, and `specs` entries appear only when
+  those directories are actually generated (enterprise path,
+  production-oriented phases, and `--clarify` respectively), instead of being
+  listed unconditionally.
 
 ## [0.2.0] - 2026-04-24
 
