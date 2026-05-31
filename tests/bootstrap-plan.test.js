@@ -179,6 +179,7 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
     ".planforge/docs/delivery-plan.md",
     ".planforge/docs/intake-questionnaire.md",
     "governance/service-ownership.md",
+    "runbooks/release-readiness.md",
     "prompts/governance-setup.md",
     "handoff/runner/step-4-wave-1-execution/status.json",
     "planning/structured-input.json",
@@ -257,7 +258,13 @@ runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database
   // from the index; the tooling directory anchor is always present.
   const cliIndex = readJson(path.join(outdir, "planforge-index.json"));
   assert.equal(cliIndex.directories.governance, undefined);
+  assert.equal(cliIndex.directories.runbooks, undefined);
   assert.equal(cliIndex.directories.tooling, ".planforge/tooling");
+  // The runbooks/governance write gates and the index presence flags now share one
+  // predicate (shouldWriteRunbooks/shouldWriteGovernance), so an absent index entry
+  // must mean an absent directory on disk: no drift between writer and index.
+  assert.equal(fs.existsSync(path.join(outdir, "governance")), false);
+  assert.equal(fs.existsSync(path.join(outdir, "runbooks")), false);
 });
 
 runCase("php symfony backend plans recommend the symfony backend blueprint", () => {
