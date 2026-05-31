@@ -17,9 +17,9 @@ Use it to understand the current plan quickly and jump to the source artifacts t
 
 ## Source Artifacts
 
-- [Project Charter](project-charter.md): scope, users, constraints, open questions
-- [Architecture Overview](architecture-overview.md): starting architecture, tradeoffs, risks
-- [Delivery Plan](delivery-plan.md): execution waves and dependency ordering
+- [Project Charter](.planforge/docs/project-charter.md): scope, users, constraints, open questions
+- [Architecture Overview](.planforge/docs/architecture-overview.md): starting architecture, tradeoffs, risks
+- [Delivery Plan](.planforge/docs/delivery-plan.md): execution waves and dependency ordering
 - [Task Backlog](tasks/): executable work packages with acceptance criteria
 - [ADRs](adrs/): early high-leverage decisions
 - [Prompts](prompts/): downstream agent handoff prompts
@@ -27,9 +27,9 @@ Use it to understand the current plan quickly and jump to the source artifacts t
 
 ## Recommended Working Order
 
-1. Read `project-charter.md` for scope and unresolved questions.
-2. Read `architecture-overview.md` to confirm the recommended starting shape still fits.
-3. Read `delivery-plan.md` to understand wave sequencing and dependencies.
+1. Read `.planforge/docs/project-charter.md` for scope and unresolved questions.
+2. Read `.planforge/docs/architecture-overview.md` to confirm the recommended starting shape still fits.
+3. Read `.planforge/docs/delivery-plan.md` to understand wave sequencing and dependencies.
 4. Execute or refine the current wave tasks under `tasks/`.
 5. Update ADRs and prompts when architectural or governance assumptions move.
 

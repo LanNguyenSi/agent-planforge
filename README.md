@@ -196,10 +196,10 @@ This creates:
 - `out/sample/planning/plan-output.json`
 - `out/sample/planning/structured-input.json`
 - `out/sample/PROJECT.md`
-- `out/sample/intake-questionnaire.md`
-- `out/sample/project-charter.md`
-- `out/sample/architecture-overview.md`
-- `out/sample/delivery-plan.md`
+- `out/sample/.planforge/docs/intake-questionnaire.md`
+- `out/sample/.planforge/docs/project-charter.md`
+- `out/sample/.planforge/docs/architecture-overview.md`
+- `out/sample/.planforge/docs/delivery-plan.md`
 - `out/sample/handoff/runner-contract.json`
 - `out/sample/planning/rerun-report.json`
 - `out/sample/planning/rerun-summary.md`
