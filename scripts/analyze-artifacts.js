@@ -81,6 +81,14 @@ function resolvePlanOutputPath(projectDir) {
   return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
 }
 
+function resolveDocPath(projectDir, name) {
+  const candidates = [
+    path.join(projectDir, ".planforge", "docs", name),
+    path.join(projectDir, name)
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+}
+
 function toMarkdownList(items) {
   if (!items.length) {
     return "- None";
@@ -218,8 +226,8 @@ function analyzeArtifacts(projectDir, repoRoot) {
   const planOutput = readJson(planOutputPath);
   const patterns = readJson(path.join(repoRoot, "config", "stack-patterns.json")).patterns || {};
   const taskDocs = loadTaskDocuments(path.join(projectDir, "tasks"));
-  const deliveryPlan = parseDeliveryPlan(path.join(projectDir, "delivery-plan.md"));
-  const charterFeatures = parseProjectCharter(path.join(projectDir, "project-charter.md"));
+  const deliveryPlan = parseDeliveryPlan(resolveDocPath(projectDir, "delivery-plan.md"));
+  const charterFeatures = parseProjectCharter(resolveDocPath(projectDir, "project-charter.md"));
 
   const issues = [];
   const passed = [];

@@ -126,7 +126,7 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.ok(manifest.sharedArtifacts.includes("exports/scaffoldkit-input.json"));
   assert.ok(manifest.sharedArtifacts.includes("exports/devreview.json"));
   assert.match(projectIndex, /# PROJECT: Vendor Access Hub/);
-  assert.match(projectIndex, /\[Project Charter\]\(project-charter\.md\)/);
+  assert.match(projectIndex, /\[Project Charter\]\(\.planforge\/docs\/project-charter\.md\)/);
   assert.match(projectIndex, /## Current Wave/);
   assert.match(projectIndex, /## Architecture Guardrails/);
   assert.match(rootAgentsDoc, /Primary agent instructions live in `\.ai\/AGENTS\.md`/);
@@ -151,6 +151,11 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.equal(planforgeIndex.handoff.manifest, "handoff/manifest.json");
   assert.equal(planforgeIndex.exports.scaffoldkit, "exports/scaffoldkit-input.json");
   assert.equal(planforgeIndex.rootFiles.agents, "AGENTS.md");
+  assert.equal(planforgeIndex.rootFiles.charter, ".planforge/docs/project-charter.md");
+  assert.equal(planforgeIndex.rootFiles.architecture, ".planforge/docs/architecture-overview.md");
+  assert.equal(planforgeIndex.rootFiles.deliveryPlan, ".planforge/docs/delivery-plan.md");
+  assert.equal(planforgeIndex.rootFiles.intakeQuestionnaire, ".planforge/docs/intake-questionnaire.md");
+  assert.equal(planforgeIndex.directories.docs, ".planforge/docs");
   assert.equal(planforgeIndex.directories.ai, ".ai");
   assert.equal(planforgeIndex.ai.tasks, ".ai/TASKS.md");
 
@@ -163,6 +168,10 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
     ".ai/TASKS.md",
     ".ai/DECISIONS.md",
     "PROJECT.md",
+    ".planforge/docs/project-charter.md",
+    ".planforge/docs/architecture-overview.md",
+    ".planforge/docs/delivery-plan.md",
+    ".planforge/docs/intake-questionnaire.md",
     "governance/service-ownership.md",
     "prompts/governance-setup.md",
     "handoff/runner/step-4-wave-1-execution/status.json",
@@ -320,7 +329,7 @@ runCase("django plans emit a weak scaffold match and tell the agent to create or
 
   const outdir = path.join(fixtureDir, "out");
   const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
-  const architectureOverview = readText(path.join(outdir, "architecture-overview.md"));
+  const architectureOverview = readText(path.join(outdir, ".planforge", "docs", "architecture-overview.md"));
   const agentsDoc = readText(path.join(outdir, ".ai", "AGENTS.md"));
 
   assert.equal(scaffoldkit.blueprint, "rest-api");

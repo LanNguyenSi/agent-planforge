@@ -149,6 +149,10 @@ function exportsPath(...segments) {
   return path.join("exports", ...segments);
 }
 
+function docsPath(...segments) {
+  return path.join(".planforge", "docs", ...segments);
+}
+
 function writeStderrLine(message) {
   fs.writeSync(2, `${message}\n`);
 }
@@ -1892,8 +1896,8 @@ function buildTasks(input, phase, architecture, stackPatterns) {
       solution: "Create the charter, architecture overview, and first ADRs so later execution work inherits explicit assumptions instead of guesswork.",
       files: [
         "PROJECT.md",
-        "project-charter.md",
-        "architecture-overview.md",
+        docsPath("project-charter.md"),
+        docsPath("architecture-overview.md"),
         "adrs/001-initial-architecture-shape.md",
         "adrs/002-primary-data-store.md"
       ],
@@ -2644,7 +2648,7 @@ function renderIntakeFollowupPrompt(repoRoot, input, output) {
   return renderTemplate(repoRoot, "templates/intake-followup-prompt-template.md", {
     projectName: input.projectName,
     intakeCompleteness: output.intakeCompleteness,
-    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then review `AGENTS.md`, `intake-questionnaire.md`, and the current planning docs.",
+    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then review `AGENTS.md`, `.planforge/docs/intake-questionnaire.md`, and the current planning docs.",
     questions,
     applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
   });
@@ -2795,8 +2799,8 @@ function buildHandoffManifest(input, output) {
             "planforge-index.json",
             planningPath("plan-output.json"),
             "PROJECT.md",
-            "intake-questionnaire.md",
-            "project-charter.md",
+            docsPath("intake-questionnaire.md"),
+            docsPath("project-charter.md"),
             ".ai/TASKS.md",
             intakePrompt.path
           ],
@@ -2834,9 +2838,9 @@ function buildHandoffManifest(input, output) {
             "planforge-index.json",
             planningPath("plan-output.json"),
             "PROJECT.md",
-            "architecture-overview.md",
+            docsPath("architecture-overview.md"),
             ".ai/ARCHITECTURE.md",
-            "delivery-plan.md",
+            docsPath("delivery-plan.md"),
             architecturePrompt.path
           ],
           writes: [
@@ -2926,7 +2930,7 @@ function buildHandoffManifest(input, output) {
             "planforge-index.json",
             planningPath("plan-output.json"),
             "PROJECT.md",
-            "delivery-plan.md",
+            docsPath("delivery-plan.md"),
             ".ai/TASKS.md",
             executionPrompt.path
           ].concat(waveTaskPaths),
@@ -2952,9 +2956,9 @@ function buildHandoffManifest(input, output) {
     planningPath("plan-output.json"),
     planningPath("structured-input.json"),
     "PROJECT.md",
-    "project-charter.md",
-    "architecture-overview.md",
-    "delivery-plan.md",
+    docsPath("project-charter.md"),
+    docsPath("architecture-overview.md"),
+    docsPath("delivery-plan.md"),
     handoffPath("runner-contract.json"),
     exportsPath("devreview.json"),
     exportsPath("scaffoldkit-input.json"),
@@ -2965,7 +2969,7 @@ function buildHandoffManifest(input, output) {
   ].concat(output.recommendedPlaybooks);
 
   if (output.intakeCompleteness !== "complete") {
-    manifestArtifacts.push("intake-questionnaire.md");
+    manifestArtifacts.push(docsPath("intake-questionnaire.md"));
   }
 
     output.adrCandidates.forEach((adr, index) => {
@@ -3086,9 +3090,9 @@ function buildRerunReport(mode, previousRun, input, output) {
     planningPath("plan-output.json"),
     handoffPath("manifest.json"),
     "PROJECT.md",
-    "project-charter.md",
-    "architecture-overview.md",
-    "delivery-plan.md",
+    docsPath("project-charter.md"),
+    docsPath("architecture-overview.md"),
+    docsPath("delivery-plan.md"),
     handoffPath("runner-contract.json"),
     exportsPath("scaffoldkit-input.json"),
     exportsPath("devreview.json")
@@ -3292,13 +3296,14 @@ function renderPlanforgeIndex(output) {
       agents: "AGENTS.md",
       claude: "CLAUDE.md",
       project: "PROJECT.md",
-      charter: "project-charter.md",
-      architecture: "architecture-overview.md",
-      deliveryPlan: "delivery-plan.md",
-      intakeQuestionnaire: "intake-questionnaire.md"
+      charter: docsPath("project-charter.md"),
+      architecture: docsPath("architecture-overview.md"),
+      deliveryPlan: docsPath("delivery-plan.md"),
+      intakeQuestionnaire: docsPath("intake-questionnaire.md")
     },
     directories: {
       ai: ".ai",
+      docs: docsPath(),
       planning: "planning",
       handoff: "handoff",
       exports: "exports",
@@ -3952,10 +3957,10 @@ function main() {
     writeFile(path.join(outdir, planningPath("plan-output.json")), `${JSON.stringify(output, null, 2)}\n`);
     writeFile(path.join(outdir, handoffPath("manifest.json")), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
     writeFile(path.join(outdir, "PROJECT.md"), renderProjectIndex(planforgeRoot, input, output));
-    writeFile(path.join(outdir, "intake-questionnaire.md"), renderIntakeQuestionnaire(planforgeRoot, input, output));
-    writeFile(path.join(outdir, "project-charter.md"), renderProjectCharter(input, output));
-    writeFile(path.join(outdir, "architecture-overview.md"), renderArchitectureOverview(input, output));
-    writeFile(path.join(outdir, "delivery-plan.md"), renderDeliveryPlan(output));
+    writeFile(path.join(outdir, docsPath("intake-questionnaire.md")), renderIntakeQuestionnaire(planforgeRoot, input, output));
+    writeFile(path.join(outdir, docsPath("project-charter.md")), renderProjectCharter(input, output));
+    writeFile(path.join(outdir, docsPath("architecture-overview.md")), renderArchitectureOverview(input, output));
+    writeFile(path.join(outdir, docsPath("delivery-plan.md")), renderDeliveryPlan(output));
     writeAiArtifacts(input, output, outdir, scaffoldkitContext, planforgeIndex);
     writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldkitContext);
     writeTemplateArtifacts(planforgeRoot, input, output, outdir, config);

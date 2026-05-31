@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `inputReadError`. The field is optional and additive — existing
   consumers ignoring it are unaffected.
 
+### Changed
+
+- Output layout: the four planning prose docs (`project-charter.md`,
+  `architecture-overview.md`, `delivery-plan.md`,
+  `intake-questionnaire.md`) now generate under `.planforge/docs/` instead
+  of the project root, reducing root clutter. `planforge-index.json`
+  `rootFiles` entries point at the new locations and the index gains a
+  `directories.docs` entry, so index-honoring consumers follow the move
+  with no change. The index schema and `version` are unchanged. `AGENTS.md`,
+  `CLAUDE.md`, `PROJECT.md`, and `planforge-index.json` stay at the root.
+  `analyze-artifacts` resolves the docs from the new location and still
+  reads legacy root-level outputs. First step of a phased output-layout
+  redesign; see `docs/output-layout-migration.md`.
+
 ## [0.2.0] - 2026-04-24
 
 **Headline: The HTTP server gained a full scaffolding path and an

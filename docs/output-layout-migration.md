@@ -10,14 +10,12 @@ The current layout keeps the root focused on human and agent entry points:
 - `CLAUDE.md`
 - `planforge-index.json`
 - `PROJECT.md`
-- `project-charter.md`
-- `architecture-overview.md`
-- `delivery-plan.md`
 
-Machine-oriented artifacts now live in grouped directories.
+Planning prose and machine-oriented artifacts now live in grouped directories.
 
 ## New Layout
 
+- `.planforge/docs/` for planning prose (charter, architecture overview, delivery plan, intake questionnaire)
 - `planning/` for planning state and rerun metadata
 - `handoff/` for orchestration and runner state
 - `exports/` for downstream tool exports
@@ -36,6 +34,10 @@ Machine-oriented artifacts now live in grouped directories.
 | `runner/` | `handoff/runner/` |
 | `scaffoldkit-input.json` | `exports/scaffoldkit-input.json` |
 | `.devreview.json` | `exports/devreview.json` |
+| `project-charter.md` | `.planforge/docs/project-charter.md` |
+| `architecture-overview.md` | `.planforge/docs/architecture-overview.md` |
+| `delivery-plan.md` | `.planforge/docs/delivery-plan.md` |
+| `intake-questionnaire.md` | `.planforge/docs/intake-questionnaire.md` |
 
 ## Compatibility Notes
 

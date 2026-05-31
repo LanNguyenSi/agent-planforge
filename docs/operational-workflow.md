@@ -29,9 +29,9 @@ After each run, review these files first:
 - `planforge-index.json`
 - `planning/structured-input.json`
 - `planning/plan-output.json`
-- `project-charter.md`
-- `architecture-overview.md`
-- `delivery-plan.md`
+- `.planforge/docs/project-charter.md`
+- `.planforge/docs/architecture-overview.md`
+- `.planforge/docs/delivery-plan.md`
 - `planning/rerun-summary.md`
 
 If the input was parsed from text or markdown, check `planning/structured-input.json` before trusting the backlog.

@@ -23,7 +23,7 @@ Typical responsibilities:
 Current responsibilities:
 
 - read planning input and infer a first delivery phase and path
-- generate planning artifacts such as `project-charter.md`, `architecture-overview.md`, `delivery-plan.md`
+- generate planning artifacts such as `.planforge/docs/project-charter.md`, `.planforge/docs/architecture-overview.md`, `.planforge/docs/delivery-plan.md`
 - generate ADRs in `adrs/`
 - generate task documents in `tasks/`
 - generate prompt exports in `prompts/`
@@ -49,9 +49,9 @@ If you are updating older automation that expected root-level JSON artifacts, re
 
 - `planning/plan-output.json`
 - `planning/structured-input.json`
-- `project-charter.md`
-- `architecture-overview.md`
-- `delivery-plan.md`
+- `.planforge/docs/project-charter.md`
+- `.planforge/docs/architecture-overview.md`
+- `.planforge/docs/delivery-plan.md`
 - `adrs/*.md`
 - `tasks/*.md`
 - `prompts/*.md`
@@ -150,10 +150,9 @@ Start with:
 - `planforge-index.json`
 - `planning/structured-input.json`
 - `planning/plan-output.json`
-- `project-charter.md`
-- `architecture-overview.md`
-- `delivery-plan.md`
-- `AGENTS.md`
+- `.planforge/docs/project-charter.md`
+- `.planforge/docs/architecture-overview.md`
+- `.planforge/docs/delivery-plan.md`
 - `.ai/AGENTS.md`
 - `handoff/manifest.json`
 
