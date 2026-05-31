@@ -156,7 +156,13 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.equal(planforgeIndex.rootFiles.deliveryPlan, ".planforge/docs/delivery-plan.md");
   assert.equal(planforgeIndex.rootFiles.intakeQuestionnaire, ".planforge/docs/intake-questionnaire.md");
   assert.equal(planforgeIndex.directories.docs, ".planforge/docs");
+  assert.equal(planforgeIndex.directories.tooling, ".planforge/tooling");
   assert.equal(planforgeIndex.directories.ai, ".ai");
+  // Enterprise phase_3 run: governance + runbooks are written, so they appear;
+  // specs is not (no --clarify), so it must be absent from the index.
+  assert.equal(planforgeIndex.directories.governance, "governance");
+  assert.equal(planforgeIndex.directories.runbooks, "runbooks");
+  assert.equal(planforgeIndex.directories.specs, undefined);
   assert.equal(planforgeIndex.ai.tasks, ".ai/TASKS.md");
 
   [
@@ -181,7 +187,7 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
     assert.ok(fs.existsSync(path.join(outdir, relativePath)), `missing ${relativePath}`);
   });
 
-  assert.equal(fs.existsSync(path.join(outdir, "Makefile")), true);
+  assert.equal(fs.existsSync(path.join(outdir, ".planforge", "tooling", "Makefile")), true);
 });
 
 runCase("service-oriented plans export a real scaffoldkit backend blueprint", () => {
@@ -243,9 +249,15 @@ runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database
   assert.ok(featureTasks.some((task) => task.files.some((file) => file.includes("memory-sync"))));
   assert.equal(featureTasks.some((task) => task.files.some((file) => /notifications|widgets|github/i.test(file))), false);
 
-  assert.equal(fs.existsSync(path.join(outdir, "Makefile")), false);
-  assert.equal(fs.existsSync(path.join(outdir, "Dockerfile.dev")), false);
-  assert.equal(fs.existsSync(path.join(outdir, "docker-compose.dev.yml")), false);
+  assert.equal(fs.existsSync(path.join(outdir, ".planforge", "tooling", "Makefile")), false);
+  assert.equal(fs.existsSync(path.join(outdir, ".planforge", "tooling", "Dockerfile.dev")), false);
+  assert.equal(fs.existsSync(path.join(outdir, ".planforge", "tooling", "docker-compose.dev.yml")), false);
+
+  // Core (cli-tool) plan: governance is enterprise-only, so it must be absent
+  // from the index; the tooling directory anchor is always present.
+  const cliIndex = readJson(path.join(outdir, "planforge-index.json"));
+  assert.equal(cliIndex.directories.governance, undefined);
+  assert.equal(cliIndex.directories.tooling, ".planforge/tooling");
 });
 
 runCase("php symfony backend plans recommend the symfony backend blueprint", () => {
@@ -497,7 +509,10 @@ runCase("auto-clarify accepts defaults and proceeds without waiting", () => {
 
   const clarifications = fs.readFileSync(path.join(fixtureDir, "out", "specs", "clarifications.md"), "utf8");
   const output = readJson(planningFile(path.join(fixtureDir, "out"), "plan-output.json"));
+  const planforgeIndex = readJson(path.join(fixtureDir, "out", "planforge-index.json"));
 
+  // --clarify generated specs/clarifications.md, so the index must list specs.
+  assert.equal(planforgeIndex.directories.specs, "specs");
   assert.match(clarifications, /Answer: approval-based email\/password authentication/);
   assert.ok(output.inputSnapshot.constraints.some((item) => item.startsWith("Authentication strategy:")));
   assert.ok(output.inputSnapshot.constraints.some((item) => item.startsWith("Deployment target:")));

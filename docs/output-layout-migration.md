@@ -16,6 +16,7 @@ Planning prose and machine-oriented artifacts now live in grouped directories.
 ## New Layout
 
 - `.planforge/docs/` for planning prose (charter, architecture overview, delivery plan, intake questionnaire)
+- `.planforge/tooling/` for generic tooling templates (Makefile, Docker dev files, pre-commit helpers, BRANCH_INFO)
 - `planning/` for planning state and rerun metadata
 - `handoff/` for orchestration and runner state
 - `exports/` for downstream tool exports
@@ -38,6 +39,13 @@ Planning prose and machine-oriented artifacts now live in grouped directories.
 | `architecture-overview.md` | `.planforge/docs/architecture-overview.md` |
 | `delivery-plan.md` | `.planforge/docs/delivery-plan.md` |
 | `intake-questionnaire.md` | `.planforge/docs/intake-questionnaire.md` |
+| `Makefile` | `.planforge/tooling/Makefile` |
+| `Dockerfile.dev` | `.planforge/tooling/Dockerfile.dev` |
+| `docker-compose.dev.yml` | `.planforge/tooling/docker-compose.dev.yml` |
+| `.dockerignore` | `.planforge/tooling/.dockerignore` |
+| `.husky-pre-commit` | `.planforge/tooling/.husky-pre-commit` |
+| `lint-staged.config.js` | `.planforge/tooling/lint-staged.config.js` |
+| `BRANCH_INFO.md` | `.planforge/tooling/BRANCH_INFO.md` |
 
 ## Compatibility Notes
 
