@@ -203,11 +203,14 @@ async function runScaffoldkit(args: {
   abortSignal?: AbortSignal;
 }): Promise<{ exitCode: number; stderr: string }> {
   return await new Promise((resolvePromise, rejectPromise) => {
-    // Arg shape mirrors what project-forge has been running in the old
-    // subprocess path: `from-planforge <input> --target <outdir>
-    // --overwrite --no-install`. `--no-install` keeps the service off
-    // the network and prevents scaffoldkit from running `npm install`
-    // inside the HTTP service's tempdir.
+    // Arg shape: `from-planforge <input> --target <outdir> --overwrite
+    // --no-install --no-ai-context`. `--no-install` keeps the service off the
+    // network and prevents scaffoldkit from running `npm install` inside the
+    // HTTP service's tempdir. `--no-ai-context` stops scaffoldkit re-emitting
+    // its blueprint .ai/ tree (and AI_CONTEXT.md): the planforge CLI already
+    // wrote the canonical, plan-derived .ai/ into outdir above, and --overwrite
+    // would otherwise silently clobber it. The flag requires the scaffoldkit
+    // pinned by SCAFFOLDKIT_REF in server/Dockerfile (>= 59ccd5b).
     const child = spawn(
       args.python,
       [
@@ -219,6 +222,7 @@ async function runScaffoldkit(args: {
         args.outdir,
         "--overwrite",
         "--no-install",
+        "--no-ai-context",
       ],
       {
         cwd: args.outdir,

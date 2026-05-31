@@ -45,10 +45,11 @@ RUN cd server && npm run build
 # and the venv's python3 binary would fail at runtime with
 # `cannot open shared object file: libpython3.12.so.1.0`.
 FROM python:3.11-slim AS scaffoldkit
-# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ 333e0f7 (2026-04).
+# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ 59ccd5b (2026-05).
 # Update this when bumping scaffoldkit; image build will pull a fresh
-# clone and rebuild the venv.
-ARG SCAFFOLDKIT_REF=333e0f7
+# clone and rebuild the venv. 59ccd5b adds the --no-ai-context flag that
+# generate.ts passes, so scaffoldkit no longer clobbers planforge's .ai/.
+ARG SCAFFOLDKIT_REF=59ccd5b
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y git ca-certificates \
