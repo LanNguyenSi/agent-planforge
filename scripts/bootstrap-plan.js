@@ -157,6 +157,75 @@ function toolingPath(...segments) {
   return path.join(".planforge", "tooling", ...segments);
 }
 
+// Single source of truth for the generated artifact layout. renderPlanforgeIndex,
+// the handoff manifest (sharedArtifacts), and the rerun report (regeneratedArtifacts)
+// all derive their paths from here so the three maps cannot drift apart. Keep paths
+// byte-identical to what the writers emit; the index `version` is independent of this.
+const LAYOUT_REGISTRY = {
+  indexFile: "planforge-index.json",
+  rootFiles: {
+    agents: "AGENTS.md",
+    claude: "CLAUDE.md",
+    project: "PROJECT.md",
+    charter: docsPath("project-charter.md"),
+    architecture: docsPath("architecture-overview.md"),
+    deliveryPlan: docsPath("delivery-plan.md"),
+    intakeQuestionnaire: docsPath("intake-questionnaire.md")
+  },
+  directories: {
+    ai: ".ai",
+    docs: docsPath(),
+    tooling: toolingPath(),
+    planning: "planning",
+    handoff: "handoff",
+    exports: "exports",
+    prompts: "prompts",
+    adrs: "adrs",
+    tasks: "tasks"
+  },
+  // Conditional directories are emitted in the index only when their group's
+  // predicate is true. Declaration order (specs, runbooks, governance) fixes the
+  // append order of the index `directories` block, so do not reorder it.
+  conditionalDirectories: {
+    specs: "specs",
+    runbooks: "runbooks",
+    governance: "governance"
+  },
+  planning: {
+    planOutput: planningPath("plan-output.json"),
+    structuredInput: planningPath("structured-input.json"),
+    rerunReport: planningPath("rerun-report.json"),
+    rerunSummary: planningPath("rerun-summary.md")
+  },
+  handoff: {
+    manifest: handoffPath("manifest.json"),
+    runnerContract: handoffPath("runner-contract.json"),
+    runnerDirectory: handoffPath("runner")
+  },
+  exports: {
+    scaffoldkit: exportsPath("scaffoldkit-input.json"),
+    devreview: exportsPath("devreview.json")
+  },
+  ai: {
+    agents: ".ai/AGENTS.md",
+    architecture: ".ai/ARCHITECTURE.md",
+    tasks: ".ai/TASKS.md",
+    decisions: ".ai/DECISIONS.md"
+  }
+};
+
+// Conditional artifact-group predicates. Each gates BOTH the writes
+// (writeTemplateArtifacts) AND the group's presence in planforge-index.json, so the
+// writer gate and the index presence flag can no longer be hand-synced copies that
+// silently drift apart.
+function shouldWriteRunbooks(output) {
+  return output.phase === "phase_2" || output.phase === "phase_3";
+}
+
+function shouldWriteGovernance(output) {
+  return output.path === "enterprise";
+}
+
 function writeStderrLine(message) {
   fs.writeSync(2, `${message}\n`);
 }
@@ -2955,28 +3024,28 @@ function buildHandoffManifest(input, output) {
   const policyAwareSteps = steps.map((step) => Object.assign({}, step, makeStepPolicy(step, output)));
 
   const manifestArtifacts = [
-    "AGENTS.md",
-    "planforge-index.json",
-    planningPath("plan-output.json"),
-    planningPath("structured-input.json"),
-    "PROJECT.md",
-    docsPath("project-charter.md"),
-    docsPath("architecture-overview.md"),
-    docsPath("delivery-plan.md"),
-    handoffPath("runner-contract.json"),
-    exportsPath("devreview.json"),
-    exportsPath("scaffoldkit-input.json"),
-    ".ai/AGENTS.md",
-    ".ai/ARCHITECTURE.md",
-    ".ai/TASKS.md",
-    ".ai/DECISIONS.md"
+    LAYOUT_REGISTRY.rootFiles.agents,
+    LAYOUT_REGISTRY.indexFile,
+    LAYOUT_REGISTRY.planning.planOutput,
+    LAYOUT_REGISTRY.planning.structuredInput,
+    LAYOUT_REGISTRY.rootFiles.project,
+    LAYOUT_REGISTRY.rootFiles.charter,
+    LAYOUT_REGISTRY.rootFiles.architecture,
+    LAYOUT_REGISTRY.rootFiles.deliveryPlan,
+    LAYOUT_REGISTRY.handoff.runnerContract,
+    LAYOUT_REGISTRY.exports.devreview,
+    LAYOUT_REGISTRY.exports.scaffoldkit,
+    LAYOUT_REGISTRY.ai.agents,
+    LAYOUT_REGISTRY.ai.architecture,
+    LAYOUT_REGISTRY.ai.tasks,
+    LAYOUT_REGISTRY.ai.decisions
   ].concat(output.recommendedPlaybooks);
 
   if (output.intakeCompleteness !== "complete") {
-    manifestArtifacts.push(docsPath("intake-questionnaire.md"));
+    manifestArtifacts.push(LAYOUT_REGISTRY.rootFiles.intakeQuestionnaire);
   }
 
-    output.adrCandidates.forEach((adr, index) => {
+  output.adrCandidates.forEach((adr, index) => {
     manifestArtifacts.push(adrDocumentPath(index, adr));
   });
 
@@ -2984,7 +3053,7 @@ function buildHandoffManifest(input, output) {
     version: "1.0",
     summary: "Coordinate downstream planning, governance, and execution agents from a single generated manifest.",
     policySummary: `Use ${output.plannerProfile} profile policies for concurrency, blocker escalation, and approval gating.`,
-    runnerContractPath: handoffPath("runner-contract.json"),
+    runnerContractPath: LAYOUT_REGISTRY.handoff.runnerContract,
     coordinationStrategy: intakePrompt
       ? "Resolve intake blockers first, then run planning review steps in parallel where possible, then begin execution."
       : "Use planning review steps in parallel where possible, then move into execution on the first delivery wave.",
@@ -3091,15 +3160,15 @@ function valuesEqual(left, right) {
 
 function buildRerunReport(mode, previousRun, input, output) {
   const regeneratedArtifacts = [
-    planningPath("plan-output.json"),
-    handoffPath("manifest.json"),
-    "PROJECT.md",
-    docsPath("project-charter.md"),
-    docsPath("architecture-overview.md"),
-    docsPath("delivery-plan.md"),
-    handoffPath("runner-contract.json"),
-    exportsPath("scaffoldkit-input.json"),
-    exportsPath("devreview.json")
+    LAYOUT_REGISTRY.planning.planOutput,
+    LAYOUT_REGISTRY.handoff.manifest,
+    LAYOUT_REGISTRY.rootFiles.project,
+    LAYOUT_REGISTRY.rootFiles.charter,
+    LAYOUT_REGISTRY.rootFiles.architecture,
+    LAYOUT_REGISTRY.rootFiles.deliveryPlan,
+    LAYOUT_REGISTRY.handoff.runnerContract,
+    LAYOUT_REGISTRY.exports.scaffoldkit,
+    LAYOUT_REGISTRY.exports.devreview
   ];
 
   if (!previousRun) {
@@ -3287,6 +3356,16 @@ Primary references:
 }
 
 function renderPlanforgeIndex(output, presence = {}) {
+  const directories = { ...LAYOUT_REGISTRY.directories };
+  // Conditional directories are appended only when actually generated, so the index
+  // never advertises a directory that is absent on disk. Iteration follows the
+  // registry declaration order (specs, runbooks, governance).
+  for (const [key, dir] of Object.entries(LAYOUT_REGISTRY.conditionalDirectories)) {
+    if (presence[key]) {
+      directories[key] = dir;
+    }
+  }
+
   return {
     version: "1.0",
     generatedBy: "agent-planforge",
@@ -3296,52 +3375,12 @@ function renderPlanforgeIndex(output, presence = {}) {
       phase: output.phase,
       path: output.path
     },
-    rootFiles: {
-      agents: "AGENTS.md",
-      claude: "CLAUDE.md",
-      project: "PROJECT.md",
-      charter: docsPath("project-charter.md"),
-      architecture: docsPath("architecture-overview.md"),
-      deliveryPlan: docsPath("delivery-plan.md"),
-      intakeQuestionnaire: docsPath("intake-questionnaire.md")
-    },
-    directories: {
-      ai: ".ai",
-      docs: docsPath(),
-      tooling: toolingPath(),
-      planning: "planning",
-      handoff: "handoff",
-      exports: "exports",
-      prompts: "prompts",
-      adrs: "adrs",
-      tasks: "tasks",
-      // Conditional directories: emitted only when actually generated, so the
-      // index never advertises a directory that is absent on disk.
-      ...(presence.specs ? { specs: "specs" } : {}),
-      ...(presence.runbooks ? { runbooks: "runbooks" } : {}),
-      ...(presence.governance ? { governance: "governance" } : {})
-    },
-    planning: {
-      planOutput: planningPath("plan-output.json"),
-      structuredInput: planningPath("structured-input.json"),
-      rerunReport: planningPath("rerun-report.json"),
-      rerunSummary: planningPath("rerun-summary.md")
-    },
-    handoff: {
-      manifest: handoffPath("manifest.json"),
-      runnerContract: handoffPath("runner-contract.json"),
-      runnerDirectory: handoffPath("runner")
-    },
-    exports: {
-      scaffoldkit: exportsPath("scaffoldkit-input.json"),
-      devreview: exportsPath("devreview.json")
-    },
-    ai: {
-      agents: ".ai/AGENTS.md",
-      architecture: ".ai/ARCHITECTURE.md",
-      tasks: ".ai/TASKS.md",
-      decisions: ".ai/DECISIONS.md"
-    }
+    rootFiles: { ...LAYOUT_REGISTRY.rootFiles },
+    directories,
+    planning: { ...LAYOUT_REGISTRY.planning },
+    handoff: { ...LAYOUT_REGISTRY.handoff },
+    exports: { ...LAYOUT_REGISTRY.exports },
+    ai: { ...LAYOUT_REGISTRY.ai }
   };
 }
 
@@ -3700,11 +3739,11 @@ function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
     );
   });
 
-  if (output.phase === "phase_2" || output.phase === "phase_3") {
+  if (shouldWriteRunbooks(output)) {
     writeFile(path.join(outdir, "runbooks", "release-readiness.md"), renderRunbookBaseline(repoRoot, input, output));
   }
 
-  if (output.path === "enterprise") {
+  if (shouldWriteGovernance(output)) {
     writeFile(path.join(outdir, "governance", "service-ownership.md"), renderServiceOwnership(repoRoot, input, config));
     writeFile(path.join(outdir, "governance", "data-classification-matrix.md"), renderDataClassification(repoRoot, input));
     writeFile(path.join(outdir, "governance", "access-review-plan.md"), renderAccessReview(repoRoot, input, config));
@@ -3931,9 +3970,9 @@ function main() {
     const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata);
     const promptArtifacts = buildPromptArtifacts(planforgeRoot, input, output);
     const planforgeIndex = renderPlanforgeIndex(output, {
-      governance: output.path === "enterprise",
-      runbooks: output.phase === "phase_2" || output.phase === "phase_3",
-      specs: args.clarify === true
+      specs: args.clarify === true,
+      runbooks: shouldWriteRunbooks(output),
+      governance: shouldWriteGovernance(output)
     });
 
     output.promptExports = promptArtifacts.map(({ contents, ...metadata }) => metadata);
