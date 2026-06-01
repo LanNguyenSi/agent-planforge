@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-01
+
+### Changed
+
+- The bundled scaffoldkit is pinned to v0.3.0: real runnable starters for the
+  `rest-api`, `cli-tool`, and `fastapi-backend` blueprints (the last unified on
+  the `src/` layout), so generated repositories open with runnable source
+  instead of an empty `src/`.
+
+### Fixed
+
+- Generated task file paths and manifests now follow the selected blueprint's
+  language. The feature tasks, the integration/error-handling coverage task, and
+  the "set up repository" foundation task emit Python (pytest, `pyproject.toml`),
+  PHP, or TypeScript/Node paths to match the scaffold, instead of hardcoding
+  `.test.js` and `package.json` into every plan.
+- Blueprint selection word-boundaries the CLI detector and adds a dedicated
+  REST/HTTP-API branch, so a REST/JSON intake selects `rest-api` instead of
+  being misrouted to `cli-tool` by a stray "cli" substring.
+- Recommended-playbook references are emitted as stable GitHub URLs instead of
+  filesystem paths, fixing a container-absolute `/app/playbooks/...` leak and
+  dangling `agent-engineering-playbook/...` references in the generated `.ai/`
+  and `.planforge/docs` artifacts.
+- Generated `AGENTS.md` and `PROJECT.md` no longer reference the removed
+  runner/handoff artifacts.
+
 ### Removed
 
 - Stopped emitting the write-only runner/handoff orchestration artifacts from
