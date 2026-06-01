@@ -1970,6 +1970,33 @@ function genericFeatureFiles(feature, architectureShape, stack) {
   return Array.from(new Set(files));
 }
 
+// Coverage/quality task test paths, chosen for the selected blueprint's language
+// so the hardening task stays coherent with the scaffold (a FastAPI rest-api gets
+// pytest paths, not hardcoded .test.js). Mirrors genericFeatureFiles' language switch.
+function coverageTaskFiles(stack) {
+  const language = (stack && stack.language) || "typescript";
+  if (language === "python") {
+    return [
+      "tests/integration/test_critical_path.py",
+      "tests/integration/test_error_handling.py",
+      "tests/contract/test_integrations.py"
+    ];
+  }
+  if (language === "php") {
+    return [
+      "tests/Integration/CriticalPathTest.php",
+      "tests/Integration/ErrorHandlingTest.php",
+      "tests/Contract/IntegrationsTest.php"
+    ];
+  }
+  // TypeScript (default): match the .test.ts convention used elsewhere in this file.
+  return [
+    "tests/integration/critical-path.test.ts",
+    "tests/integration/error-handling.test.ts",
+    "tests/contract/integrations.test.ts"
+  ];
+}
+
 function featureFiles(feature, architectureShape, stackPatterns, stack) {
   // The git-memory-sync layout is TypeScript-specific, so only short-circuit for
   // a TypeScript (or unspecified) stack; other languages fall through to the
@@ -2164,11 +2191,7 @@ function buildTasks(input, phase, architecture, stackPatterns, stack) {
       summary: "Verify the critical path, failure handling, and integration boundaries with tests.",
       problem: "The initial implementation backlog leaves room for silent regressions unless critical-path and error-path coverage are added deliberately.",
       solution: "Add end-to-end and integration-focused verification around the user path, external boundaries, and failure handling assumptions.",
-      files: [
-        "tests/integration/critical-path.test.js",
-        "tests/integration/error-handling.test.js",
-        "tests/contract/integrations.test.js"
-      ],
+      files: coverageTaskFiles(stack),
       acceptanceCriteria: [
         "Critical path behavior is exercised through automated tests.",
         "Integration and error paths fail loudly instead of degrading silently.",
