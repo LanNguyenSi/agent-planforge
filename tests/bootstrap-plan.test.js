@@ -198,6 +198,33 @@ runCase("service-oriented plans export a real scaffoldkit backend blueprint", ()
   assert.equal(scaffoldkit.suggestedVariables.use_queue, true);
 });
 
+runCase("rest/json api intakes select rest-api at strong confidence (the 'cli' substring in Clients/click must not trip cli-tool)", () => {
+  const fixtureDir = tempDir("planforge-rest-api-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "quicklinks-api",
+    summary: "A REST/JSON HTTP API service for shortening URLs. Clients POST a long URL and get back a short code.",
+    targetUsers: ["backend developers", "api consumers"],
+    coreFeatures: [
+      "POST /api/shorten accepting {url} and returning {code, shortUrl} as JSON",
+      "GET /:code issuing a 302 redirect to the original URL",
+      "per-link click analytics exposed via GET /api/links/:code/stats"
+    ],
+    constraints: [
+      "REST/JSON over HTTP only, no server-rendered UI",
+      "stateless service",
+      "PostgreSQL as the system of record"
+    ]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const scaffoldkit = readJson(exportsFile(path.join(fixtureDir, "out"), "scaffoldkit-input.json"));
+  assert.equal(scaffoldkit.blueprint, "rest-api");
+  assert.equal(scaffoldkit.blueprintConfidence, "strong");
+  assert.equal(scaffoldkit.agentMustCreateStructure, false);
+});
+
 runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database defaults", () => {
   const fixtureDir = tempDir("planforge-cli-sync-");
   writeJson(path.join(fixtureDir, "input.json"), {

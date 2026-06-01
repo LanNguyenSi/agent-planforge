@@ -1682,7 +1682,7 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
     candidates = ["static-site", "nextjs-frontend", "nextjs-fullstack"];
     reason = "The request reads like a content-oriented or marketing-style site rather than an application backend.";
     confidence = "strong";
-  } else if (/(cli|command line|terminal tool|developer tool|code generator|scaffold)/.test(combinedText)) {
+  } else if (/\b(cli|command line|terminal tool|developer tool|code generator|scaffold)\b/.test(combinedText)) {
     candidates = ["cli-tool", "express-api", "rest-api"];
     reason = "The request reads like an internal or developer-facing tool with command-style workflows.";
     confidence = "strong";
@@ -1699,6 +1699,13 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
     reason = "The request points to a Django-style backend, but only the generic REST API scaffold is currently available.";
     confidence = "weak";
     manualStructureReason = "Use the generated scaffold only as a starting point. The agent should expect to create or adapt the Django-specific project structure manually.";
+  } else if (
+    /\b(rest api|rest\/json|json api|json over http|http api|web api|api service|api endpoints?)\b/.test(combinedText) &&
+    !/\b(cli|command line|terminal)\b/.test(combinedText)
+  ) {
+    candidates = ["rest-api", "express-api"];
+    reason = "The request reads like a REST/JSON HTTP API service, so an API-first scaffold is the closest fit.";
+    confidence = "strong";
   } else if (/python application/.test(techStack)) {
     candidates = ["rest-api", "cli-tool"];
     reason = "The request points to a Python application, but there is no Python app scaffold that cleanly matches the requested shape.";
