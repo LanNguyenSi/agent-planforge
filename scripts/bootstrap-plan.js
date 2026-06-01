@@ -2825,9 +2825,6 @@ For machine-readable path discovery, read \`planforge-index.json\`.
 
 ## Generated Directories
 
-- Planning state: \`planning/\`
-- Tool exports: \`exports/\`
-- Clarifications: \`specs/\`
 - ADRs: \`adrs/\`
 - Tasks: \`tasks/\`
 
@@ -2840,12 +2837,8 @@ For machine-readable path discovery, read \`planforge-index.json\`.
 ## Important Files
 
 - Machine-readable index: \`planforge-index.json\`
-- Planning output: \`${planningPath("plan-output.json")}\`
-- Structured input snapshot: \`${planningPath("structured-input.json")}\`
-- Rerun metadata: \`${planningPath("rerun-report.json")}\`
 - Architecture: \`${docsPath("architecture-overview.md")}\`
 - Delivery plan: \`${docsPath("delivery-plan.md")}\`
-- Scaffold export: \`${exportsPath("scaffoldkit-input.json")}\`
 
 ## Working Notes
 
