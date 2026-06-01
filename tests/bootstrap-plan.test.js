@@ -279,6 +279,22 @@ runCase("rest-api feature task paths follow the python/fastapi stack and api-key
     false,
     `api-key auth task leaked a Next.js/Prisma template: ${authTask.files.join(", ")}`
   );
+
+  // The hardening/coverage (quality) task must also follow the stack, not hardcode .test.js.
+  const coverageTask = output.tasks.find((task) => task.category === "quality");
+  assert.ok(coverageTask, "expected a quality coverage task");
+  assert.ok(
+    coverageTask.files.every((file) => !/\.test\.js$/.test(file)),
+    `coverage task leaked JS test paths: ${coverageTask.files.join(", ")}`
+  );
+  assert.ok(
+    coverageTask.files.every((file) => file.endsWith(".py")),
+    `coverage task should emit Python test paths, got: ${coverageTask.files.join(", ")}`
+  );
+  assert.ok(
+    coverageTask.files.some((file) => /tests\/integration\/test_/.test(file)),
+    `coverage task should use pytest integration paths, got: ${coverageTask.files.join(", ")}`
+  );
 });
 
 runCase("express-api api-key auth falls back to a generic layout instead of the JWT/user-login template (negativeKeywords guard)", () => {
@@ -312,6 +328,18 @@ runCase("express-api api-key auth falls back to a generic layout instead of the 
     `express-api api-key auth leaked a JWT/user-login template: ${authTask.files.join(", ")}`
   );
   assert.ok(authTask.files.some((file) => /\.ts$/.test(file)));
+
+  // Negative control: the TS stack's coverage task keeps .test.ts, no regression to .test.js.
+  const coverageTask = output.tasks.find((task) => task.category === "quality");
+  assert.ok(coverageTask, "expected a quality coverage task");
+  assert.ok(
+    coverageTask.files.every((file) => !/\.test\.js$/.test(file)),
+    `coverage task regressed to JS test paths: ${coverageTask.files.join(", ")}`
+  );
+  assert.ok(
+    coverageTask.files.every((file) => /\.test\.ts$/.test(file)),
+    `coverage task should emit .test.ts for a TS stack, got: ${coverageTask.files.join(", ")}`
+  );
 });
 
 runCase("python cli-tool feature task paths use snake_case python module names", () => {
