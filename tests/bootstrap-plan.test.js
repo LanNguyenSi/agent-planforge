@@ -12,10 +12,6 @@ function planningFile(root, name) {
   return path.join(root, "planning", name);
 }
 
-function handoffFile(root, name) {
-  return path.join(root, "handoff", name);
-}
-
 function handoffRunnerFile(root, ...segments) {
   return path.join(root, "handoff", "runner", ...segments);
 }
@@ -92,25 +88,19 @@ function runCase(name, fn) {
   }
 }
 
-runCase("sample input generates enterprise artifacts, runner contract, and downstream exports", () => {
+runCase("sample input generates enterprise artifacts and downstream exports", () => {
   const outdir = tempDir("planforge-sample-");
   const result = runPlanner(["--input", "examples/sample-input.json", "--outdir", outdir]);
 
   assert.equal(result.status, 0, result.stderr);
 
   const output = readJson(planningFile(outdir, "plan-output.json"));
-  const manifest = readJson(handoffFile(outdir, "manifest.json"));
-  const runnerContract = readJson(handoffFile(outdir, "runner-contract.json"));
   const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
-  const devreview = readJson(exportsFile(outdir, "devreview.json"));
   const projectIndex = readText(path.join(outdir, "PROJECT.md"));
   const rootAgentsDoc = readText(path.join(outdir, "AGENTS.md"));
   const claudeDoc = readText(path.join(outdir, "CLAUDE.md"));
   const planforgeIndex = readJson(path.join(outdir, "planforge-index.json"));
   const agentsDoc = readText(path.join(outdir, ".ai", "AGENTS.md"));
-  const architecturePrompt = readText(path.join(outdir, "prompts", "architecture-analysis.md"));
-  const executionPrompt = readText(path.join(outdir, "prompts", "execution-next-wave.md"));
-  const governancePrompt = readText(path.join(outdir, "prompts", "governance-setup.md"));
 
   assert.equal(output.phase, "phase_3");
   assert.equal(output.path, "enterprise");
@@ -119,12 +109,6 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.ok(output.recommendedPlaybooks.some((entry) => entry.endsWith("playbooks/10-security-and-governance.md")));
   assert.ok(output.tasks.every((task) => Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0));
 
-  assert.equal(manifest.runnerContractPath, "handoff/runner-contract.json");
-  assert.ok(manifest.steps.every((step) => step.statusFiles && step.approvalGate && step.blockerPolicy));
-  assert.ok(manifest.sharedArtifacts.includes("PROJECT.md"));
-  assert.ok(manifest.sharedArtifacts.includes("planforge-index.json"));
-  assert.ok(manifest.sharedArtifacts.includes("exports/scaffoldkit-input.json"));
-  assert.ok(manifest.sharedArtifacts.includes("exports/devreview.json"));
   assert.match(projectIndex, /# PROJECT: Vendor Access Hub/);
   assert.match(projectIndex, /\[Project Charter\]\(\.planforge\/docs\/project-charter\.md\)/);
   assert.match(projectIndex, /## Current Wave/);
@@ -134,11 +118,7 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.match(claudeDoc, /Use `AGENTS\.md` in the project root as the primary entry point\./);
   assert.match(agentsDoc, /## Engineering Model/);
   assert.match(agentsDoc, /Spec-driven planning:/);
-  assert.match(architecturePrompt, /Use a spec\/context\/eval lens:/);
-  assert.match(executionPrompt, /Use a spec\/context\/eval lens:/);
-  assert.match(governancePrompt, /Use a spec\/context\/eval lens:/);
 
-  assert.ok(runnerContract.stepContracts.length >= 3);
   assert.equal(scaffoldkit.version, "1.1");
   assert.equal(scaffoldkit.blueprint, "nextjs-fullstack");
   assert.ok(scaffoldkit.blueprintCandidates.includes("nextjs-fullstack"));
@@ -146,9 +126,7 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
   assert.equal(scaffoldkit.agentMustCreateStructure, false);
   assert.equal(scaffoldkit.suggestedVariables.project_name, "vendor-access-hub");
   assert.equal(scaffoldkit.suggestedVariables.ai_context, true);
-  assert.equal(devreview.minimumScore, 8);
   assert.equal(planforgeIndex.planning.planOutput, "planning/plan-output.json");
-  assert.equal(planforgeIndex.handoff.manifest, "handoff/manifest.json");
   assert.equal(planforgeIndex.exports.scaffoldkit, "exports/scaffoldkit-input.json");
   assert.equal(planforgeIndex.rootFiles.agents, "AGENTS.md");
   assert.equal(planforgeIndex.rootFiles.charter, ".planforge/docs/project-charter.md");
@@ -180,13 +158,24 @@ runCase("sample input generates enterprise artifacts, runner contract, and downs
     ".planforge/docs/intake-questionnaire.md",
     "governance/service-ownership.md",
     "runbooks/release-readiness.md",
-    "prompts/governance-setup.md",
-    "handoff/runner/step-4-wave-1-execution/status.json",
     "planning/structured-input.json",
     "planning/rerun-report.json"
   ].forEach((relativePath) => {
     assert.ok(fs.existsSync(path.join(outdir, relativePath)), `missing ${relativePath}`);
   });
+
+  // The runner/handoff fleet artifacts are no longer emitted (Phase 3).
+  ["handoff", "prompts", "exports/devreview.json"].forEach((relativePath) => {
+    assert.equal(
+      fs.existsSync(path.join(outdir, relativePath)),
+      false,
+      `should not emit ${relativePath}`
+    );
+  });
+  assert.equal(planforgeIndex.handoff, undefined);
+  assert.equal(planforgeIndex.exports.devreview, undefined);
+  assert.equal(planforgeIndex.directories.handoff, undefined);
+  assert.equal(planforgeIndex.directories.prompts, undefined);
 
   assert.equal(fs.existsSync(path.join(outdir, ".planforge", "tooling", "Makefile")), true);
 });
@@ -531,6 +520,9 @@ runCase("resume-from writes rerun metadata and preserves runner state", () => {
   assert.equal(result.status, 0, result.stderr);
 
   const extraRunnerFile = handoffRunnerFile(baseOutdir, "custom-note.txt");
+  // planforge no longer emits handoff/runner itself; create it to verify resume
+  // still preserves user-authored runner state placed under it.
+  fs.mkdirSync(path.dirname(extraRunnerFile), { recursive: true });
   fs.writeFileSync(extraRunnerFile, "keep me\n");
 
   const modifiedInputPath = path.join(tempDir("planforge-resume-input-"), "modified-input.json");

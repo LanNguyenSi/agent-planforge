@@ -45,14 +45,11 @@ it produces a first planning package:
 - initial ADR candidate
 - task backlog with dependencies
 - delivery plan with execution waves
-- prompt pack for downstream agents
-- multi-agent handoff manifest for orchestrated follow-on work
-- runner contract and per-step status templates
 - rerun and resume metadata
 - machine-readable planning output
 - phase rationale and recommended artifacts
 - explicit guidance areas beyond the local planning playbook
-- downstream exports for ScaffoldKit, DevReview, and `.ai/`
+- downstream exports for ScaffoldKit and `.ai/`
 
 The point is not perfect planning. The point is a repeatable and reviewable starting point.
 
@@ -68,12 +65,10 @@ This first version includes:
 - gap detection for missing planning context
 - reusable markdown templates for generated planning artifacts
 - profile-aware planning modes for startup, product, enterprise, and platform work
-- prompt exports for downstream agent execution
-- handoff manifest generation for staged or parallel downstream agents
 - schema validation for input, config, and generated output
 - `.ai/` context export for downstream coding agents
 - playbook-aware charter and prompt references
-- runner contract, rerun/resume reporting, and integration exports
+- rerun/resume reporting and integration exports
 
 ## Open Source Project Status
 
@@ -162,7 +157,7 @@ node scripts/bootstrap-plan.js \
   --rerun-from out/sample
 ```
 
-Resume while preserving runner state:
+Resume while preserving manual run state:
 
 ```bash
 node scripts/bootstrap-plan.js \
@@ -200,16 +195,11 @@ This creates:
 - `out/sample/.planforge/docs/project-charter.md`
 - `out/sample/.planforge/docs/architecture-overview.md`
 - `out/sample/.planforge/docs/delivery-plan.md`
-- `out/sample/handoff/runner-contract.json`
 - `out/sample/planning/rerun-report.json`
 - `out/sample/planning/rerun-summary.md`
 - `out/sample/exports/scaffoldkit-input.json`
-- `out/sample/exports/devreview.json`
 - `out/sample/.ai/`
-- `out/sample/prompts/`
 - `out/sample/specs/clarifications.md` when `--clarify` or `--auto-clarify` is used
-- `out/sample/handoff/manifest.json`
-- `out/sample/handoff/runner/`
 - `out/sample/adrs/`
 - `out/sample/tasks/`
 - `out/sample/outputs/consistency-report.md` when `analyze-artifacts.js` is run
@@ -281,7 +271,7 @@ Example:
 
 ## Operational Workflow
 
-The end-to-end operating model for planning, handoff, review, and replanning is documented in [docs/operational-workflow.md](docs/operational-workflow.md).
+The end-to-end operating model for planning, review, and replanning is documented in [docs/operational-workflow.md](docs/operational-workflow.md).
 
 ## Contributing
 
@@ -289,7 +279,6 @@ Contribution guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For now, the most useful contributions are:
 
-- orchestration refinements
 - replanning semantics
 - downstream integration polish
 
@@ -323,7 +312,7 @@ The tests cover:
 - schema validation failures for bad input and bad config
 - config merge behavior
 - rerun and resume metadata
-- dependency graph, runner contract, and handoff policy structure
+- dependency graph and rerun/resume reporting
 - playbook references and `.ai/` artifact generation
 
 ## Docker

@@ -26,8 +26,6 @@ Current responsibilities:
 - generate planning artifacts such as `.planforge/docs/project-charter.md`, `.planforge/docs/architecture-overview.md`, `.planforge/docs/delivery-plan.md`
 - generate ADRs in `adrs/`
 - generate task documents in `tasks/`
-- generate prompt exports in `prompts/`
-- generate orchestration files such as `handoff/manifest.json`, `handoff/runner-contract.json`, and `handoff/runner/`
 - generate `.ai/` context files for downstream coding agents
 - generate governance starter artifacts for enterprise-path plans
 
@@ -54,19 +52,14 @@ If you are updating older automation that expected root-level JSON artifacts, re
 - `.planforge/docs/delivery-plan.md`
 - `adrs/*.md`
 - `tasks/*.md`
-- `prompts/*.md`
 - `AGENTS.md`
 - `.ai/AGENTS.md`
 - `.ai/ARCHITECTURE.md`
 - `.ai/TASKS.md`
 - `.ai/DECISIONS.md`
-- `handoff/manifest.json`
-- `handoff/runner-contract.json`
-- `handoff/runner/`
 - `planning/rerun-report.json`
 - `planning/rerun-summary.md`
 - `exports/scaffoldkit-input.json`
-- `exports/devreview.json`
 - `governance/` when the enterprise path applies
 - `runbooks/` when production-oriented phases apply
 
@@ -155,14 +148,11 @@ Start with:
 - `.planforge/docs/architecture-overview.md`
 - `.planforge/docs/delivery-plan.md`
 - `.ai/AGENTS.md`
-- `handoff/manifest.json`
 
 Then inspect:
 
 - `adrs/`
 - `tasks/`
-- `prompts/`
-- `handoff/runner/`
 - `governance/` when present
 - `runbooks/` when present
 
@@ -170,14 +160,13 @@ Then inspect:
 
 Commit the generated artifacts once the plan looks credible.
 
-### 6. Execute From The Handoff Bundle
+### 6. Lead With The Build
 
-Use:
+Start building from the plan:
 
-- `handoff/manifest.json` for orchestration order, dependencies, and approval gates
-- `handoff/runner-contract.json` for step status conventions
-- `prompts/` for role-specific prompt inputs
-- `.ai/` for shared coding context
+- read `.planforge/docs/architecture-overview.md` for the shape of the system
+- work the tasks in `tasks/` in dependency order, following `.ai/TASKS.md`
+- keep `PROJECT.md` and `.ai/` as standing context while you implement
 
 ## Import Into ScaffoldKit
 
@@ -197,7 +186,7 @@ Do not rely on manual cleanup as the normal rerun workflow.
 Use these modes deliberately:
 
 - `--rerun-from <dir>` for a fresh planning pass plus changed-assumption reporting
-- `--resume-from <dir>` when runner state or manual execution notes should be preserved into a new output directory
+- `--resume-from <dir>` when manual execution notes should be preserved into a new output directory
 
 Examples:
 

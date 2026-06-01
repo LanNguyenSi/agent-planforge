@@ -22,6 +22,10 @@ Planning prose and machine-oriented artifacts now live in grouped directories.
 - `exports/` for downstream tool exports
 - `.ai/` for agent-facing context
 
+## Removed Artifacts
+
+As of the runner-vision removal, `agent-planforge` no longer emits `handoff/manifest.json`, `handoff/runner-contract.json`, `handoff/runner/`, `prompts/*.md` role packs, or `exports/devreview.json` at all. The `handoff/` directory and the related rows in the table below are retained only to explain pre-removal outputs, so people reading older generated packages can still resolve where those files came from. Current runs do not produce them.
+
 ## Old To New Paths
 
 | Old path | New path |

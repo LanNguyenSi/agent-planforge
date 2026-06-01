@@ -22,7 +22,6 @@ Use it to understand the current plan quickly and jump to the source artifacts t
 - [Delivery Plan](.planforge/docs/delivery-plan.md): execution waves and dependency ordering
 - [Task Backlog](tasks/): executable work packages with acceptance criteria
 - [ADRs](adrs/): early high-leverage decisions
-- [Prompts](prompts/): downstream agent handoff prompts
 - [.ai/](.ai/): compact AI-facing execution context
 
 ## Recommended Working Order
@@ -31,7 +30,7 @@ Use it to understand the current plan quickly and jump to the source artifacts t
 2. Read `.planforge/docs/architecture-overview.md` to confirm the recommended starting shape still fits.
 3. Read `.planforge/docs/delivery-plan.md` to understand wave sequencing and dependencies.
 4. Execute or refine the current wave tasks under `tasks/`.
-5. Update ADRs and prompts when architectural or governance assumptions move.
+5. Update ADRs when architectural or governance assumptions move.
 
 ## Current Wave
 
