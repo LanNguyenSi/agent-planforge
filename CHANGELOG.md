@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-01
+
 ### Added
 
+- HTTP server boot-guard: the service refuses to start unless
+  `SCAFFOLDKIT_PYTHON` resolves to a runnable interpreter, failing fast
+  at startup instead of surfacing a broken scaffolding path mid-request.
+  `/healthz` gains a `status` field so callers can distinguish a healthy
+  boot from a degraded one.
 - HTTP server: `scaffoldkit.skipped` on the `done` event gains a fifth
   value `"input_unreadable"` plus an optional `inputReadError?: string`
   field. Previously every failure reading `exports/scaffoldkit-input.json`
@@ -16,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   hiding a broken CLI behind a normal-path no-op. ENOENT still maps to
   `"no_input"`; any other read or `JSON.parse` failure now reports
   `"input_unreadable"` with the underlying error message in
-  `inputReadError`. The field is optional and additive — existing
+  `inputReadError`. The field is optional and additive: existing
   consumers ignoring it are unaffected.
 
 ### Changed
@@ -45,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   those directories are actually generated (enterprise path,
   production-oriented phases, and `--clarify` respectively), instead of being
   listed unconditionally.
+- Scaffolding now passes `--no-ai-context` to scaffoldkit so a generated
+  `.ai/` directory survives scaffolding instead of being overwritten by
+  scaffoldkit's own context output.
+
+### Security
+
+- Bumped `fast-uri` and `hono` to patched releases (CVE sweep,
+  2026-05-10).
 
 ## [0.2.0] - 2026-04-24
 
