@@ -225,6 +225,153 @@ runCase("rest/json api intakes select rest-api at strong confidence (the 'cli' s
   assert.equal(scaffoldkit.agentMustCreateStructure, false);
 });
 
+runCase("rest-api feature task paths follow the python/fastapi stack and api-key auth does not leak a Next.js/Prisma template", () => {
+  const fixtureDir = tempDir("planforge-rest-api-task-paths-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "quicklinks-api",
+    summary: "A REST/JSON HTTP API service for shortening URLs. Clients POST a long URL and get back a short code.",
+    targetUsers: ["backend developers", "api consumers"],
+    coreFeatures: [
+      "POST /api/shorten accepting {url} and returning {code, shortUrl} as JSON",
+      "API-key authentication on write endpoints"
+    ],
+    constraints: [
+      "REST/JSON over HTTP only, no server-rendered UI",
+      "PostgreSQL as the system of record"
+    ]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+
+  assert.equal(scaffoldkit.blueprint, "rest-api");
+  // The blueprint that drove task generation is recorded in the plan output so
+  // downstream analysis keys off the same stack.
+  assert.equal(output.scaffoldBlueprint, "rest-api");
+
+  const featureTasks = output.tasks.filter((task) => task.category === "feature");
+  const featureFilePaths = featureTasks.flatMap((task) => task.files);
+
+  // Every generated feature file is Python; no .ts/.tsx/.test.js path leaks in.
+  assert.ok(featureFilePaths.length > 0);
+  assert.ok(
+    featureFilePaths.every((file) => !/\.tsx?$|\.test\.js$/.test(file)),
+    `expected only python feature paths, got: ${featureFilePaths.join(", ")}`
+  );
+  assert.ok(featureFilePaths.some((file) => file.endsWith(".py")));
+
+  // Python module names are snake_case identifiers, not the kebab-case slug.
+  const pythonPaths = featureFilePaths.filter((file) => file.endsWith(".py"));
+  assert.ok(
+    pythonPaths.every((file) => !/[a-z0-9]-[a-z0-9]/.test(file)),
+    `python module paths must be snake_case, got: ${pythonPaths.join(", ")}`
+  );
+
+  // The api-key auth task must not splice the canned Next.js/JWT/Prisma user-login template.
+  const authTask = featureTasks.find((task) => /authentication/i.test(task.title));
+  assert.ok(authTask, "expected an authentication feature task");
+  assert.equal(
+    authTask.files.some((file) => /prisma|app\/api\/auth|lib\/auth\/jwt|route\.ts/.test(file)),
+    false,
+    `api-key auth task leaked a Next.js/Prisma template: ${authTask.files.join(", ")}`
+  );
+});
+
+runCase("express-api api-key auth falls back to a generic layout instead of the JWT/user-login template (negativeKeywords guard)", () => {
+  const fixtureDir = tempDir("planforge-express-apikey-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Ingest Service",
+    summary: "TypeScript backend service for queued workflows and webhooks.",
+    targetUsers: ["internal systems"],
+    coreFeatures: ["webhook ingestion", "API-key authentication on write endpoints"],
+    constraints: ["prefer TypeScript", "must run in Docker"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+  assert.equal(scaffoldkit.blueprint, "express-api");
+
+  // express-api DOES have an authentication-jwt file key, so without the
+  // negativeKeywords guard an api-key task would splice the full JWT/user-login
+  // template. It must instead get the generic (TypeScript) layout.
+  const authTask = output.tasks
+    .filter((task) => task.category === "feature")
+    .find((task) => /authentication/i.test(task.title));
+  assert.ok(authTask, "expected an authentication feature task");
+  assert.equal(
+    authTask.files.some((file) => /auth\/(jwt|password|service|middleware|validation)|routes\/auth|models\/user|register|login|prisma/.test(file)),
+    false,
+    `express-api api-key auth leaked a JWT/user-login template: ${authTask.files.join(", ")}`
+  );
+  assert.ok(authTask.files.some((file) => /\.ts$/.test(file)));
+});
+
+runCase("python cli-tool feature task paths use snake_case python module names", () => {
+  const fixtureDir = tempDir("planforge-python-cli-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "log-tailer",
+    summary: "A command-line developer tool that tails and filters log files.",
+    targetUsers: ["developers"],
+    coreFeatures: ["tail a log file with filtering", "export filtered results to a JSON file"],
+    constraints: ["Python 3.12", "lightweight CLI, no heavy frameworks"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+
+  assert.equal(scaffoldkit.blueprint, "cli-tool");
+  assert.equal(scaffoldkit.suggestedVariables.language, "python");
+  assert.equal(output.scaffoldBlueprint, "cli-tool");
+
+  const featureFilePaths = output.tasks.filter((task) => task.category === "feature").flatMap((task) => task.files);
+  assert.ok(featureFilePaths.length > 0);
+  assert.ok(
+    featureFilePaths.every((file) => file.endsWith(".py")),
+    `expected only python cli paths, got: ${featureFilePaths.join(", ")}`
+  );
+  assert.ok(featureFilePaths.some((file) => /^src\/(commands|core)\//.test(file)));
+  assert.ok(
+    featureFilePaths.every((file) => !/[a-z0-9]-[a-z0-9]/.test(file)),
+    `python module paths must be snake_case, got: ${featureFilePaths.join(", ")}`
+  );
+});
+
+runCase("analyze-artifacts reports clean output for a python rest-api plan", () => {
+  const fixtureDir = tempDir("planforge-analyze-rest-api-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "quicklinks-api",
+    summary: "A REST/JSON HTTP API service for shortening URLs.",
+    targetUsers: ["backend developers"],
+    coreFeatures: [
+      "POST /api/shorten accepting {url} and returning {code, shortUrl} as JSON",
+      "API-key authentication on write endpoints"
+    ],
+    constraints: ["REST/JSON over HTTP only, no server-rendered UI", "PostgreSQL as the system of record"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  // The analyzer keys alignment scoring on scaffoldBlueprint; for a keyless
+  // blueprint (rest-api) it must degrade cleanly, not raise spurious criticals.
+  const analysis = runAnalyzer(["--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(analysis.status, 0, analysis.stderr);
+  const report = readText(path.join(fixtureDir, "out", "outputs", "consistency-report.md"));
+  assert.match(report, /Critical issues: 0/);
+});
+
 runCase("git-backed cli sync plans stay on cli-tool semantics and avoid database defaults", () => {
   const fixtureDir = tempDir("planforge-cli-sync-");
   writeJson(path.join(fixtureDir, "input.json"), {
@@ -312,6 +459,17 @@ runCase("php symfony backend plans recommend the symfony backend blueprint", () 
   assert.equal(scaffoldkit.suggestedVariables.database, "postgresql");
   assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "language"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "cli_framework"), false);
+
+  // PHP blueprint -> PHP feature task paths (PascalCase classes), not TypeScript.
+  const output = readJson(planningFile(path.join(fixtureDir, "out"), "plan-output.json"));
+  assert.equal(output.scaffoldBlueprint, "symfony-backend");
+  const phpFeatureFiles = output.tasks.filter((task) => task.category === "feature").flatMap((task) => task.files);
+  assert.ok(phpFeatureFiles.length > 0);
+  assert.ok(
+    phpFeatureFiles.every((file) => file.endsWith(".php")),
+    `expected php feature paths, got: ${phpFeatureFiles.join(", ")}`
+  );
+  assert.ok(phpFeatureFiles.some((file) => /^src\/(Controller|Service|Repository)\/.+\.php$/.test(file)));
 });
 
 runCase("php symfony plus react dashboard plans recommend the symfony nextjs blueprint", () => {

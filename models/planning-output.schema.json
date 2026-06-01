@@ -157,6 +157,9 @@
         "enterprise"
       ]
     },
+    "scaffoldBlueprint": {
+      "type": "string"
+    },
     "recommendedPlaybooks": {
       "type": "array",
       "items": {
