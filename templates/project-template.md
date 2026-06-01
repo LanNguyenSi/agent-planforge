@@ -67,5 +67,5 @@ Use it to understand the current plan quickly and jump to the source artifacts t
 ## Notes
 
 - `PROJECT.md` is a generated index, not the detailed source of truth.
-- When detailed plan artifacts disagree, prefer `plan-output.json`, task documents, and ADRs over summary text here.
+- When detailed plan artifacts disagree, prefer the task documents and ADRs over summary text here.
 - If the plan changes materially, rerun the planner so this file stays aligned with the backlog.
