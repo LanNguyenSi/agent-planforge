@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- Stopped emitting the write-only runner/handoff orchestration artifacts from
+  generated output: `handoff/manifest.json`, `handoff/runner-contract.json`,
+  `handoff/runner/<step>/*.json`, the `prompts/*.md` role packs, and
+  `exports/devreview.json`. These had no downstream consumer. The generated
+  `planforge-index.json` no longer carries a top-level `handoff` block or the
+  `directories.handoff` / `directories.prompts` / `exports.devreview` entries.
+  `--resume-from` still preserves user-authored `handoff/runner/` and notes
+  state.
+
 ## [0.3.0] - 2026-06-01
 
 ### Added

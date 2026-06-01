@@ -11,7 +11,6 @@
     "rootFiles",
     "directories",
     "planning",
-    "handoff",
     "exports",
     "ai"
   ],
@@ -68,9 +67,6 @@
       "$ref": "#/$defs/pathMap"
     },
     "planning": {
-      "$ref": "#/$defs/pathMap"
-    },
-    "handoff": {
       "$ref": "#/$defs/pathMap"
     },
     "exports": {

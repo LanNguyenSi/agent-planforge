@@ -177,9 +177,7 @@ const LAYOUT_REGISTRY = {
     docs: docsPath(),
     tooling: toolingPath(),
     planning: "planning",
-    handoff: "handoff",
     exports: "exports",
-    prompts: "prompts",
     adrs: "adrs",
     tasks: "tasks"
   },
@@ -197,14 +195,8 @@ const LAYOUT_REGISTRY = {
     rerunReport: planningPath("rerun-report.json"),
     rerunSummary: planningPath("rerun-summary.md")
   },
-  handoff: {
-    manifest: handoffPath("manifest.json"),
-    runnerContract: handoffPath("runner-contract.json"),
-    runnerDirectory: handoffPath("runner")
-  },
   exports: {
-    scaffoldkit: exportsPath("scaffoldkit-input.json"),
-    devreview: exportsPath("devreview.json")
+    scaffoldkit: exportsPath("scaffoldkit-input.json")
   },
   ai: {
     agents: ".ai/AGENTS.md",
@@ -2293,8 +2285,6 @@ function buildOutput(input, config, playbookContext, repoRoot, inputMetadata) {
     tasks,
     executionWaves: executionWaves(tasks),
     dependencyGraph: dependencyGraph(tasks),
-    promptExports: [],
-    handoffManifest: {},
     risks: buildRisks(input, phase),
     openQuestions: input.openQuestions || [],
     defaultBranch: input.defaultBranch || "main"
@@ -2645,474 +2635,6 @@ function renderExceptionRegister(repoRoot, input) {
   });
 }
 
-function renderArchitecturePrompt(repoRoot, input, output) {
-  const options = output.architectureOptions.map((option) => {
-    return `- ${option.id}: ${option.name} (${option.shape})
-  Summary: ${option.summary}
-  Scores: delivery=${option.scores.deliverySpeed}, ops=${option.scores.operationalSimplicity}, scale=${option.scores.scalabilityHeadroom}, governance=${option.scores.governanceFit}`;
-  }).join("\n");
-
-  return renderTemplate(repoRoot, "templates/architecture-prompt-template.md", {
-    projectName: input.projectName,
-    summary: input.summary,
-    plannerProfile: output.plannerProfile,
-    phase: output.phase,
-    path: output.path,
-    recommendedArchitecture: output.architectureRecommendation.summary,
-    architectureOptions: options,
-    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then read `AGENTS.md` and `.ai/ARCHITECTURE.md` before challenging the current recommendation.",
-    risks: toMarkdownList(output.risks),
-    openQuestions: toMarkdownList(output.openQuestions),
-    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
-  });
-}
-
-function renderExecutionPrompt(repoRoot, input, output) {
-  const wave = output.executionWaves[0];
-  const tasks = wave
-    ? wave.taskIds.map((taskId) => {
-        const task = output.tasks.find((candidate) => candidate.id === taskId);
-        return `- ${task.id} ${task.title} (${task.priority})
-  Depends on: ${task.dependsOn.length ? task.dependsOn.join(", ") : "none"}`;
-      }).join("\n")
-    : "- No tasks available";
-
-  return renderTemplate(repoRoot, "templates/execution-prompt-template.md", {
-    projectName: input.projectName,
-    plannerProfile: output.plannerProfile,
-    phase: output.phase,
-    waveId: wave ? wave.id : "none",
-    waveGoal: wave ? wave.goal : "No wave selected",
-    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then read `AGENTS.md`, `.ai/TASKS.md`, and the task docs for the current wave.",
-    criticalPath: output.dependencyGraph.criticalPathTaskIds.join(" -> ") || "None",
-    tasks,
-    constraints: toMarkdownList(input.constraints),
-    openQuestions: toMarkdownList(output.openQuestions),
-    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
-  });
-}
-
-function renderGovernancePrompt(repoRoot, input, output) {
-  return renderTemplate(repoRoot, "templates/governance-prompt-template.md", {
-    projectName: input.projectName,
-    plannerProfile: output.plannerProfile,
-    phase: output.phase,
-    dataSensitivity: input.dataSensitivity || "low",
-    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then read `AGENTS.md`, `.ai/AGENTS.md`, and the governance starter docs.",
-    enterpriseRequirements: toMarkdownList(input.enterpriseRequirements || []),
-    artifacts: toMarkdownList([
-      "service ownership",
-      "data classification matrix",
-      "access review plan",
-      "exception register"
-    ]),
-    risks: toMarkdownList(output.risks),
-    openQuestions: toMarkdownList(output.openQuestions),
-    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
-  });
-}
-
-function renderIntakeFollowupPrompt(repoRoot, input, output) {
-  const questions = output.intakeQuestions.map((item) => {
-    return `- ${item.id} (${item.priority}${item.blocking ? ", blocker" : ""}): ${item.question}
-  Why: ${item.reason}`;
-  }).join("\n");
-
-  return renderTemplate(repoRoot, "templates/intake-followup-prompt-template.md", {
-    projectName: input.projectName,
-    intakeCompleteness: output.intakeCompleteness,
-    startingPoint: "- Read `planforge-index.json` first for the generated artifact map.\n- Then review `AGENTS.md`, `.planforge/docs/intake-questionnaire.md`, and the current planning docs.",
-    questions,
-    applicablePlaybooks: toMarkdownList(output.recommendedPlaybooks)
-  });
-}
-
-function buildPromptArtifacts(repoRoot, input, output) {
-  const promptArtifacts = [
-    {
-      id: "architecture-analysis",
-      title: "Architecture Analysis",
-      purpose: "Refine or challenge the recommended architecture using the generated options and risks.",
-      path: "prompts/architecture-analysis.md",
-      contents: renderArchitecturePrompt(repoRoot, input, output)
-    },
-    {
-      id: "execution-next-wave",
-      title: "Execution Next Wave",
-      purpose: "Guide an implementation agent through the next delivery wave and its dependencies.",
-      path: "prompts/execution-next-wave.md",
-      contents: renderExecutionPrompt(repoRoot, input, output)
-    }
-  ];
-
-  if (output.intakeCompleteness !== "complete") {
-    promptArtifacts.push({
-      id: "intake-followup",
-      title: "Intake Follow-Up",
-      purpose: "Clarify blocking or high-value missing planning inputs before deeper execution.",
-      path: "prompts/intake-followup.md",
-      contents: renderIntakeFollowupPrompt(repoRoot, input, output)
-    });
-  }
-
-  if (output.path === "enterprise") {
-    promptArtifacts.push({
-      id: "governance-setup",
-      title: "Governance Setup",
-      purpose: "Guide a governance or security-focused agent through the required control artifacts.",
-      path: "prompts/governance-setup.md",
-      contents: renderGovernancePrompt(repoRoot, input, output)
-    });
-  }
-
-  return promptArtifacts;
-}
-
-function profileExecutionPolicy(profile) {
-  const defaults = {
-    startup: {
-      maxParallelAgents: 1,
-      autoStartReviews: true,
-      approvalRequiredForExecution: false,
-      blockerMode: "notify-and-wait"
-    },
-    product: {
-      maxParallelAgents: 2,
-      autoStartReviews: true,
-      approvalRequiredForExecution: false,
-      blockerMode: "notify-and-wait"
-    },
-    enterprise: {
-      maxParallelAgents: 2,
-      autoStartReviews: false,
-      approvalRequiredForExecution: true,
-      blockerMode: "halt-and-escalate"
-    },
-    platform: {
-      maxParallelAgents: 3,
-      autoStartReviews: true,
-      approvalRequiredForExecution: true,
-      blockerMode: "review-before-continue"
-    }
-  };
-
-  return defaults[profile] || defaults.product;
-}
-
-function stepStatusFiles(stepId) {
-  return {
-    input: handoffPath("runner", stepId, "input.json"),
-    status: handoffPath("runner", stepId, "status.json"),
-    result: handoffPath("runner", stepId, "result.json"),
-    blockers: handoffPath("runner", stepId, "blockers.json")
-  };
-}
-
-function makeStepPolicy(step, output) {
-  const profilePolicy = profileExecutionPolicy(output.plannerProfile);
-  const isExecutionStep = /execution/i.test(step.name);
-  const isGovernanceStep = /governance/i.test(step.name);
-
-  return {
-    dependencyPolicy: {
-      hard: step.dependsOn.slice(),
-      soft: isExecutionStep && output.path === "enterprise" ? ["step-3-governance-setup"] : []
-    },
-    blockerPolicy: {
-      onBlocked: isGovernanceStep ? "halt-and-escalate" : profilePolicy.blockerMode,
-      escalationTarget: output.path === "enterprise" ? "human owner and governance lead" : "human owner",
-      maxAutoRetries: 0
-    },
-    approvalGate: {
-      required: isExecutionStep ? profilePolicy.approvalRequiredForExecution : !profilePolicy.autoStartReviews,
-      approvers: isGovernanceStep ? ["human owner", "security owner"] : ["human owner"],
-      reason: isGovernanceStep
-        ? "Governance-path work must be explicitly reviewed before downstream execution continues."
-        : isExecutionStep && profilePolicy.approvalRequiredForExecution
-          ? "Execution on this profile requires explicit human review before implementation proceeds."
-          : "No explicit approval gate required beyond normal review."
-    },
-    profilePolicy: {
-      plannerProfile: output.plannerProfile,
-      maxParallelAgents: profilePolicy.maxParallelAgents,
-      autoContinue: profilePolicy.autoStartReviews && !isExecutionStep,
-      reviewRequired: isExecutionStep ? profilePolicy.approvalRequiredForExecution : !profilePolicy.autoStartReviews
-    },
-    statusFiles: stepStatusFiles(step.id)
-  };
-}
-
-function buildHandoffManifest(input, output) {
-  const promptById = new Map(output.promptExports.map((item) => [item.id, item]));
-  const steps = [];
-  const intakePrompt = promptById.get("intake-followup");
-  const architecturePrompt = promptById.get("architecture-analysis");
-  const executionPrompt = promptById.get("execution-next-wave");
-  const governancePrompt = promptById.get("governance-setup");
-  const architectureOption = output.architectureOptions.find(
-    (option) => option.id === output.architectureRecommendation.optionId
-  );
-  const firstWave = output.executionWaves[0];
-
-  if (intakePrompt) {
-    steps.push({
-      id: "step-1-intake-clarification",
-      name: "Resolve Missing Planning Inputs",
-      objective: "Close the blocking or high-value planning gaps before deeper architecture or delivery work continues.",
-      executionMode: "sequential",
-      dependsOn: [],
-      parallelGroup: "preflight",
-      agentAssignments: [
-        {
-          id: "agent-intake-clarifier",
-          role: "requirements-analyst",
-          promptExportId: intakePrompt.id,
-          promptPath: intakePrompt.path,
-          reads: [
-            "planforge-index.json",
-            planningPath("plan-output.json"),
-            "PROJECT.md",
-            docsPath("intake-questionnaire.md"),
-            docsPath("project-charter.md"),
-            ".ai/TASKS.md",
-            intakePrompt.path
-          ],
-          writes: [
-            "updated planning input",
-            "clarified assumptions",
-            "resolved blocker answers"
-          ],
-          successCriteria: [
-            "Every blocking intake question has an explicit answer or a named decision owner.",
-            "The clarified requirements are concrete enough to rerun the planner without guesswork."
-          ]
-        }
-      ]
-    });
-  }
-
-  const planningDependencies = intakePrompt ? ["step-1-intake-clarification"] : [];
-
-  if (architecturePrompt) {
-    steps.push({
-      id: "step-2-architecture-review",
-      name: "Review Architecture Direction",
-      objective: "Challenge the default architecture and confirm whether the recommended option still fits the clarified scope.",
-      executionMode: "parallel",
-      dependsOn: planningDependencies,
-      parallelGroup: "planning-review",
-      agentAssignments: [
-        {
-          id: "agent-architecture-reviewer",
-          role: "architecture-reviewer",
-          promptExportId: architecturePrompt.id,
-          promptPath: architecturePrompt.path,
-          reads: [
-            "planforge-index.json",
-            planningPath("plan-output.json"),
-            "PROJECT.md",
-            docsPath("architecture-overview.md"),
-            ".ai/ARCHITECTURE.md",
-            docsPath("delivery-plan.md"),
-            architecturePrompt.path
-          ],
-          writes: [
-            "architecture review notes",
-            "ADR update proposals",
-            "recommended architecture adjustments"
-          ],
-          successCriteria: [
-            "The recommended option is either confirmed or replaced with an explicit rationale.",
-            "Key tradeoffs and module boundaries are clear enough to guide the first implementation wave."
-          ]
-        }
-      ]
-    });
-  }
-
-  if (governancePrompt) {
-    steps.push({
-      id: "step-3-governance-setup",
-      name: "Establish Governance Baseline",
-      objective: "Create the minimum enterprise control artifacts needed before implementation moves too far ahead.",
-      executionMode: "parallel",
-      dependsOn: planningDependencies,
-      parallelGroup: "planning-review",
-      agentAssignments: [
-        {
-          id: "agent-governance-lead",
-          role: "governance-analyst",
-          promptExportId: governancePrompt.id,
-          promptPath: governancePrompt.path,
-          reads: [
-            "planforge-index.json",
-            planningPath("plan-output.json"),
-            "PROJECT.md",
-            ".ai/AGENTS.md",
-            governancePrompt.path,
-            "governance/service-ownership.md",
-            "governance/data-classification-matrix.md",
-            "governance/access-review-plan.md",
-            "governance/exception-register.md"
-          ],
-          writes: [
-            "completed governance artifact set",
-            "control gaps",
-            "named ownership and review cadences"
-          ],
-          successCriteria: [
-            "Service ownership, data classification, access review, and exception tracking are populated with real owners and cadences.",
-            "Known control gaps are explicit instead of being left implicit."
-          ]
-        }
-      ]
-    });
-  }
-
-  if (executionPrompt && firstWave) {
-    const executionDependencies = [];
-    if (architecturePrompt) {
-      executionDependencies.push("step-2-architecture-review");
-    }
-    if (governancePrompt) {
-      executionDependencies.push("step-3-governance-setup");
-    }
-    if (!executionDependencies.length && intakePrompt) {
-      executionDependencies.push("step-1-intake-clarification");
-    }
-
-    const waveTaskPaths = firstWave.taskIds
-      .map((taskId) => output.tasks.find((task) => task.id === taskId))
-      .filter(Boolean)
-      .map(taskDocumentPath);
-
-    steps.push({
-      id: "step-4-wave-1-execution",
-      name: "Execute First Delivery Wave",
-      objective: "Implement the initial foundation tasks with the current architecture and control assumptions.",
-      executionMode: "sequential",
-      dependsOn: executionDependencies,
-      parallelGroup: "delivery",
-      agentAssignments: [
-        {
-          id: "agent-delivery-lead",
-          role: "implementation-lead",
-          promptExportId: executionPrompt.id,
-          promptPath: executionPrompt.path,
-          reads: [
-            "planforge-index.json",
-            planningPath("plan-output.json"),
-            "PROJECT.md",
-            docsPath("delivery-plan.md"),
-            ".ai/TASKS.md",
-            executionPrompt.path
-          ].concat(waveTaskPaths),
-          writes: [
-            "implemented wave-1 scope",
-            "updated tests and docs",
-            "next-wave handoff notes"
-          ],
-          successCriteria: [
-            `All tasks in ${firstWave.id} are either completed or explicitly re-scoped with reasons.`,
-            "Dependency-sensitive work lands in a reviewable sequence without skipping tests or documentation."
-          ]
-        }
-      ]
-    });
-  }
-
-  const policyAwareSteps = steps.map((step) => Object.assign({}, step, makeStepPolicy(step, output)));
-
-  const manifestArtifacts = [
-    LAYOUT_REGISTRY.rootFiles.agents,
-    LAYOUT_REGISTRY.indexFile,
-    LAYOUT_REGISTRY.planning.planOutput,
-    LAYOUT_REGISTRY.planning.structuredInput,
-    LAYOUT_REGISTRY.rootFiles.project,
-    LAYOUT_REGISTRY.rootFiles.charter,
-    LAYOUT_REGISTRY.rootFiles.architecture,
-    LAYOUT_REGISTRY.rootFiles.deliveryPlan,
-    LAYOUT_REGISTRY.handoff.runnerContract,
-    LAYOUT_REGISTRY.exports.devreview,
-    LAYOUT_REGISTRY.exports.scaffoldkit,
-    LAYOUT_REGISTRY.ai.agents,
-    LAYOUT_REGISTRY.ai.architecture,
-    LAYOUT_REGISTRY.ai.tasks,
-    LAYOUT_REGISTRY.ai.decisions
-  ].concat(output.recommendedPlaybooks);
-
-  if (output.intakeCompleteness !== "complete") {
-    manifestArtifacts.push(LAYOUT_REGISTRY.rootFiles.intakeQuestionnaire);
-  }
-
-  output.adrCandidates.forEach((adr, index) => {
-    manifestArtifacts.push(adrDocumentPath(index, adr));
-  });
-
-  return {
-    version: "1.0",
-    summary: "Coordinate downstream planning, governance, and execution agents from a single generated manifest.",
-    policySummary: `Use ${output.plannerProfile} profile policies for concurrency, blocker escalation, and approval gating.`,
-    runnerContractPath: LAYOUT_REGISTRY.handoff.runnerContract,
-    coordinationStrategy: intakePrompt
-      ? "Resolve intake blockers first, then run planning review steps in parallel where possible, then begin execution."
-      : "Use planning review steps in parallel where possible, then move into execution on the first delivery wave.",
-    recommendedArchitectureOptionId: output.architectureRecommendation.optionId,
-    recommendedArchitectureShape: architectureOption ? architectureOption.shape : output.architectureRecommendation.shape,
-    sharedContext: {
-      phase: output.phase,
-      path: output.path,
-      plannerProfile: output.plannerProfile,
-      intakeCompleteness: output.intakeCompleteness
-    },
-    sharedArtifacts: manifestArtifacts,
-    steps: policyAwareSteps
-  };
-}
-
-function buildRunnerContract(output) {
-  return {
-    version: "1.0",
-    summary: "Machine-readable contract for downstream agents consuming the planforge handoff manifest.",
-    statusLifecycle: [
-      { id: "queued", meaning: "Step exists but should not start yet." },
-      { id: "ready", meaning: "Dependencies are satisfied and the step may begin." },
-      { id: "in_progress", meaning: "The agent is actively working on the step." },
-      { id: "blocked", meaning: "A blocker prevents progress and escalation is required." },
-      { id: "partial", meaning: "Partial outputs exist but acceptance criteria are not yet satisfied." },
-      { id: "completed", meaning: "The step finished with required outputs and status evidence." }
-    ],
-    requiredStatusFields: [
-      "stepId",
-      "agentId",
-      "status",
-      "updatedAt",
-      "summary",
-      "blockers",
-      "outputArtifacts"
-    ],
-    requiredResultFields: [
-      "stepId",
-      "agentId",
-      "completedAt",
-      "outcomeSummary",
-      "artifacts",
-      "openIssues",
-      "nextStepRecommendations"
-    ],
-    stepContracts: output.handoffManifest.steps.map((step) => ({
-      stepId: step.id,
-      name: step.name,
-      requiredInputFiles: step.agentAssignments.flatMap((assignment) => assignment.reads),
-      expectedOutputFiles: step.agentAssignments.flatMap((assignment) => assignment.writes),
-      statusFiles: step.statusFiles,
-      allowedStatuses: ["queued", "ready", "in_progress", "blocked", "partial", "completed"],
-      dependencyPolicy: step.dependencyPolicy,
-      approvalGate: step.approvalGate
-    }))
-  };
-}
-
 function resolveRunDirectory(repoRoot, runPath) {
   const resolvedPath = path.resolve(repoRoot, runPath);
   if (!fs.existsSync(resolvedPath)) {
@@ -3161,14 +2683,11 @@ function valuesEqual(left, right) {
 function buildRerunReport(mode, previousRun, input, output) {
   const regeneratedArtifacts = [
     LAYOUT_REGISTRY.planning.planOutput,
-    LAYOUT_REGISTRY.handoff.manifest,
     LAYOUT_REGISTRY.rootFiles.project,
     LAYOUT_REGISTRY.rootFiles.charter,
     LAYOUT_REGISTRY.rootFiles.architecture,
     LAYOUT_REGISTRY.rootFiles.deliveryPlan,
-    LAYOUT_REGISTRY.handoff.runnerContract,
-    LAYOUT_REGISTRY.exports.scaffoldkit,
-    LAYOUT_REGISTRY.exports.devreview
+    LAYOUT_REGISTRY.exports.scaffoldkit
   ];
 
   if (!previousRun) {
@@ -3261,7 +2780,7 @@ ${output.path === "enterprise" ? "- Governance lead: owns control artifacts, acc
 
 ## Workflow
 
-1. Read \`.ai/ARCHITECTURE.md\`, \`.ai/TASKS.md\`, and the current prompt export before changing code.
+1. Read \`.ai/ARCHITECTURE.md\`, \`.ai/TASKS.md\`, and the task docs in \`tasks/\` before changing code.
 2. Follow the applicable playbooks listed below for workflow, testing, documentation, and governance expectations.
 3. ${scaffoldGuidance.summary}
 4. Keep diffs small, update tests with the change, and avoid bundling unrelated work.
@@ -3275,7 +2794,7 @@ ${toMarkdownList(output.recommendedPlaybooks)}
 
 - Preserve backward compatibility unless a breaking change is explicitly accepted.
 - Update docs and ADRs when architectural assumptions shift.
-- Treat prompts and generated artifacts as review inputs, not as permission to skip engineering judgment.
+- Treat generated artifacts as review inputs, not as permission to skip engineering judgment.
 
 ## Project Context
 
@@ -3307,12 +2826,16 @@ For machine-readable path discovery, read \`planforge-index.json\`.
 ## Generated Directories
 
 - Planning state: \`planning/\`
-- Handoff and runner state: \`handoff/\`
 - Tool exports: \`exports/\`
-- Prompts: \`prompts/\`
 - Clarifications: \`specs/\`
 - ADRs: \`adrs/\`
 - Tasks: \`tasks/\`
+
+## Build This Next
+
+1. Read \`${docsPath("architecture-overview.md")}\` for the intended architecture.
+2. Work the generated tasks in \`tasks/\` in dependency order (see \`.ai/TASKS.md\` for the wave order and critical path).
+3. Keep \`PROJECT.md\` and \`.ai/\` as the standing context.
 
 ## Important Files
 
@@ -3320,15 +2843,13 @@ For machine-readable path discovery, read \`planforge-index.json\`.
 - Planning output: \`${planningPath("plan-output.json")}\`
 - Structured input snapshot: \`${planningPath("structured-input.json")}\`
 - Rerun metadata: \`${planningPath("rerun-report.json")}\`
-- Handoff manifest: \`${handoffPath("manifest.json")}\`
-- Runner contract: \`${handoffPath("runner-contract.json")}\`
+- Architecture: \`${docsPath("architecture-overview.md")}\`
+- Delivery plan: \`${docsPath("delivery-plan.md")}\`
 - Scaffold export: \`${exportsPath("scaffoldkit-input.json")}\`
-- Review policy export: \`${exportsPath("devreview.json")}\`
 
 ## Working Notes
 
-- Start with the overview docs and \`.ai/\`, then move into \`tasks/\`, \`adrs/\`, and \`handoff/\` as needed.
-- Use \`${handoffPath("runner")}/\` for step status and result tracking.
+- Start with the overview docs and \`.ai/\`, then move into \`tasks/\` and \`adrs/\` as needed.
 - Treat generated artifacts as guidance, not as permission to skip engineering judgment.
 
 ## Current Plan Context
@@ -3378,7 +2899,6 @@ function renderPlanforgeIndex(output, presence = {}) {
     rootFiles: { ...LAYOUT_REGISTRY.rootFiles },
     directories,
     planning: { ...LAYOUT_REGISTRY.planning },
-    handoff: { ...LAYOUT_REGISTRY.handoff },
     exports: { ...LAYOUT_REGISTRY.exports },
     ai: { ...LAYOUT_REGISTRY.ai }
   };
@@ -3473,12 +2993,6 @@ ${decisions}
 `;
 }
 
-function writePromptArtifacts(promptArtifacts, outdir) {
-  promptArtifacts.forEach((artifact) => {
-    writeFile(path.join(outdir, artifact.path), artifact.contents);
-  });
-}
-
 function writeAiArtifacts(input, output, outdir, scaffoldkitContext, planforgeIndex) {
   writeFile(path.join(outdir, "AGENTS.md"), renderRootAgents(output));
   writeFile(path.join(outdir, "CLAUDE.md"), renderClaudeShim());
@@ -3527,133 +3041,6 @@ function renderScaffoldKitInput(input, output, scaffoldkitContext) {
       ".ai/DECISIONS.md"
     ]
   };
-}
-
-function devReviewWeights(profile) {
-  if (profile === "startup") {
-    return {
-      correctness: 30,
-      testing: 15,
-      maintainability: 20,
-      architecture: 15,
-      security: 10,
-      documentation: 10
-    };
-  }
-  if (profile === "enterprise") {
-    return {
-      correctness: 20,
-      testing: 20,
-      maintainability: 15,
-      architecture: 15,
-      security: 20,
-      documentation: 10
-    };
-  }
-  if (profile === "platform") {
-    return {
-      correctness: 20,
-      testing: 25,
-      maintainability: 20,
-      architecture: 20,
-      security: 10,
-      documentation: 5
-    };
-  }
-  return {
-    correctness: 25,
-    testing: 20,
-    maintainability: 20,
-    architecture: 15,
-    security: 10,
-    documentation: 10
-  };
-}
-
-function minReviewScore(phase, profile) {
-  if (profile === "startup") {
-    return 6;
-  }
-  if (phase === "phase_3" || profile === "enterprise") {
-    return 8;
-  }
-  if (phase === "phase_2" || profile === "platform") {
-    return 8;
-  }
-  if (phase === "phase_0") {
-    return 6;
-  }
-  return 7;
-}
-
-function renderDevReviewConfig(input, output) {
-  const techStack = inferTechStack(input).toLowerCase();
-  const ignorePatterns = ["out/**", "coverage/**", "node_modules/**"];
-  if (/typescript web/.test(techStack)) {
-    ignorePatterns.push(".next/**");
-  }
-
-  const customRules = [
-    "require tests when API or workflow behavior changes",
-    "require ADR updates when architecture assumptions shift"
-  ];
-
-  if (/dashboard|portal|admin/.test((input.coreFeatures || []).join(" ").toLowerCase())) {
-    customRules.push("require access-control review for admin-facing routes");
-  }
-  if (output.plannerProfile === "platform") {
-    customRules.push("require API stability review for shared platform interfaces");
-  }
-
-  return {
-    version: "1.0",
-    profile: output.plannerProfile,
-    phase: output.phase,
-    minimumScore: minReviewScore(output.phase, output.plannerProfile),
-    weights: devReviewWeights(output.plannerProfile),
-    ignorePatterns,
-    customRules
-  };
-}
-
-function writeRunnerArtifacts(output, outdir) {
-  const contract = buildRunnerContract(output);
-  writeFile(path.join(outdir, handoffPath("runner-contract.json")), `${JSON.stringify(contract, null, 2)}\n`);
-
-  contract.stepContracts.forEach((stepContract) => {
-    writeFile(
-      path.join(outdir, stepContract.statusFiles.input),
-      `${JSON.stringify({ stepId: stepContract.stepId, requiredInputFiles: stepContract.requiredInputFiles }, null, 2)}\n`
-    );
-    writeFile(
-      path.join(outdir, stepContract.statusFiles.status),
-      `${JSON.stringify({
-        stepId: stepContract.stepId,
-        agentId: "TBD",
-        status: "queued",
-        updatedAt: "",
-        summary: "",
-        blockers: [],
-        outputArtifacts: []
-      }, null, 2)}\n`
-    );
-    writeFile(
-      path.join(outdir, stepContract.statusFiles.result),
-      `${JSON.stringify({
-        stepId: stepContract.stepId,
-        agentId: "TBD",
-        completedAt: "",
-        outcomeSummary: "",
-        artifacts: [],
-        openIssues: [],
-        nextStepRecommendations: []
-      }, null, 2)}\n`
-    );
-    writeFile(
-      path.join(outdir, stepContract.statusFiles.blockers),
-      `${JSON.stringify({ stepId: stepContract.stepId, blockers: [] }, null, 2)}\n`
-    );
-  });
 }
 
 function copyDirectoryContents(sourcePath, targetPath) {
@@ -3720,10 +3107,8 @@ function writeOperationalArtifacts(input, output, outdir, rerunReport, scaffoldk
     path.join(outdir, exportsPath("scaffoldkit-input.json")),
     `${JSON.stringify(renderScaffoldKitInput(input, output, scaffoldkitContext), null, 2)}\n`
   );
-  writeFile(path.join(outdir, exportsPath("devreview.json")), `${JSON.stringify(renderDevReviewConfig(input, output), null, 2)}\n`);
   writeFile(path.join(outdir, planningPath("rerun-report.json")), `${JSON.stringify(rerunReport, null, 2)}\n`);
   writeFile(path.join(outdir, planningPath("rerun-summary.md")), renderRerunSummary(rerunReport));
-  writeRunnerArtifacts(output, outdir);
 }
 
 function writeTemplateArtifacts(repoRoot, input, output, outdir, config) {
@@ -3968,15 +3353,12 @@ function main() {
     const previousRun = loadPreviousRun(workingDir, args.resumeFrom || args.rerunFrom);
     const rerunMode = args.resumeFrom ? "resume" : args.rerunFrom ? "rerun" : "fresh";
     const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata);
-    const promptArtifacts = buildPromptArtifacts(planforgeRoot, input, output);
     const planforgeIndex = renderPlanforgeIndex(output, {
       specs: args.clarify === true,
       runbooks: shouldWriteRunbooks(output),
       governance: shouldWriteGovernance(output)
     });
 
-    output.promptExports = promptArtifacts.map(({ contents, ...metadata }) => metadata);
-    output.handoffManifest = buildHandoffManifest(input, output);
     const rerunReport = buildRerunReport(rerunMode, previousRun, input, output);
 
     validateWithSchema(planforgeRoot, "models/planning-output.schema.json", output, "generated planning output");
@@ -4003,9 +3385,7 @@ function main() {
       output.defaultBranch = detectedBranch;
     }
     
-    writePromptArtifacts(promptArtifacts, outdir);
     writeFile(path.join(outdir, planningPath("plan-output.json")), `${JSON.stringify(output, null, 2)}\n`);
-    writeFile(path.join(outdir, handoffPath("manifest.json")), `${JSON.stringify(output.handoffManifest, null, 2)}\n`);
     writeFile(path.join(outdir, "PROJECT.md"), renderProjectIndex(planforgeRoot, input, output));
     writeFile(path.join(outdir, docsPath("intake-questionnaire.md")), renderIntakeQuestionnaire(planforgeRoot, input, output));
     writeFile(path.join(outdir, docsPath("project-charter.md")), renderProjectCharter(input, output));
