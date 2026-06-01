@@ -45,13 +45,12 @@ RUN cd server && npm run build
 # and the venv's python3 binary would fail at runtime with
 # `cannot open shared object file: libpython3.12.so.1.0`.
 FROM python:3.11-slim AS scaffoldkit
-# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ d2739c2 (2026-06).
+# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ f52acba (2026-06).
 # Update this when bumping scaffoldkit; image build will pull a fresh
-# clone and rebuild the venv. d2739c2 adds a minimal runnable starter to the
-# fastapi-backend blueprint (the planforge remap target for python-hint REST
-# intakes), on top of 587fd46's rest-api (fastapi) and cli-tool (python)
-# starters (src/main.py + an example route/command + a smoke test).
-ARG SCAFFOLDKIT_REF=d2739c2
+# clone and rebuild the venv. f52acba unifies the fastapi-backend blueprint on the
+# src/ layout (app/ -> src/, app/api/routes/ -> src/routes/) so the scaffold matches
+# the planner's task paths, on top of d2739c2's fastapi-backend starter source.
+ARG SCAFFOLDKIT_REF=f52acba
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y git ca-certificates \
