@@ -2007,6 +2007,20 @@ function coverageTaskFiles(stack) {
   ];
 }
 
+// The primary manifest a freshly scaffolded repo carries, by language, so the
+// foundation "set up repository" task does not hardcode a Node package.json into
+// a python/php project.
+function manifestFileForStack(stack) {
+  const language = (stack && stack.language) || "typescript";
+  if (language === "python") {
+    return "pyproject.toml";
+  }
+  if (language === "php") {
+    return "composer.json";
+  }
+  return "package.json";
+}
+
 function featureFiles(feature, architectureShape, stackPatterns, stack) {
   // The git-memory-sync layout is TypeScript-specific, so only short-circuit for
   // a TypeScript (or unspecified) stack; other languages fall through to the
@@ -2124,7 +2138,7 @@ function buildTasks(input, phase, architecture, stackPatterns, stack) {
       problem: "Execution work will fragment quickly if the repository, quality gates, and documentation expectations are not defined up front.",
       solution: "Establish the test path, delivery workflow expectations, and starter documentation before feature branches accumulate drift.",
       files: [
-        "package.json",
+        manifestFileForStack(stack),
         "README.md",
         "tests/",
         ".github/workflows/"

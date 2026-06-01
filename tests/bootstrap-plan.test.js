@@ -315,6 +315,19 @@ runCase("rest-api feature task paths follow the python/fastapi stack and api-key
     coverageTask.files.some((file) => /tests\/integration\/test_/.test(file)),
     `coverage task should use pytest integration paths, got: ${coverageTask.files.join(", ")}`
   );
+
+  // The foundation "set up repository" task's manifest must follow the stack, not
+  // hardcode a Node package.json into a python project.
+  const setupTask = output.tasks.find((task) => /set up repository/i.test(task.title));
+  assert.ok(setupTask, "expected a 'set up repository' foundation task");
+  assert.ok(
+    setupTask.files.includes("pyproject.toml"),
+    `setup task should list pyproject.toml, got: ${setupTask.files.join(", ")}`
+  );
+  assert.ok(
+    !setupTask.files.includes("package.json"),
+    `setup task leaked package.json into a python project: ${setupTask.files.join(", ")}`
+  );
 });
 
 runCase("express-api api-key auth falls back to a generic layout instead of the JWT/user-login template (negativeKeywords guard)", () => {
@@ -359,6 +372,14 @@ runCase("express-api api-key auth falls back to a generic layout instead of the 
   assert.ok(
     coverageTask.files.every((file) => /\.test\.ts$/.test(file)),
     `coverage task should emit .test.ts for a TS stack, got: ${coverageTask.files.join(", ")}`
+  );
+
+  // Negative control: the TS stack's setup task keeps package.json.
+  const setupTask = output.tasks.find((task) => /set up repository/i.test(task.title));
+  assert.ok(setupTask, "expected a 'set up repository' foundation task");
+  assert.ok(
+    setupTask.files.includes("package.json"),
+    `TS setup task should list package.json, got: ${setupTask.files.join(", ")}`
   );
 });
 
