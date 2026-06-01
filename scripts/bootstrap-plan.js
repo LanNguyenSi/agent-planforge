@@ -1126,11 +1126,21 @@ function loadScaffoldkitContext(repoRoot) {
   };
 }
 
-function resolvePlaybookPath(playbookContext, relativePath) {
-  if (playbookContext.root) {
-    return path.join(playbookContext.root, relativePath);
-  }
-  return path.join("agent-engineering-playbook", relativePath);
+// Playbooks are referenced from generated deliverables as stable GitHub URLs, not
+// filesystem paths: the playbook files are never copied into the generated repo, so
+// a relative path dangles for the consumer and an absolute path leaks the planforge
+// container's /app working dir. planning-and-scoping ships in this repo; the phase
+// playbooks live in the external agent-engineering-playbook library.
+const PLANFORGE_PLAYBOOK_URL =
+  "https://github.com/LanNguyenSi/agent-planforge/blob/main/playbooks/planning-and-scoping.md";
+const ENGINEERING_PLAYBOOK_BASE =
+  "https://github.com/LanNguyenSi/agent-engineering-playbook/blob/main";
+
+function resolvePlaybookPath(relativePath) {
+  // Always emit a stable external URL. A local/absolute filesystem path (the prior
+  // behavior) either dangled for the consumer or leaked the container filesystem,
+  // since the playbook files are never copied into the deliverable.
+  return `${ENGINEERING_PLAYBOOK_BASE}/${relativePath}`;
 }
 
 function inferPhase(input) {
@@ -1310,22 +1320,22 @@ function phaseRationale(input, phase) {
   return reasons;
 }
 
-function recommendedPlaybooks(phase, pathName, playbookContext, repoRoot) {
+function recommendedPlaybooks(phase, pathName, playbookContext) {
   const mandatory = [];
   const adoptionModel = playbookContext.model || {};
   const corePhases = (((adoptionModel.paths || {}).core || {}).mandatory_playbooks_by_phase) || {};
   const enterprisePhases = (((adoptionModel.paths || {}).enterprise || {}).mandatory_playbooks_by_phase) || {};
   const baselinePhase = phase === "phase_3" ? "phase_2" : phase;
 
-  mandatory.push(path.join(repoRoot, "playbooks", "planning-and-scoping.md"));
+  mandatory.push(PLANFORGE_PLAYBOOK_URL);
 
   (corePhases[baselinePhase] || []).forEach((relativePath) => {
-    mandatory.push(resolvePlaybookPath(playbookContext, relativePath));
+    mandatory.push(resolvePlaybookPath(relativePath));
   });
 
   if (pathName === "enterprise") {
     (enterprisePhases.phase_3 || []).forEach((relativePath) => {
-      mandatory.push(resolvePlaybookPath(playbookContext, relativePath));
+      mandatory.push(resolvePlaybookPath(relativePath));
     });
   }
 
@@ -2410,7 +2420,7 @@ function buildOutput(input, config, playbookContext, repoRoot, inputMetadata, sc
     phaseRationale: phaseRationale(input, phase),
     path: pathName,
     scaffoldBlueprint: blueprint,
-    recommendedPlaybooks: recommendedPlaybooks(phase, pathName, playbookContext, repoRoot),
+    recommendedPlaybooks: recommendedPlaybooks(phase, pathName, playbookContext),
     recommendedGuidanceAreas: recommendedGuidanceAreas(phase, profile, config),
     recommendedArtifacts: recommendedArtifacts(phase, profile, config),
     architectureOptions: options,

@@ -107,6 +107,26 @@ runCase("sample input generates enterprise artifacts and downstream exports", ()
   assert.equal(output.inputFormat, "json");
   assert.ok(output.recommendedPlaybooks.some((entry) => entry.endsWith("playbooks/05-development-workflow.md")));
   assert.ok(output.recommendedPlaybooks.some((entry) => entry.endsWith("playbooks/10-security-and-governance.md")));
+
+  // Playbook references must be deliverable-safe: stable external URLs, never a
+  // local/absolute filesystem path (which dangles for the consumer or leaks the
+  // planforge container's /app working dir). Regression guard for the prior
+  // /app/playbooks and bare agent-engineering-playbook/ filesystem refs.
+  assert.ok(
+    output.recommendedPlaybooks.every((entry) => /^https:\/\//.test(entry)),
+    `recommendedPlaybooks must be https URLs, got: ${output.recommendedPlaybooks.join(", ")}`
+  );
+  assert.ok(
+    output.recommendedPlaybooks.every((entry) => !entry.startsWith("/") && !entry.includes("/app/")),
+    `recommendedPlaybooks leaked an absolute/container path: ${output.recommendedPlaybooks.join(", ")}`
+  );
+  assert.ok(!agentsDoc.includes("/app/playbooks"), "agents doc leaked the container /app/playbooks path");
+  assert.doesNotMatch(agentsDoc, /^- agent-engineering-playbook\/playbooks\//m);
+  assert.ok(
+    agentsDoc.includes("https://github.com/LanNguyenSi/agent-planforge/blob/main/playbooks/planning-and-scoping.md"),
+    "agents doc should reference planning-and-scoping as a resolvable URL"
+  );
+
   assert.ok(output.tasks.every((task) => Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0));
 
   assert.match(projectIndex, /# PROJECT: Vendor Access Hub/);
