@@ -203,9 +203,9 @@ function waveIndex(waveId) {
   return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
 }
 
-function bestAlignedPattern(files, patterns, architectureShape) {
+function bestAlignedPattern(files, patterns, blueprint) {
   const candidates = Object.entries(patterns || {}).map(([patternName, pattern]) => {
-    const expectedFiles = resolvePatternFiles(pattern, architectureShape);
+    const expectedFiles = resolvePatternFiles(pattern, blueprint);
     return {
       patternName,
       expectedFiles,
@@ -364,9 +364,9 @@ function analyzeArtifacts(projectDir, repoRoot) {
       }
     }
 
-    const expectedFiles = resolvePatternFiles(semanticPattern.pattern, planOutput.architectureRecommendation.shape);
+    const expectedFiles = resolvePatternFiles(semanticPattern.pattern, planOutput.scaffoldBlueprint);
     const semanticScore = alignmentScore(actualFiles, expectedFiles);
-    const alignedPattern = bestAlignedPattern(actualFiles, patterns, planOutput.architectureRecommendation.shape);
+    const alignedPattern = bestAlignedPattern(actualFiles, patterns, planOutput.scaffoldBlueprint);
 
     if (
       alignedPattern &&

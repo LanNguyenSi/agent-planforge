@@ -1758,6 +1758,32 @@ function scaffoldkitExecutionGuidance(input, output, scaffoldkitContext) {
   };
 }
 
+// Map the selected scaffold blueprint to the language its generated task file
+// paths should use. This mirrors the framework/language choices in
+// scaffoldkitSuggestedVariables so the task layer stays coherent with the
+// scaffold's actual stack.
+function blueprintLanguage(blueprint, input) {
+  const techStack = inferTechStack(input).toLowerCase();
+  const constraintsText = (input.constraints || []).join(" ").toLowerCase();
+  switch (blueprint) {
+    case "rest-api":
+      // framework = express (TS) for a TypeScript service stack, else fastapi (Python).
+      return /typescript service stack/.test(techStack) ? "typescript" : "python";
+    case "cli-tool":
+      // language = typescript when the constraints ask for it, otherwise python (typer).
+      return /typescript/.test(constraintsText) ? "typescript" : "python";
+    case "reference-php-app":
+    case "symfony-backend":
+    case "symfony-nextjs":
+      // symfony-nextjs is a PHP backend with a Next.js frontend; feature task
+      // files default to the dominant PHP backend layout.
+      return "php";
+    default:
+      // nextjs-fullstack, nextjs-frontend, express-api, saas-dashboard, static-site, ...
+      return "typescript";
+  }
+}
+
 function scaffoldkitSuggestedVariables(input, output, blueprint) {
   const featuresText = (input.coreFeatures || []).join(" ").toLowerCase();
   const constraintsText = (input.constraints || []).join(" ").toLowerCase();
@@ -1863,45 +1889,110 @@ function gitMemorySyncFeatureFiles(feature) {
   return Array.from(new Set(files));
 }
 
-function featureFiles(feature, architectureShape, stackPatterns) {
-  if (isGitMemorySyncFeature(feature)) {
+function pascalCaseFromSlug(slug) {
+  return (
+    String(slug || "")
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("") || "Feature"
+  );
+}
+
+// Generic per-feature file suggestions used when no stack pattern matches. The
+// layout is chosen for the selected blueprint's language so task paths stay
+// coherent with the scaffold (e.g. a FastAPI rest-api gets Python paths instead
+// of hardcoded TypeScript).
+function genericFeatureFiles(feature, architectureShape, stack) {
+  const slug = slugify(feature, 40) || "feature"; // Limit module names to 40 chars
+  const lower = feature.toLowerCase();
+  const language = (stack && stack.language) || "typescript";
+  const blueprint = (stack && stack.blueprint) || "";
+  const isBackgroundWork =
+    /approval|workflow|notification|queue/.test(lower) || /background jobs/.test(architectureShape);
+  const isAudit = /audit|review|approval/.test(lower);
+
+  if (language === "python") {
+    // Python module names are identifiers, so use snake_case (the kebab slug
+    // would produce non-importable module names like `foo-bar_service.py`).
+    const moduleName = slug.replace(/-/g, "_");
+    const files =
+      blueprint === "cli-tool"
+        ? [`src/commands/${moduleName}.py`, `src/core/${moduleName}.py`, `tests/test_${moduleName}.py`]
+        : [
+            `src/routes/${moduleName}.py`,
+            `src/services/${moduleName}_service.py`,
+            `src/repositories/${moduleName}_repository.py`,
+            `tests/integration/test_${moduleName}.py`
+          ];
+    if (isBackgroundWork) {
+      files.push(`src/jobs/${moduleName}_job.py`);
+    }
+    if (isAudit) {
+      files.push("src/services/audit_log.py");
+    }
+    return Array.from(new Set(files));
+  }
+
+  if (language === "php") {
+    const name = pascalCaseFromSlug(slug);
+    const files = [
+      `src/Controller/${name}Controller.php`,
+      `src/Service/${name}Service.php`,
+      `src/Repository/${name}Repository.php`,
+      `tests/${name}Test.php`
+    ];
+    if (isBackgroundWork) {
+      files.push(`src/MessageHandler/${name}Handler.php`);
+    }
+    if (isAudit) {
+      files.push("src/Service/AuditLogService.php");
+    }
+    return Array.from(new Set(files));
+  }
+
+  // TypeScript (default): modular layout.
+  const files = [
+    `src/modules/${slug}/index.ts`,
+    `src/modules/${slug}/${slug}.service.ts`,
+    `src/modules/${slug}/${slug}.repository.ts`,
+    `tests/integration/${slug}.test.ts`
+  ];
+  if (/dashboard|admin|form|portal/.test(lower)) {
+    files.unshift(`src/routes/${slug}.ts`);
+  }
+  if (isBackgroundWork) {
+    files.push(`src/jobs/${slug}.job.ts`);
+  }
+  if (isAudit) {
+    files.push("src/modules/audit/audit-log.ts");
+  }
+  return Array.from(new Set(files));
+}
+
+function featureFiles(feature, architectureShape, stackPatterns, stack) {
+  // The git-memory-sync layout is TypeScript-specific, so only short-circuit for
+  // a TypeScript (or unspecified) stack; other languages fall through to the
+  // language-aware layout below.
+  const language = (stack && stack.language) || "typescript";
+  if (language === "typescript" && isGitMemorySyncFeature(feature)) {
     return gitMemorySyncFeatureFiles(feature);
   }
 
-  // Try to match a known pattern
+  // Prefer a known stack pattern's files for the selected blueprint.
   if (stackPatterns && stackPatterns.patterns) {
     const match = matchPattern(feature, stackPatterns.patterns);
-    
+
     if (match && match.pattern.files) {
-      const patternFiles = resolvePatternFiles(match.pattern, architectureShape);
+      const patternFiles = resolvePatternFiles(match.pattern, stack && stack.blueprint);
       if (patternFiles.length) {
         return patternFiles;
       }
     }
   }
-  
-  // Fallback to generic pattern
-  const slug = slugify(feature, 40);  // Limit module names to 40 chars
-  const files = [
-    `src/modules/${slug}/index.ts`,
-    `src/modules/${slug}/${slug}.service.ts`,
-    `src/modules/${slug}/${slug}.repository.ts`,
-    `tests/integration/${slug}.test.js`
-  ];
 
-  if (/dashboard|admin|form|portal/.test(feature.toLowerCase())) {
-    files.unshift(`src/routes/${slug}.ts`);
-  }
-
-  if (/approval|workflow|notification|queue/.test(feature.toLowerCase()) || /background jobs/.test(architectureShape)) {
-    files.push(`src/jobs/${slug}.job.ts`);
-  }
-
-  if (/audit|review|approval/.test(feature.toLowerCase())) {
-    files.push("src/modules/audit/audit-log.ts");
-  }
-
-  return Array.from(new Set(files));
+  // No pattern matched the selected blueprint: emit a language-aware generic layout.
+  return genericFeatureFiles(feature, architectureShape, stack);
 }
 
 function acceptanceCriteriaForFeature(feature) {
@@ -1956,7 +2047,7 @@ function connectBlocks(tasks) {
   return tasks;
 }
 
-function buildTasks(input, phase, architecture, stackPatterns) {
+function buildTasks(input, phase, architecture, stackPatterns, stack) {
   const tasks = [
     makeTask({
       id: "001",
@@ -2048,7 +2139,7 @@ function buildTasks(input, phase, architecture, stackPatterns) {
         summary: `Design and implement the capability for: ${feature}.`,
         problem: `The product cannot satisfy its initial scope until ${feature} exists as a reviewable, testable capability.`,
         solution: `Add a focused module for ${feature} that matches the recommended ${architecture.shape} and keeps integration boundaries explicit.`,
-        files: featureFiles(feature, architecture.shape, stackPatterns),
+        files: featureFiles(feature, architecture.shape, stackPatterns, stack),
         acceptanceCriteria: acceptanceCriteriaForFeature(feature),
         implementationNotes: [
           "Start from domain rules and access constraints before UI or transport details.",
@@ -2257,7 +2348,7 @@ function buildRisks(input, phase) {
   return risks;
 }
 
-function buildOutput(input, config, playbookContext, repoRoot, inputMetadata) {
+function buildOutput(input, config, playbookContext, repoRoot, inputMetadata, scaffoldkitContext) {
   const phase = inferPhase(input);
   const pathName = inferPath(phase);
   const profile = plannerProfile(input, config);
@@ -2265,7 +2356,19 @@ function buildOutput(input, config, playbookContext, repoRoot, inputMetadata) {
   const options = architectureOptions(input, phase);
   const architecture = architectureRecommendation(options, phase);
   const stackPatterns = loadStackPatterns(repoRoot);
-  const tasks = buildTasks(input, phase, architecture, stackPatterns);
+  // Resolve the scaffold blueprint before building tasks so generated task file
+  // paths match the scaffold's actual stack. scaffoldkitBlueprintRecommendation
+  // only reads architectureRecommendation.shape and plannerProfile from the
+  // output, both known here, so this is the same blueprint the downstream
+  // artifact writers compute for the same inputs (deterministic, no drift).
+  const scaffoldContext = scaffoldkitContext || { root: "", availableBlueprints: [] };
+  const blueprint = scaffoldkitBlueprintRecommendation(
+    input,
+    { architectureRecommendation: architecture, plannerProfile: profile },
+    scaffoldContext
+  ).blueprint;
+  const taskStack = { blueprint, language: blueprintLanguage(blueprint, input) };
+  const tasks = buildTasks(input, phase, architecture, stackPatterns, taskStack);
 
   return {
     projectName: input.projectName,
@@ -2283,6 +2386,7 @@ function buildOutput(input, config, playbookContext, repoRoot, inputMetadata) {
     phase,
     phaseRationale: phaseRationale(input, phase),
     path: pathName,
+    scaffoldBlueprint: blueprint,
     recommendedPlaybooks: recommendedPlaybooks(phase, pathName, playbookContext, repoRoot),
     recommendedGuidanceAreas: recommendedGuidanceAreas(phase, profile, config),
     recommendedArtifacts: recommendedArtifacts(phase, profile, config),
@@ -3352,7 +3456,7 @@ function main() {
 
     const previousRun = loadPreviousRun(workingDir, args.resumeFrom || args.rerunFrom);
     const rerunMode = args.resumeFrom ? "resume" : args.rerunFrom ? "rerun" : "fresh";
-    const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata);
+    const output = buildOutput(input, config, playbookContext, planforgeRoot, inputMetadata, scaffoldkitContext);
     const planforgeIndex = renderPlanforgeIndex(output, {
       specs: args.clarify === true,
       runbooks: shouldWriteRunbooks(output),

@@ -2,6 +2,7 @@
   "patterns": {
     "authentication-jwt": {
       "keywords": ["authentication", "jwt", "auth", "login", "register"],
+      "negativeKeywords": ["api key", "apikey", "api token"],
       "files": {
         "nextjs-fullstack": [
           "lib/auth/jwt.ts — Token generation + verification (jsonwebtoken)",

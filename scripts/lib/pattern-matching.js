@@ -76,25 +76,23 @@ function matchPattern(text, patterns) {
   return matches[0];
 }
 
-function resolvePatternFiles(pattern, architectureShape) {
+function resolvePatternFiles(pattern, blueprint) {
   if (!pattern || !pattern.files) {
     return [];
   }
 
-  const shapeKey = String(architectureShape || "")
-    .replace(/\s+/g, "-")
-    .toLowerCase();
-
-  if (pattern.files[shapeKey]) {
-    return pattern.files[shapeKey];
+  const blueprintKey = String(blueprint || "").trim();
+  if (blueprintKey && pattern.files[blueprintKey]) {
+    return pattern.files[blueprintKey];
   }
 
-  if (/next|fullstack/.test(shapeKey) && pattern.files["nextjs-fullstack"]) {
-    return pattern.files["nextjs-fullstack"];
-  }
-
-  const firstShape = Object.keys(pattern.files)[0];
-  return firstShape ? pattern.files[firstShape] : [];
+  // No file set exists for the selected blueprint, so return nothing and let the
+  // caller fall back to a language-aware generic layout. This deliberately drops
+  // the old behavior, which keyed on the architecture *shape* (e.g. "modular
+  // monolith"). A shape string never matched a blueprint key, so the function
+  // always fell through to the first file set — nextjs-fullstack — leaking
+  // Next.js/Prisma paths into every non-Next.js project.
+  return [];
 }
 
 function alignmentScore(actualFiles = [], expectedFiles = []) {
