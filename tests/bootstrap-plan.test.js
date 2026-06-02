@@ -541,6 +541,36 @@ runCase("php symfony backend plans recommend the symfony backend blueprint", () 
   assert.ok(phpFeatureFiles.some((file) => /^src\/(Controller|Service|Repository)\/.+\.php$/.test(file)));
 });
 
+runCase("generic php/symfony plans recommend symfony-backend, not the removed reference shell", () => {
+  const fixtureDir = tempDir("planforge-php-generic-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Internal Records",
+    summary: "A PHP application built with Symfony for an internal records workflow.",
+    targetUsers: ["internal staff"],
+    coreFeatures: [
+      "Symfony application skeleton",
+      "composer dependency management",
+      "phpunit test coverage"
+    ],
+    constraints: ["PHP 8.3", "Symfony 7"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  // Generic PHP intake (no api/backend or frontend signal) hits the baseline branch,
+  // which used to return the app-less reference-php-app shell. It must now pick the
+  // runnable symfony-backend instead.
+  const scaffoldkit = readJson(exportsFile(path.join(fixtureDir, "out"), "scaffoldkit-input.json"));
+  assert.equal(scaffoldkit.blueprint, "symfony-backend");
+  assert.equal(scaffoldkit.blueprintConfidence, "medium");
+  assert.match(scaffoldkit.blueprintReason, /symfony-backend as baseline/);
+  assert.ok(
+    !scaffoldkit.blueprintCandidates.includes("reference-php-app"),
+    `reference-php-app should be gone, got: ${scaffoldkit.blueprintCandidates.join(", ")}`
+  );
+});
+
 runCase("php symfony plus react dashboard plans recommend the symfony nextjs blueprint", () => {
   const fixtureDir = tempDir("planforge-php-symfony-nextjs-");
   writeJson(path.join(fixtureDir, "input.json"), {

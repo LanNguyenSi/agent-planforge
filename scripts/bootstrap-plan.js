@@ -1672,19 +1672,19 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
 
   if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
     if (/(next\.?js|react|vue|angular|frontend|spa|client-side)/.test(combinedText)) {
-      candidates = ["symfony-nextjs", "reference-php-app"];
+      candidates = ["symfony-nextjs", "symfony-backend"];
       reason = "PHP/Symfony + JS frontend signals -> symfony-nextjs";
       confidence = "strong";
     } else if (
       /(api|rest|json endpoint|backend|service|graphql)/.test(combinedText) &&
       !/(frontend|portal|admin ui|dashboard)/.test(combinedText)
     ) {
-      candidates = ["symfony-backend", "reference-php-app"];
+      candidates = ["symfony-backend"];
       reason = "PHP/Symfony backend/API without frontend -> symfony-backend";
       confidence = "strong";
     } else {
-      candidates = ["reference-php-app", "symfony-backend"];
-      reason = "Generic PHP/Symfony -> reference-php-app as baseline";
+      candidates = ["symfony-backend"];
+      reason = "Generic PHP/Symfony -> symfony-backend as baseline";
       confidence = "medium";
       manualStructureReason = "The framework family is clear, but the generated scaffold may still need manual adaptation for the final repository layout.";
     }
@@ -1782,7 +1782,6 @@ function blueprintLanguage(blueprint, input) {
     case "cli-tool":
       // language = typescript when the constraints ask for it, otherwise python (typer).
       return /typescript/.test(constraintsText) ? "typescript" : "python";
-    case "reference-php-app":
     case "symfony-backend":
     case "symfony-nextjs":
       // symfony-nextjs is a PHP backend with a Next.js frontend; feature task
@@ -1835,8 +1834,6 @@ function scaffoldkitSuggestedVariables(input, output, blueprint) {
     suggested.config_format = "json";
     suggested.distribution = suggested.language === "typescript" ? "binary" : "pip-package";
     suggested.description = input.summary || "A developer-facing automation tool";
-  } else if (blueprint === "reference-php-app") {
-    suggested.use_docker = /docker|container|compose/.test(combinedText);
   } else if (blueprint === "symfony-backend") {
     suggested.php_version = /php 8\.2/.test(constraintsText) ? "8.2" : "8.3";
     suggested.symfony_version = inferSymfonyVersion(input);
@@ -3321,7 +3318,7 @@ function shouldWriteRuntimeTemplates(input, output, outdir) {
     return false;
   }
 
-  if (["reference-php-app", "symfony-backend", "symfony-nextjs"].includes(blueprint)) {
+  if (["symfony-backend", "symfony-nextjs"].includes(blueprint)) {
     return false;
   }
 
