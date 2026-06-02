@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-02
+
+### Changed
+
+- Bumped the bundled scaffoldkit pin to v0.4.0, which ships runnable starter code for every remaining blueprint and removes the app-less `reference-php-app` blueprint.
+- The PHP/Symfony selector no longer offers `reference-php-app`; generic PHP/Symfony intake now selects the runnable `symfony-backend` as its baseline instead of an empty ops-shell ([#89](https://github.com/LanNguyenSi/agent-planforge/pull/89)).
+
+### Removed
+
+- Dropped all `reference-php-app` references from the blueprint selector, the `blueprintLanguage` map, the suggested-variables logic, the runtime-template suppression list, and the `php-symfony` stack-pattern files map ([#89](https://github.com/LanNguyenSi/agent-planforge/pull/89)).
+
 ## [0.4.0] - 2026-06-01
 
 ### Changed

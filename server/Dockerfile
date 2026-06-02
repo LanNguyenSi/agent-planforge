@@ -50,7 +50,7 @@ FROM python:3.11-slim AS scaffoldkit
 # clone and rebuild the venv. f52acba unifies the fastapi-backend blueprint on the
 # src/ layout (app/ -> src/, app/api/routes/ -> src/routes/) so the scaffold matches
 # the planner's task paths, on top of d2739c2's fastapi-backend starter source.
-ARG SCAFFOLDKIT_REF=f52acba
+ARG SCAFFOLDKIT_REF=26d9ce1ac54eecb5989c4e5c762b84c703615125
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y git ca-certificates \
