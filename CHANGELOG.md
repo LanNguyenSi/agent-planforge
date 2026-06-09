@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-09
+
+Security patch closing the 2026-05-30 audit findings and a CVE sweep.
+
+### Security
+
+- **Release workflow hardened against GitHub Actions script injection** (PR #92, finding #47). The tag-controlled version is now bound to an `env: VERSION` and passed into `awk` via `-v ver="$VERSION"` instead of being interpolated as `${{ ... }}` directly into the `run` step, closing the injection vector in the changelog-extraction step.
+- **hono bumped to `^4.12.23`** (4 MEDIUM CVEs: CVE-2026-47673 / 47674 / 47675 / 47676, PR #91). Direct dependency of the server.
+
 ## [0.5.0] - 2026-06-02
 
 ### Changed
