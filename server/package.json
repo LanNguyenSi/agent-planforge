@@ -25,5 +25,8 @@
     "tsx": "^4.19.4",
     "typescript": "^5.4.0",
     "vitest": "^4.1.4"
+  },
+  "overrides": {
+    "esbuild": ">=0.28.1"
   }
 }
