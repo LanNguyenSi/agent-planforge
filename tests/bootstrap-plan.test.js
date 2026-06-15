@@ -1009,4 +1009,135 @@ runCase("invalid config override rejects unsupported keys instead of silently ig
   assert.match(result.stderr, /unsupported key `waves`/);
 });
 
+// --- Unit tests for exported helpers and selector fixes ---
+
+const {
+  scaffoldkitBlueprintRecommendation,
+  hasFrontendSignal,
+  hasBackendSignal
+} = require("../scripts/bootstrap-plan.js");
+
+// hasFrontendSignal unit tests
+runCase("hasFrontendSignal returns true for 'react frontend'", () => {
+  assert.ok(hasFrontendSignal("react frontend"));
+});
+runCase("hasFrontendSignal returns true for 'next.js app'", () => {
+  assert.ok(hasFrontendSignal("next.js app with typescript"));
+});
+runCase("hasFrontendSignal returns true for 'spa' keyword", () => {
+  assert.ok(hasFrontendSignal("single page spa application"));
+});
+runCase("hasFrontendSignal returns false for 'no frontend'", () => {
+  assert.ok(!hasFrontendSignal("symfony rest api, no frontend"));
+});
+runCase("hasFrontendSignal returns false for 'without a frontend'", () => {
+  assert.ok(!hasFrontendSignal("express backend without a frontend"));
+});
+runCase("hasFrontendSignal returns false for 'headless api'", () => {
+  assert.ok(!hasFrontendSignal("headless api service"));
+});
+runCase("hasFrontendSignal returns false for 'no react frontend' (negated framework)", () => {
+  assert.ok(!hasFrontendSignal("symfony backend, no react frontend"));
+});
+runCase("hasFrontendSignal does not match substrings ('spa' in 'aerospace')", () => {
+  assert.ok(!hasFrontendSignal("aerospace telemetry ingestion service"));
+});
+
+// hasBackendSignal unit tests
+runCase("hasBackendSignal returns true for 'rest api'", () => {
+  assert.ok(hasBackendSignal("rest api service"));
+});
+runCase("hasBackendSignal returns true for 'graphql backend'", () => {
+  assert.ok(hasBackendSignal("graphql backend server"));
+});
+runCase("hasBackendSignal returns true for 'postgres database'", () => {
+  assert.ok(hasBackendSignal("postgres database persistence layer"));
+});
+runCase("hasBackendSignal returns false for 'no backend'", () => {
+  assert.ok(!hasBackendSignal("next.js app, no backend"));
+});
+runCase("hasBackendSignal returns false for 'frontend-only static site'", () => {
+  assert.ok(!hasBackendSignal("frontend-only static site with tailwind"));
+});
+
+// Bug 1 fix: frontend-only Next.js intake -> nextjs-frontend (unit test via direct export)
+runCase("selector Bug 1: frontend-only Next.js intake selects nextjs-frontend", () => {
+  const input = {
+    projectName: "admin-ui",
+    summary: "Next.js dashboard frontend for internal operators, TypeScript, Tailwind, no backend.",
+    coreFeatures: ["React component library", "Tailwind styling", "client-side data table"],
+    constraints: ["TypeScript", "no backend", "Tailwind CSS"],
+    integrations: []
+  };
+  // Provide stub output and scaffoldkitContext (no root -> candidates[0] is chosen)
+  const output = {
+    architectureRecommendation: { shape: "monolith" },
+    plannerProfile: "product"
+  };
+  const scaffoldkitContext = { root: "", availableBlueprints: [] };
+  const result = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
+  assert.equal(result.blueprint, "nextjs-frontend", `expected nextjs-frontend, got ${result.blueprint}`);
+  assert.equal(result.confidence, "strong");
+});
+
+// Bug 2 fix: PHP/Symfony + "no frontend" -> symfony-backend (unit test)
+runCase("selector Bug 2: PHP/Symfony + 'no frontend' negation selects symfony-backend", () => {
+  const input = {
+    projectName: "partner-api",
+    summary: "Symfony REST API backend, no frontend.",
+    coreFeatures: ["REST API for partner data", "PHPUnit test suite"],
+    constraints: ["PHP 8.3", "Symfony 7"],
+    integrations: []
+  };
+  const output = {
+    architectureRecommendation: { shape: "monolith" },
+    plannerProfile: "product"
+  };
+  const scaffoldkitContext = { root: "", availableBlueprints: [] };
+  const result = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
+  assert.equal(result.blueprint, "symfony-backend", `expected symfony-backend, got ${result.blueprint}`);
+  // The negated intake must reach the STRONG "backend without frontend" branch,
+  // not the generic medium baseline (which carries an inaccurate manual-adaptation
+  // caveat). This pins the Branch B inline-negation fix.
+  assert.equal(result.confidence, "strong", `expected strong confidence, got ${result.confidence}`);
+  assert.match(result.reason, /without frontend/);
+  assert.equal(result.agentMustCreateStructure, false);
+});
+
+// Bug 2 positive control: PHP/Symfony + real React frontend -> symfony-nextjs still works
+runCase("selector Bug 2 positive control: PHP/Symfony + react frontend selects symfony-nextjs", () => {
+  const input = {
+    projectName: "partner-dashboard",
+    summary: "Symfony API with a React dashboard for partner support teams.",
+    coreFeatures: ["Symfony backend for partner data", "React dashboard for operators"],
+    constraints: ["PHP 8.3", "Symfony 7"],
+    integrations: []
+  };
+  const output = {
+    architectureRecommendation: { shape: "monolith" },
+    plannerProfile: "product"
+  };
+  const scaffoldkitContext = { root: "", availableBlueprints: [] };
+  const result = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
+  assert.equal(result.blueprint, "symfony-nextjs", `expected symfony-nextjs, got ${result.blueprint}`);
+});
+
+// Regression: a clear backend intake must NOT select nextjs-frontend
+runCase("regression: rest json api service intake does not select nextjs-frontend", () => {
+  const input = {
+    projectName: "data-api",
+    summary: "REST JSON API service for ingesting and querying event data.",
+    coreFeatures: ["POST /events endpoint", "GET /events query", "PostgreSQL persistence"],
+    constraints: ["TypeScript", "stateless service"],
+    integrations: []
+  };
+  const output = {
+    architectureRecommendation: { shape: "monolith" },
+    plannerProfile: "product"
+  };
+  const scaffoldkitContext = { root: "", availableBlueprints: [] };
+  const result = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
+  assert.notEqual(result.blueprint, "nextjs-frontend", `expected NOT nextjs-frontend, got ${result.blueprint}`);
+});
+
 console.log("All tests passed.");

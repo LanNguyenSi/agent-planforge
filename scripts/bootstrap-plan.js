@@ -1654,6 +1654,28 @@ function inferSymfonyDatabase(input, blueprint) {
   return "postgresql";
 }
 
+function hasFrontendSignal(text) {
+  // Strip negated frontend mentions so "no frontend" / "no react frontend" /
+  // "headless" do not read as a positive frontend signal. An optional framework
+  // adjective (react / vue / ...) between the negation and the noun is absorbed
+  // so "no react frontend" strips cleanly.
+  const stripped = text
+    .replace(/\bheadless\b/gi, " ")
+    .replace(/\b(no|without|sans|zero)\s+(a\s+|an\s+)?((next\.?js|react|vue|angular|spa|client[- ]?side)\s+)?(frontend|front[- ]?end|ui|spa|client[- ]?side|web ui|web interface)\b/gi, " ")
+    .replace(/\bfrontend[- ]?less\b/gi, " ");
+  // Word-anchored so short tokens don't match substrings ("spa" in "aerospace").
+  return /\b(next\.?js|react|vue|angular|frontend|spa|client-side)\b/.test(stripped);
+}
+
+function hasBackendSignal(text) {
+  // Strip negated backend mentions so "no backend" / "frontend-only" do not fire.
+  const stripped = text
+    .replace(/\b(no|without|sans|zero)\s+(a\s+|an\s+)?(backend|back[- ]?end|server|api|database|persistence)\b/gi, " ")
+    .replace(/\bfrontend[- ]?only\b/gi, " ")
+    .replace(/\bstatic[- ]?only\b/gi, " ");
+  return /\b(api|rest|graphql|backend|server|microservice|database|persistence|endpoints?)\b/.test(stripped);
+}
+
 function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
   const combinedText = [
     input.projectName,
@@ -1671,13 +1693,14 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
   let manualStructureReason = "";
 
   if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
-    if (/(next\.?js|react|vue|angular|frontend|spa|client-side)/.test(combinedText)) {
+    if (hasFrontendSignal(combinedText)) {
       candidates = ["symfony-nextjs", "symfony-backend"];
       reason = "PHP/Symfony + JS frontend signals -> symfony-nextjs";
       confidence = "strong";
     } else if (
       /(api|rest|json endpoint|backend|service|graphql)/.test(combinedText) &&
-      !/(frontend|portal|admin ui|dashboard)/.test(combinedText)
+      !hasFrontendSignal(combinedText) &&
+      !/(portal|admin ui|dashboard)/.test(combinedText)
     ) {
       candidates = ["symfony-backend"];
       reason = "PHP/Symfony backend/API without frontend -> symfony-backend";
@@ -1695,6 +1718,10 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
   } else if (/\b(cli|command line|terminal tool|developer tool|code generator|scaffold)\b/.test(combinedText)) {
     candidates = ["cli-tool", "express-api", "rest-api"];
     reason = "The request reads like an internal or developer-facing tool with command-style workflows.";
+    confidence = "strong";
+  } else if (hasFrontendSignal(combinedText) && !hasBackendSignal(combinedText)) {
+    candidates = ["nextjs-frontend", "nextjs-fullstack", "static-site"];
+    reason = "Frontend-only signal (UI framework with no backend or API surface) -> nextjs-frontend.";
     confidence = "strong";
   } else if (/typescript web application/.test(techStack)) {
     candidates = ["nextjs-fullstack", "saas-dashboard", "nextjs-frontend"];
@@ -3571,4 +3598,8 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { scaffoldkitBlueprintRecommendation, hasFrontendSignal, hasBackendSignal };
