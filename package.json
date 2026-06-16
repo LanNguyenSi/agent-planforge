@@ -1,6 +1,6 @@
 {
   "name": "agent-planforge",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Planning bootstrap for agentic architecture and task generation",
   "license": "MIT",
   "keywords": [

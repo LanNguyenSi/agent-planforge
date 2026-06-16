@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-06-16
+
+Selector fix and esbuild security patch.
+
+### Fixed
+
+- **nextjs-frontend blueprint reachable in selector; negated frontend mention in PHP branch** (PR #95). The nextjs-frontend blueprint was unreachable via the selector due to a missing branch condition, and the PHP branch incorrectly matched frontend intake because the keyword check was not negated.
+
+### Security
+
+- **esbuild forced to `>=0.28.1`** to close GHSA-g7r4-m6w7-qqqr (PR #94). Added a resolution/override entry so the transitive esbuild version pulled in by bundlers cannot remain on a vulnerable release.
+
 ## [0.5.1] - 2026-06-09
 
 Security patch closing the 2026-05-30 audit findings and a CVE sweep.
