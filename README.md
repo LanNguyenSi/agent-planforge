@@ -230,6 +230,7 @@ If you are updating scripts or agents from the older flat root layout, see [docs
 - `models/planner-config.schema.json`
 - `playbooks/planning-and-scoping.md`
 - `scripts/bootstrap-plan.js`
+- `server/` (HTTP service sub-package)
 - `templates/`
 - `tasks/`
 
@@ -315,8 +316,25 @@ The tests cover:
 - dependency graph and rerun/resume reporting
 - playbook references and `.ai/` artifact generation
 
+## HTTP Service
+
+A thin Hono + TypeScript HTTP surface around the planner lives in
+[`server/`](server/README.md). It lets project-forge (and agents) drive the
+planner over the network instead of shelling out to the CLI on the same
+machine:
+
+- `POST /api/generate` — run the planner (Bearer `PLANFORGE_SERVICE_TOKEN`), streaming progress as SSE
+- `GET /healthz` — unauthenticated liveness probe (Traefik / ops dashboard target)
+
+It listens on port `8223` by default. See [`server/README.md`](server/README.md)
+for the full endpoint, environment, and deployment reference.
+
 ## Docker
 
+The container image packages the HTTP service (see [HTTP Service](#http-service)).
+The only Dockerfile is `server/Dockerfile`, so build it explicitly:
+
 ```bash
-docker build -t agent-planforge .
+docker build -f server/Dockerfile -t agent-planforge .
+docker run -p 8223:8223 -e PLANFORGE_SERVICE_TOKEN=<token> agent-planforge
 ```

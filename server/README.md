@@ -11,7 +11,7 @@ this package is follow-up ticket #1 from that ADR.
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `GET  /healthz` | none | Liveness + version info. Traefik / ops dashboard target. |
+| `GET  /healthz` | none | Liveness + scaffoldkit-python probe. Traefik / ops dashboard target. |
 | `POST /api/generate` | `Bearer ${PLANFORGE_SERVICE_TOKEN}` | Run the planner. Streams progress as SSE. |
 
 ### `POST /api/generate`
@@ -95,6 +95,7 @@ scaffold is fatal to its flow.
 | `PLANFORGE_ROOT` | parent of this package | Repo root that contains `scripts/bootstrap-plan.js` |
 | `NODE_BIN` | `process.execPath` | Node binary used to spawn the CLI |
 | `SCAFFOLDKIT_PYTHON` | `/opt/sk-venv/bin/python3` | Python binary that runs `scaffoldkit.cli from-planforge`. The Dockerfile lays down the pinned venv; local dev points this at any Python that has scaffoldkit installed, or skips scaffolding via `scaffold: false` in the request body. |
+| `PLANFORGE_ALLOW_MISSING_SCAFFOLDKIT` | *(unset)* | Set to `1` to acknowledge a dev env without scaffoldkit: downgrades the missing-`SCAFFOLDKIT_PYTHON` boot warning to a single info line. Unset, the service still boots but logs a loud multi-line warning. |
 
 ## Running
 
