@@ -1511,6 +1511,11 @@ function adrCandidates(input, architecture) {
   return adrs;
 }
 
+// Signals for a JVM / Spring stack. `spring` must be qualified (e.g. "spring boot")
+// so a "spring fashion" marketing site does not route to a Java backend. Shared by
+// inferTechStack and scaffoldkitBlueprintRecommendation so the two cannot drift.
+const JAVA_SPRING_SIGNAL = /\b(spring boot|spring-boot|springboot|spring mvc|spring webflux|spring data|spring framework|spring security|java|kotlin|jakarta|micronaut|quarkus|gradle|maven|jpa|hibernate)\b/;
+
 function inferTechStack(input) {
   const constraints = (input.constraints || []).join(" ").toLowerCase();
   const combinedText = [
@@ -1522,6 +1527,10 @@ function inferTechStack(input) {
 
   if (/\b(php|symfony|laravel|composer|artisan|phpunit|phpstan)\b/.test(combinedText)) {
     return "PHP/Symfony application";
+  }
+
+  if (JAVA_SPRING_SIGNAL.test(combinedText)) {
+    return "Java/Spring application";
   }
 
   if (/typescript/.test(constraints)) {
@@ -1711,6 +1720,10 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
       confidence = "medium";
       manualStructureReason = "The framework family is clear, but the generated scaffold may still need manual adaptation for the final repository layout.";
     }
+  } else if (JAVA_SPRING_SIGNAL.test(combinedText)) {
+    candidates = ["springboot-backend"];
+    reason = "Java/Spring signals -> springboot-backend.";
+    confidence = "strong";
   } else if (/(landing page|marketing site|content site|blog|documentation site|static site)/.test(combinedText)) {
     candidates = ["static-site", "nextjs-frontend", "nextjs-fullstack"];
     reason = "The request reads like a content-oriented or marketing-style site rather than an application backend.";
@@ -1759,8 +1772,11 @@ function scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext) {
     confidence = "medium";
     manualStructureReason = "Treat the scaffold as a baseline, not as the complete repository layout.";
   } else {
-    candidates = ["rest-api", "express-api", "nextjs-fullstack"];
-    reason = "No stronger scaffold signal was found, so the fallback stays close to the recommended architecture and stack.";
+    // No explicit stack signal at all. Default to a neutral TypeScript/Node API
+    // scaffold (express-api) rather than rest-api, whose framework defaults to
+    // FastAPI/Python — an unexpected Python project for an unspecified request.
+    candidates = ["express-api", "rest-api", "nextjs-fullstack"];
+    reason = "No explicit stack signal was found; defaulting to a neutral TypeScript/Node API scaffold (express-api).";
     confidence = "weak";
     manualStructureReason = "No blueprint closely matches the request. The agent should expect to create or adapt the project structure manually.";
   }
@@ -1803,6 +1819,9 @@ function blueprintLanguage(blueprint, input) {
   const techStack = inferTechStack(input).toLowerCase();
   const constraintsText = (input.constraints || []).join(" ").toLowerCase();
   switch (blueprint) {
+    case "springboot-backend":
+      // Java/Spring scaffold: feature task paths use the Java source layout.
+      return "java";
     case "rest-api":
       // framework = express (TS) for a TypeScript service stack, else fastapi (Python).
       return /typescript service stack/.test(techStack) ? "typescript" : "python";
@@ -1870,6 +1889,24 @@ function scaffoldkitSuggestedVariables(input, output, blueprint) {
     suggested.php_version = /php 8\.2/.test(constraintsText) ? "8.2" : "8.3";
     suggested.database = inferSymfonyDatabase(input, blueprint);
     suggested.use_docker = /docker|container|compose/.test(combinedText);
+  } else if (blueprint === "springboot-backend") {
+    // Leave base_package and build_tool at the blueprint defaults (com.example.app,
+    // maven). The Java feature/test task paths and the pom.xml manifest hint are
+    // generated for that exact package and build tool, so overriding either here
+    // would make the planned paths diverge from what scaffoldkit actually emits.
+    // Only customize variables that do not affect the source layout.
+    suggested.java_version = /java\s*17|jdk\s*17/.test(combinedText) ? "17" : "21";
+    // springboot-backend's database choices are postgresql/mysql/mariadb; inferDatabaseChoice
+    // only ever emits sqlite/mysql/mongodb/postgresql, so pass mysql through and default
+    // everything else (sqlite, mongodb, postgresql) to postgresql.
+    suggested.database = inferDatabaseChoice(input, "database") === "mysql" ? "mysql" : "postgresql";
+    suggested.use_auth = !/public-only|anonymous|no auth/.test(combinedText);
+    suggested.auth_method = /oauth/.test(combinedText)
+      ? "oauth2"
+      : /api[- ]?key/.test(combinedText)
+        ? "api-key"
+        : "jwt";
+    suggested.use_docker = /docker|container|kubernetes|compose/.test(combinedText);
   } else if (blueprint === "static-site") {
     suggested.description = input.summary || "A static website";
   }
@@ -1985,6 +2022,23 @@ function genericFeatureFiles(feature, architectureShape, stack) {
     return Array.from(new Set(files));
   }
 
+  if (language === "java") {
+    const name = pascalCaseFromSlug(slug);
+    const files = [
+      `src/main/java/com/example/app/web/${name}Controller.java`,
+      `src/main/java/com/example/app/service/${name}Service.java`,
+      `src/main/java/com/example/app/repository/${name}Repository.java`,
+      `src/test/java/com/example/app/${name}ControllerTest.java`
+    ];
+    if (isBackgroundWork) {
+      files.push(`src/main/java/com/example/app/service/${name}Worker.java`);
+    }
+    if (isAudit) {
+      files.push("src/main/java/com/example/app/service/AuditLogService.java");
+    }
+    return Array.from(new Set(files));
+  }
+
   // TypeScript (default): modular layout.
   const files = [
     `src/modules/${slug}/index.ts`,
@@ -2023,6 +2077,13 @@ function coverageTaskFiles(stack) {
       "tests/Contract/IntegrationsTest.php"
     ];
   }
+  if (language === "java") {
+    return [
+      "src/test/java/com/example/app/integration/CriticalPathIT.java",
+      "src/test/java/com/example/app/integration/ErrorHandlingIT.java",
+      "src/test/java/com/example/app/contract/IntegrationsIT.java"
+    ];
+  }
   // TypeScript (default): match the .test.ts convention used elsewhere in this file.
   return [
     "tests/integration/critical-path.test.ts",
@@ -2041,6 +2102,9 @@ function manifestFileForStack(stack) {
   }
   if (language === "php") {
     return "composer.json";
+  }
+  if (language === "java") {
+    return "pom.xml";
   }
   return "package.json";
 }
@@ -3602,4 +3666,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { scaffoldkitBlueprintRecommendation, hasFrontendSignal, hasBackendSignal };
+module.exports = { scaffoldkitBlueprintRecommendation, hasFrontendSignal, hasBackendSignal, blueprintLanguage, inferTechStack };

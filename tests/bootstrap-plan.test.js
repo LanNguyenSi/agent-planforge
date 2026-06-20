@@ -1014,7 +1014,9 @@ runCase("invalid config override rejects unsupported keys instead of silently ig
 const {
   scaffoldkitBlueprintRecommendation,
   hasFrontendSignal,
-  hasBackendSignal
+  hasBackendSignal,
+  blueprintLanguage,
+  inferTechStack
 } = require("../scripts/bootstrap-plan.js");
 
 // hasFrontendSignal unit tests
@@ -1138,6 +1140,194 @@ runCase("regression: rest json api service intake does not select nextjs-fronten
   const scaffoldkitContext = { root: "", availableBlueprints: [] };
   const result = scaffoldkitBlueprintRecommendation(input, output, scaffoldkitContext);
   assert.notEqual(result.blueprint, "nextjs-frontend", `expected NOT nextjs-frontend, got ${result.blueprint}`);
+});
+
+// --- Stack routing fix: Java/Spring -> springboot-backend; unspecified -> express-api ---
+
+runCase("java/spring intakes select the springboot-backend blueprint with java task paths", () => {
+  const fixtureDir = tempDir("planforge-springboot-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Order Service",
+    summary: "A backend service for managing orders.",
+    targetUsers: ["internal systems"],
+    coreFeatures: ["create and update orders", "query orders"],
+    constraints: ["Java 21", "Spring Boot", "must run in Docker"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+
+  assert.equal(scaffoldkit.blueprint, "springboot-backend");
+  assert.equal(scaffoldkit.blueprintConfidence, "strong");
+  assert.equal(scaffoldkit.stack.hint, "Java/Spring application");
+  assert.equal(scaffoldkit.suggestedVariables.java_version, "21");
+  assert.equal(scaffoldkit.suggestedVariables.database, "postgresql");
+  // base_package and build_tool are intentionally NOT overridden: the Java task
+  // paths and the pom.xml manifest are generated for the blueprint defaults
+  // (com.example.app, maven), so overriding them would diverge from the scaffold.
+  assert.equal(scaffoldkit.suggestedVariables.base_package, undefined);
+  assert.equal(scaffoldkit.suggestedVariables.build_tool, undefined);
+  assert.equal(output.scaffoldBlueprint, "springboot-backend");
+
+  // springboot-backend has neither a language nor a framework variable; the
+  // planner must not leak python/typescript stack vars onto it.
+  assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "language"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(scaffoldkit.suggestedVariables, "framework"), false);
+
+  // Java feature task paths, not the Python/FastAPI or TypeScript layout.
+  const featureFiles = output.tasks.filter((task) => task.category === "feature").flatMap((task) => task.files);
+  assert.ok(featureFiles.length > 0);
+  assert.ok(
+    featureFiles.every((file) => file.endsWith(".java")),
+    `expected java feature paths, got: ${featureFiles.join(", ")}`
+  );
+  // The feature path package must match the scaffold's base_package default exactly,
+  // not a slug-derived package the scaffold never creates.
+  assert.ok(featureFiles.some((file) => /^src\/main\/java\/com\/example\/app\/.+Controller\.java$/.test(file)));
+  assert.ok(
+    featureFiles.every((file) => /^src\/(main|test)\/java\/com\/example\/app\//.test(file)),
+    `java feature paths diverge from base_package com.example.app: ${featureFiles.join(", ")}`
+  );
+  assert.ok(
+    featureFiles.every((file) => !/\.(py|tsx?)$/.test(file)),
+    `java intake leaked python/ts paths: ${featureFiles.join(", ")}`
+  );
+
+  // The foundation manifest must be pom.xml, not package.json or pyproject.toml.
+  const setupTask = output.tasks.find((task) => /set up repository/i.test(task.title));
+  assert.ok(setupTask, "expected a 'set up repository' foundation task");
+  assert.ok(setupTask.files.includes("pom.xml"), `setup task should list pom.xml, got: ${setupTask.files.join(", ")}`);
+  assert.ok(!setupTask.files.includes("package.json"));
+  assert.ok(!setupTask.files.includes("pyproject.toml"));
+});
+
+runCase("unspecified-stack intakes default to express-api (TS/Node), not a python rest-api", () => {
+  const fixtureDir = tempDir("planforge-neutral-default-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "Generic Thing",
+    summary: "A small service that does some processing for an internal team.",
+    targetUsers: ["internal team"],
+    coreFeatures: ["process incoming items", "store results", "expose a way to read results"],
+    constraints: []
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+
+  // The no-signal fallback must be the neutral TS/Node express-api, never the
+  // Python/FastAPI rest-api that previously surprised users who left constraints empty.
+  assert.equal(scaffoldkit.blueprint, "express-api");
+  assert.notEqual(scaffoldkit.suggestedVariables.framework, "fastapi");
+
+  const featureFiles = output.tasks.filter((task) => task.category === "feature").flatMap((task) => task.files);
+  assert.ok(featureFiles.length > 0);
+  assert.ok(
+    featureFiles.every((file) => !file.endsWith(".py")),
+    `unspecified stack leaked python paths: ${featureFiles.join(", ")}`
+  );
+  assert.ok(featureFiles.some((file) => /\.ts$/.test(file)));
+});
+
+// inferTechStack / selector / blueprintLanguage unit tests for the fix
+runCase("inferTechStack detects Java/Spring keywords", () => {
+  assert.equal(inferTechStack({ constraints: ["Java", "Spring Boot"] }), "Java/Spring application");
+  assert.equal(
+    inferTechStack({ summary: "A service built with Gradle and Hibernate", constraints: [] }),
+    "Java/Spring application"
+  );
+});
+
+runCase("inferTechStack does not match 'java' inside 'javascript'", () => {
+  assert.notEqual(inferTechStack({ constraints: ["javascript only"] }), "Java/Spring application");
+});
+
+runCase("selector: Java/Spring intake selects springboot-backend at strong confidence", () => {
+  const input = {
+    projectName: "order-svc",
+    summary: "Spring Boot backend for orders.",
+    coreFeatures: ["order CRUD"],
+    constraints: ["Java 21", "Spring Boot"],
+    integrations: []
+  };
+  const output = { architectureRecommendation: { shape: "modular monolith" }, plannerProfile: "product" };
+  const result = scaffoldkitBlueprintRecommendation(input, output, { root: "", availableBlueprints: [] });
+  assert.equal(result.blueprint, "springboot-backend", `expected springboot-backend, got ${result.blueprint}`);
+  assert.equal(result.confidence, "strong");
+});
+
+runCase("selector: unspecified stack falls back to express-api, not rest-api", () => {
+  const input = {
+    projectName: "thing",
+    summary: "A small internal processing service.",
+    coreFeatures: ["process items", "store results"],
+    constraints: [],
+    integrations: []
+  };
+  const output = { architectureRecommendation: { shape: "modular monolith" }, plannerProfile: "product" };
+  const result = scaffoldkitBlueprintRecommendation(input, output, { root: "", availableBlueprints: [] });
+  assert.equal(result.blueprint, "express-api", `expected express-api, got ${result.blueprint}`);
+});
+
+runCase("blueprintLanguage maps springboot-backend to java and leaves rest-api defaults intact", () => {
+  assert.equal(blueprintLanguage("springboot-backend", { constraints: ["Java"] }), "java");
+  // Regression: rest-api keeps its python default for an unspecified/python stack,
+  // and typescript for a TS service stack — unchanged by this fix.
+  assert.equal(blueprintLanguage("rest-api", { constraints: ["python"] }), "python");
+  assert.equal(blueprintLanguage("rest-api", { constraints: ["typescript"] }), "typescript");
+});
+
+runCase("negative control: a bare-'spring' marketing/blog site does not route to springboot-backend", () => {
+  // 'spring' as a season/brand must NOT trip the JVM signal; only qualified forms
+  // (spring boot, spring mvc, ...) or java/kotlin/etc. should route to springboot.
+  const input = {
+    projectName: "Spring Fashion",
+    summary: "A marketing landing page for our spring fashion collection and a blog.",
+    coreFeatures: ["hero landing page", "lookbook gallery", "blog"],
+    constraints: [],
+    integrations: []
+  };
+  assert.equal(inferTechStack(input), "application stack to be confirmed");
+  const output = { architectureRecommendation: { shape: "modular monolith" }, plannerProfile: "product" };
+  const result = scaffoldkitBlueprintRecommendation(input, output, { root: "", availableBlueprints: [] });
+  assert.notEqual(result.blueprint, "springboot-backend", `bare 'spring' wrongly routed to springboot: ${result.blueprint}`);
+});
+
+runCase("digit-leading Java project name does not produce an invalid base_package or divergent paths", () => {
+  const fixtureDir = tempDir("planforge-springboot-digit-");
+  writeJson(path.join(fixtureDir, "input.json"), {
+    projectName: "3D Print Manager",
+    summary: "A Spring Boot backend for managing 3D print jobs.",
+    targetUsers: ["makers"],
+    coreFeatures: ["queue print jobs", "track printer status"],
+    constraints: ["Java 21", "Spring Boot"]
+  });
+
+  const result = runPlanner(["--input", "input.json", "--outdir", "out"], { cwd: fixtureDir });
+  assert.equal(result.status, 0, result.stderr);
+
+  const outdir = path.join(fixtureDir, "out");
+  const scaffoldkit = readJson(exportsFile(outdir, "scaffoldkit-input.json"));
+  const output = readJson(planningFile(outdir, "plan-output.json"));
+
+  assert.equal(scaffoldkit.blueprint, "springboot-backend");
+  // No slug-derived base_package override (which would be the uncompilable
+  // com.example.3dprintmanager); the scaffold uses the valid default com.example.app
+  // and the planned Java paths match it.
+  assert.equal(scaffoldkit.suggestedVariables.base_package, undefined);
+  const featureFiles = output.tasks.filter((task) => task.category === "feature").flatMap((task) => task.files);
+  assert.ok(featureFiles.length > 0);
+  assert.ok(
+    featureFiles.every((file) => /^src\/(main|test)\/java\/com\/example\/app\//.test(file)),
+    `digit-leading java intake produced divergent paths: ${featureFiles.join(", ")}`
+  );
 });
 
 console.log("All tests passed.");
