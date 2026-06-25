@@ -6,6 +6,49 @@ Status: Production-ready. All planned hardening tasks complete. Open enhancement
 
 `agent-planforge` is open source under the MIT license. Contribution, security reporting, and community expectations are documented in this repository.
 
+## How it works
+
+A planning-input document enters through the CLI or HTTP service, both of which drive the same planning core (config, playbook, schema validation) and write a structured set of artifact directories plus a scaffoldkit handoff.
+
+```mermaid
+flowchart LR
+  subgraph inputs["Input"]
+    I1[(".json / .md\nexamples/")]
+  end
+
+  subgraph entry["Entry Points"]
+    E1["CLI\nscripts/bootstrap-plan.js"]
+    E2["HTTP service\nserver/src/routes.ts"]
+  end
+
+  subgraph core["Planning Core"]
+    C1[("planner-config.json\nconfig/")]
+    C2[("playbook-adoption-model.json<br/>models/")]
+    C3[("planning-input.schema.json\nmodels/")]
+  end
+
+  subgraph artifacts["Output Artifacts"]
+    O1[(".planforge/docs/\ncharter · arch · plan")]
+    O2[("planning/\nplan-output.json")]
+    O3[("adrs/ · tasks/ · .ai/")]
+  end
+
+  O4[("exports/\nscaffoldkit-input.json")]
+  SK["scaffoldkit"]
+
+  I1 --> E1
+  I1 --> E2
+  E2 -->|"subprocess"| E1
+  C1 --> E1
+  C2 --> E1
+  C3 -->|"AJV validate"| E1
+  E1 --> O1
+  E1 --> O2
+  E1 --> O3
+  E1 --> O4
+  O4 --> SK
+```
+
 ## Used In Production
 
 **[project-forge](https://github.com/LanNguyenSi/project-forge)** uses `agent-planforge` as its planning backbone. When a user describes a project, project-forge calls the planforge API, runs the full planning pipeline, and surfaces the results — architecture overview, task backlog, delivery plan, and scaffold status — in an interactive preview before any code is generated.
