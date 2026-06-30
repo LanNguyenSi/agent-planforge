@@ -69,8 +69,8 @@ jobs:
       - name: Build server
         run: npm run build --prefix server
 
-      - name: Run server tests
-        run: npm run test:server
+      - name: Run server tests with coverage
+        run: npm run test:coverage --prefix server
 
   docker:
     # Validate the full image builds end-to-end: node server + TS output +

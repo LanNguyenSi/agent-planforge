@@ -196,7 +196,7 @@ const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
  * ENOENT on the Python binary is re-thrown so the caller can surface
  * `skipped: "not_installed"` cleanly.
  */
-async function runScaffoldkit(args: {
+export async function runScaffoldkit(args: {
   python: string;
   inputPath: string;
   outdir: string;
