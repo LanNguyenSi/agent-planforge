@@ -2,6 +2,16 @@
 
 "use strict";
 
+// Deliberately untested (agent-tasks task 2e128deb, 2026-08-17): out/ is
+// gitignored and git-empty, so a drift test has no committed fixtures to
+// assert against, and the script writes into the real repo's out/ (repoRoot
+// is hardcoded below), not a tempdir. Current coverage of the underlying
+// CLI: sample-input via tests/bootstrap-plan.test.js, platform-input only
+// via the ci.yml --summary smoke; minimal-input, the minimal-override
+// target, and the env wiring below (standaloneEnv pinning *_ROOT at
+// .missing vs ci-platform using raw process.env) have no automated
+// coverage. Accepted for a dev-convenience wrapper; revisit if this script
+// grows logic beyond rm+spawnSync.
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");

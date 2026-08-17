@@ -28,11 +28,16 @@ export default defineConfig({
         // Per-file floor on generate.ts (the riskiest file: scaffoldkit
         // subprocess lifecycle + skip branches) so a regression there is
         // caught directly rather than masked by routes.ts in the aggregate.
+        // Re-measured 2026-08-17 after adding the stderr-cap and
+        // child.on("error")/ENOENT tests (residual LOW gap follow-up):
+        // 90.64 / 75.00 / 85.00 / 91.79. Floors set a few points below
+        // measured, mirroring the same headroom-vs-regression tradeoff as
+        // the aggregate floors above.
         "src/generate.ts": {
-          statements: 82,
-          branches: 57,
-          functions: 75,
-          lines: 83,
+          statements: 86,
+          branches: 70,
+          functions: 80,
+          lines: 87,
         },
       },
     },
