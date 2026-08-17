@@ -2,6 +2,10 @@
  * Unit tests for the runScaffoldkit subprocess lifecycle:
  *   - Gap 1: timeout watchdog fires SIGTERM and resolves { exitCode: -1 }
  *   - Gap 2: AbortSignal propagation kills the child with SIGTERM
+ *   - Gap 3: captured stderr is capped at SCAFFOLDKIT_STDERR_MAX_BYTES
+ *   - Gap 4: child.on("error") (spawn ENOENT) rejects the promise with the
+ *     raw error, and runGenerate's own child.on("error") for the main CLI
+ *     subprocess surfaces a generic SSE `error` event
  *
  * spawn is the ONLY thing mocked here; execFile (used by tarDir) stays real.
  * This mock is file-scoped in vitest and does NOT affect routes.test.ts.
@@ -17,11 +21,12 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 // Imported after vi.mock so generate.ts receives the mocked spawn.
-import { runScaffoldkit } from "../src/generate.js";
+import { runScaffoldkit, runGenerate, type GenerateEvent } from "../src/generate.js";
 
-// Mirror the module constant (not exported from generate.ts; hardcoded here
-// as a test-local copy so no production change is needed to expose it).
+// Mirror the module constants (not exported from generate.ts; hardcoded here
+// as test-local copies so no production change is needed to expose them).
 const SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000;
+const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
 
 /**
  * Minimal fake ChildProcess: EventEmitter + kill spy + inert Readable streams.
@@ -101,5 +106,94 @@ describe("runScaffoldkit subprocess lifecycle", () => {
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
     // timedOut is false; resolves with the exit code from the close event.
     expect(result.exitCode).toBe(0);
+  });
+
+  it("caps captured stderr at SCAFFOLDKIT_STDERR_MAX_BYTES", async () => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockReturnValue(child);
+
+    const promise = runScaffoldkit({
+      python: "python3",
+      inputPath: "/tmp/input.json",
+      outdir: "/tmp/out",
+    });
+
+    // Two chunks so the second one is what pushes the cumulative buffer
+    // past the cap — exercises the incremental capping branch
+    // (`stderr.length > SCAFFOLDKIT_STDERR_MAX_BYTES`) rather than a
+    // single oversized write. Emitted directly on the fake Readable
+    // (bypassing real stream buffering/encoding) so delivery is
+    // synchronous and deterministic.
+    child.stderr.emit("data", "a".repeat(SCAFFOLDKIT_STDERR_MAX_BYTES));
+    child.stderr.emit("data", "b".repeat(2000));
+
+    child.emit("close", 0, null);
+
+    const result = await promise;
+
+    expect(result.stderr).toHaveLength(SCAFFOLDKIT_STDERR_MAX_BYTES);
+    expect(result.stderr).toBe("a".repeat(SCAFFOLDKIT_STDERR_MAX_BYTES));
+  });
+
+  it("child.on(\"error\") (spawn ENOENT) rejects the promise with the raw error", async () => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockReturnValue(child);
+
+    const promise = runScaffoldkit({
+      python: "/definitely/does/not/exist/python3",
+      inputPath: "/tmp/input.json",
+      outdir: "/tmp/out",
+    });
+    // Vitest would otherwise report an unhandled rejection between the
+    // synchronous emit below and the `await expect(...).rejects` assertion.
+    promise.catch(() => {});
+
+    const enoentErr = Object.assign(
+      new Error("spawn /definitely/does/not/exist/python3 ENOENT"),
+      { code: "ENOENT" },
+    );
+    child.emit("error", enoentErr);
+
+    await expect(promise).rejects.toMatchObject({
+      code: "ENOENT",
+      message: expect.stringContaining("ENOENT"),
+    });
+  });
+});
+
+describe("runGenerate — main CLI subprocess error handling", () => {
+  it("surfaces a spawn ENOENT from the main CLI subprocess as an SSE `error` event", async () => {
+    const child = fakeChild();
+    const enoentErr = Object.assign(
+      new Error("spawn /definitely/does/not/exist/node ENOENT"),
+      { code: "ENOENT" },
+    );
+    // mkdtemp/writeFile (real fs) run before generate.ts calls spawn(), so
+    // emit the error reactively once spawn is actually invoked rather than
+    // racing a synchronous emit against those async fs ops. queueMicrotask
+    // lands after the synchronous handler-registration code that follows
+    // the spawn() call (attachLineReader, child.on("close"/"error")) but
+    // before the generator suspends on its next `await`.
+    vi.mocked(spawn).mockImplementation(() => {
+      queueMicrotask(() => child.emit("error", enoentErr));
+      return child;
+    });
+
+    const events: GenerateEvent[] = [];
+    for await (const ev of runGenerate(
+      {},
+      {
+        planforgeRoot: "/tmp/does-not-matter",
+        nodeBin: "/definitely/does/not/exist/node",
+        scaffoldkitPython: "python3",
+        scaffold: false,
+      },
+    )) {
+      events.push(ev);
+    }
+
+    const errorEvents = events.filter((e) => e.type === "error");
+    expect(errorEvents.length).toBeGreaterThan(0);
+    expect(errorEvents[0]?.message).toMatch(/ENOENT/);
   });
 });
