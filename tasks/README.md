@@ -4,4 +4,4 @@ The tracked backlog in this directory has been completed.
 
 See `status.md` for the latest completion summary.
 
-Create new task files in this directory when additional work needs to be tracked as reviewable backlog items.
+Follow-on work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues), not as new files in this directory.
