@@ -122,7 +122,7 @@ This repository is public-facing and contribution-ready, but still early.
 - Test coverage: automated
 - `.ai/` context generation: implemented
 - Playbook integration: implemented
-- Remaining enhancements tracked in `tasks/`
+- Remaining enhancements tracked as GitHub Issues
 - API and output compatibility: not yet guaranteed across minor revisions
 
 ## Quick Start
