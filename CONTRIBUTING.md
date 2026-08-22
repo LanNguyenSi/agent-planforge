@@ -7,7 +7,7 @@
 ## Before You Start
 
 - Read [README.md](README.md) for project scope and current limitations.
-- Review the current backlog in [tasks/](tasks/).
+- Open work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues); [tasks/](tasks/) holds the completed hardening backlog.
 - Prefer small, reviewable pull requests over broad refactors.
 
 ## Development Workflow

@@ -340,7 +340,7 @@ This project is licensed under the MIT license. See [LICENSE](LICENSE).
 
 ## Next Steps
 
-The initial hardening backlog is complete. Add new task files in `tasks/` when follow-on work needs to be tracked.
+The initial hardening backlog in `tasks/` is complete. Follow-on work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues).
 
 ## Testing
 
