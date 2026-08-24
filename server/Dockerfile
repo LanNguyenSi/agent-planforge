@@ -45,12 +45,15 @@ RUN cd server && npm run build
 # and the venv's python3 binary would fail at runtime with
 # `cannot open shared object file: libpython3.12.so.1.0`.
 FROM python:3.11-slim AS scaffoldkit
-# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ f52acba (2026-06).
+# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ 11e2729 (2026-08).
 # Update this when bumping scaffoldkit; image build will pull a fresh
-# clone and rebuild the venv. f52acba unifies the fastapi-backend blueprint on the
-# src/ layout (app/ -> src/, app/api/routes/ -> src/routes/) so the scaffold matches
-# the planner's task paths, on top of d2739c2's fastapi-backend starter source.
-ARG SCAFFOLDKIT_REF=26d9ce1ac54eecb5989c4e5c762b84c703615125
+# clone and rebuild the venv. Bump 26d9ce1..11e2729 (14 commits) includes
+# blueprint changes (nextjs-frontend drops the javascript language choice,
+# test-runner conditions split), generator.py test_strategy derivation, CVE
+# and dependency floor bumps. No planforge change needed: language and
+# test_strategy are not planforge-suggested variables and fall back to
+# scaffoldkit defaults (typescript / vitest).
+ARG SCAFFOLDKIT_REF=11e27292a172a30c432dae5b4dbf577c6a211aa3
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y git ca-certificates \
