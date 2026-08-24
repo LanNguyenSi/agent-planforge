@@ -2,7 +2,8 @@
  * Unit tests for the runScaffoldkit subprocess lifecycle:
  *   - Gap 1: timeout watchdog fires SIGTERM and resolves { exitCode: -1 }
  *   - Gap 2: AbortSignal propagation kills the child with SIGTERM
- *   - Gap 3: captured stderr is capped at SCAFFOLDKIT_STDERR_MAX_BYTES
+ *   - Gap 3: captured stderr is capped at SCAFFOLDKIT_STDERR_MAX_BYTES, a
+ *     genuine byte budget (Buffer.byteLength), not a UTF-16 code-unit count
  *   - Gap 4: child.on("error") (spawn ENOENT) rejects the promise with the
  *     raw error, and runGenerate's own child.on("error") for the main CLI
  *     subprocess surfaces a generic SSE `error` event
@@ -11,7 +12,7 @@
  * This mock is file-scoped in vitest and does NOT affect routes.test.ts.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { EventEmitter } from "node:events";
+import { EventEmitter, getEventListeners } from "node:events";
 import { Readable } from "node:stream";
 import { spawn } from "node:child_process";
 
@@ -135,6 +136,34 @@ describe("runScaffoldkit subprocess lifecycle", () => {
     expect(result.stderr).toBe("a".repeat(SCAFFOLDKIT_STDERR_MAX_BYTES));
   });
 
+  it("caps captured multibyte stderr at SCAFFOLDKIT_STDERR_MAX_BYTES bytes, not code units", async () => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockReturnValue(child);
+
+    const promise = runScaffoldkit({
+      python: "python3",
+      inputPath: "/tmp/input.json",
+      outdir: "/tmp/out",
+    });
+
+    // "€" (EUR sign) is 1 UTF-16 code unit but 3 UTF-8 bytes. Emitting
+    // enough of them to exceed the byte budget several times over would,
+    // under a naive `stderr.length` cap, leave the captured stderr up to
+    // ~3x SCAFFOLDKIT_STDERR_MAX_BYTES bytes long. A genuine byte cap must
+    // truncate to at most SCAFFOLDKIT_STDERR_MAX_BYTES bytes.
+    child.stderr.emit("data", "€".repeat(SCAFFOLDKIT_STDERR_MAX_BYTES));
+
+    child.emit("close", 0, null);
+
+    const result = await promise;
+
+    const byteLength = Buffer.byteLength(result.stderr, "utf8");
+    expect(byteLength).toBeLessThanOrEqual(SCAFFOLDKIT_STDERR_MAX_BYTES);
+    // The naive (pre-fix) behavior would have kept the full
+    // SCAFFOLDKIT_STDERR_MAX_BYTES code units, i.e. 3x as many bytes.
+    expect(byteLength).toBeLessThan(SCAFFOLDKIT_STDERR_MAX_BYTES * 3);
+  });
+
   it("child.on(\"error\") (spawn ENOENT) rejects the promise with the raw error", async () => {
     const child = fakeChild();
     vi.mocked(spawn).mockReturnValue(child);
@@ -199,5 +228,45 @@ describe("runGenerate — main CLI subprocess error handling", () => {
     // behavior). The first event carries the real spawn error.
     expect(errorEvents.length).toBeGreaterThan(0);
     expect(errorEvents[0]?.message).toMatch(/ENOENT/);
+  });
+
+  it("removes its own abort listener from opts.abortSignal once the generator completes normally", async () => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockImplementation(() => {
+      // Non-zero exit takes the early `exitCode !== 0` error-and-return
+      // branch, which still runs the outer `finally`.
+      queueMicrotask(() => child.emit("close", 1));
+      return child;
+    });
+
+    const controller = new AbortController();
+
+    const events: GenerateEvent[] = [];
+    for await (const ev of runGenerate(
+      {},
+      {
+        planforgeRoot: "/tmp/does-not-matter",
+        nodeBin: "/definitely/does/not/exist/node",
+        scaffoldkitPython: "python3",
+        scaffold: false,
+        abortSignal: controller.signal,
+      },
+    )) {
+      events.push(ev);
+    }
+
+    expect(events.some((e) => e.type === "error")).toBe(true);
+    // The generator never aborted (once:true never fired), so only the
+    // `finally` block's explicit removeEventListener call could have
+    // cleared it. Before the fix, the finally block passed a fresh
+    // anonymous function to removeEventListener, which is a no-op, and
+    // this listener would still be registered here.
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+
+    // Aborting afterwards must have no observable effect on the (already
+    // exited) child: confirms the listener is really gone, not just
+    // untracked by getEventListeners in this Node version.
+    expect(() => controller.abort()).not.toThrow();
+    expect(child.kill).not.toHaveBeenCalled();
   });
 });

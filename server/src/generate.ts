@@ -177,6 +177,12 @@ const SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000;
  * the HTTP caller where it may land in logs. A 4 KiB tail is enough
  * for a debug signal without amplifying an accidental input leak.
  * Callers that need the full stderr should run scaffoldkit locally.
+ *
+ * This is a genuine byte budget (measured via `Buffer.byteLength`, not
+ * `stderr.length`): scaffoldkit stderr can carry non-ASCII text (paths,
+ * user-supplied blueprint values), and capping on `.length` alone would
+ * count UTF-16 code units instead of bytes, letting the actual byte size
+ * run up to ~4x the nominal budget for heavily multibyte output.
  */
 const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
 
@@ -235,8 +241,21 @@ export async function runScaffoldkit(args: {
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
-      if (stderr.length > SCAFFOLDKIT_STDERR_MAX_BYTES) {
-        stderr = stderr.slice(0, SCAFFOLDKIT_STDERR_MAX_BYTES);
+      // Byte-aware cap. Walks whole Unicode code points (not UTF-16 code
+      // units) so a multibyte character straddling the byte budget is
+      // dropped whole rather than split, which would otherwise leave a
+      // stray/replacement byte sequence at the cut and let the result
+      // creep past SCAFFOLDKIT_STDERR_MAX_BYTES.
+      if (Buffer.byteLength(stderr, "utf8") > SCAFFOLDKIT_STDERR_MAX_BYTES) {
+        let capped = "";
+        let bytes = 0;
+        for (const ch of stderr) {
+          const chBytes = Buffer.byteLength(ch, "utf8");
+          if (bytes + chBytes > SCAFFOLDKIT_STDERR_MAX_BYTES) break;
+          capped += ch;
+          bytes += chBytes;
+        }
+        stderr = capped;
       }
     });
 
@@ -313,6 +332,15 @@ export async function* runGenerate(
   const outdir = resolve(tmp, "out");
   const scriptPath = resolve(opts.planforgeRoot, "scripts", "bootstrap-plan.js");
 
+  // Hoisted so the outer `finally` below can remove the exact listener
+  // reference that was added in the try block. `{ once: true }` already
+  // detaches the listener once it fires on a real abort, but a request
+  // that finishes WITHOUT the client ever disconnecting would otherwise
+  // leave a live listener on opts.abortSignal (a caller-supplied,
+  // potentially longer-lived AbortSignal) until that signal itself is
+  // garbage-collected or fires for an unrelated reason.
+  let onAbort: (() => void) | undefined;
+
   try {
     await writeFile(inputPath, JSON.stringify(input), { encoding: "utf8", mode: 0o600 });
 
@@ -332,7 +360,7 @@ export async function* runGenerate(
     // Propagate client disconnect → kill the subprocess. Without this, a
     // dropped SSE consumer leaves the CLI running to completion on the
     // server. The tempdir cleanup in the outer `finally` still runs.
-    const onAbort = () => {
+    onAbort = () => {
       if (!child.killed) child.kill("SIGTERM");
     };
     opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
@@ -520,7 +548,7 @@ export async function* runGenerate(
       exitCode: 0,
     };
   } finally {
-    opts.abortSignal?.removeEventListener?.("abort", () => {});
+    if (onAbort) opts.abortSignal?.removeEventListener("abort", onAbort);
     await rm(tmp, { recursive: true, force: true });
   }
 }
