@@ -222,11 +222,10 @@ describe("runGenerate — main CLI subprocess error handling", () => {
     }
 
     const errorEvents = events.filter((e) => e.type === "error");
-    // >= 1, not toBe(1): after the spawn-error event the generator also emits
-    // a second "planforge CLI exited with code unknown" error because exitCode
-    // stays null when no 'close' event fires (pre-existing generate.ts
-    // behavior). The first event carries the real spawn error.
-    expect(errorEvents.length).toBeGreaterThan(0);
+    // Exactly 1: the spawn-error guard in generate.ts skips the exit-code
+    // fallback once the child's own "error" event has already queued a real
+    // error frame, so a failed spawn surfaces one error event, not two.
+    expect(errorEvents).toHaveLength(1);
     expect(errorEvents[0]?.message).toMatch(/ENOENT/);
   });
 

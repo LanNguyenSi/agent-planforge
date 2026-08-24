@@ -405,12 +405,18 @@ export async function* runGenerate(
     attachLineReader(child.stderr!, "stderr");
 
     let exitCode: number | null = null;
+    // Set when the child's own "error" event (e.g. spawn ENOENT) already
+    // queued a real error frame. In that case there is no "close" event, so
+    // exitCode stays null and the exit-code fallback below would otherwise
+    // queue a second, misleading error frame for the same failure.
+    let spawnErrorEmitted = false;
     child.on("close", (code) => {
       exitCode = code;
       done = true;
       wake();
     });
     child.on("error", (err) => {
+      spawnErrorEmitted = true;
       queue.push({ type: "error", requestId, message: err.message });
       done = true;
       wake();
@@ -425,6 +431,10 @@ export async function* runGenerate(
       while (queue.length > 0) {
         yield queue.shift()!;
       }
+    }
+
+    if (spawnErrorEmitted) {
+      return;
     }
 
     if (exitCode !== 0) {
