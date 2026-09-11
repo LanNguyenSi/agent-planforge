@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **hono bumped to `4.13.7`** in `server/` (GHSA-gqvv-2mrq-wpjv, GHSA-g6gw-c38x-mqfc, GHSA-crvj-82cr-hjcx; CVE sweep 2026-09-11).
+- **vitest and `@vitest/mocker` bumped to `4.1.11`** in `server/` (GHSA-82fw-gwwq-j7x9; CVE sweep 2026-09-11). Dev-only dependency, not in the production install closure.
+
 ## [0.5.2] - 2026-06-16
 
 Selector fix and esbuild security patch.
