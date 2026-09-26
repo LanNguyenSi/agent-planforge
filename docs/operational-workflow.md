@@ -38,6 +38,33 @@ If the input was parsed from text or markdown, check `planning/structured-input.
 
 When a clarification pass was used, review `specs/clarifications.md` before trusting downstream task slicing.
 
+### Output Layout
+
+A bootstrap run creates:
+
+- `out/sample/AGENTS.md`
+- `out/sample/CLAUDE.md`
+- `out/sample/planforge-index.json`
+- `out/sample/planning/plan-output.json`
+- `out/sample/planning/structured-input.json`
+- `out/sample/PROJECT.md`
+- `out/sample/.planforge/docs/intake-questionnaire.md`
+- `out/sample/.planforge/docs/project-charter.md`
+- `out/sample/.planforge/docs/architecture-overview.md`
+- `out/sample/.planforge/docs/delivery-plan.md`
+- `out/sample/planning/rerun-report.json`
+- `out/sample/planning/rerun-summary.md`
+- `out/sample/exports/scaffoldkit-input.json`
+- `out/sample/.ai/`
+- `out/sample/specs/clarifications.md` when `--clarify` or `--auto-clarify` is used
+- `out/sample/adrs/`
+- `out/sample/tasks/`
+- `out/sample/outputs/consistency-report.md` when `analyze-artifacts.js` is run
+- `out/sample/governance/` for enterprise-path starter docs when relevant
+- `out/sample/runbooks/` for production-oriented starter runbooks when relevant
+
+`out/` is intentionally gitignored.
+
 ## 3. Know When Review Is Required
 
 Default review flow:
@@ -101,7 +128,7 @@ Use the report as a CI gate or pre-implementation sanity check when tasks, plan 
 
 ## 7. Other CLI Options
 
-Concise summary instead of the full artifact list:
+Print a structured summary (project, input format, phase, path, profile, architecture, wave 1 tasks, playbook count) instead of the default one-line `Generated planning artifacts in <outdir>`:
 
 ```bash
 node scripts/bootstrap-plan.js \
@@ -134,6 +161,6 @@ Equivalent npm scripts:
 
 - `npm run plan:bootstrap` runs the sample bootstrap shown in [Start With The Best Available Input](#1-start-with-the-best-available-input)
 - `npm run plan:analyze` runs the consistency analysis shown in [Run Consistency Analysis Before Implementation](#6-run-consistency-analysis-before-implementation)
-- `npm run plan:refresh-examples` regenerates the checked-in example outputs under `out/` after a change to the generator
+- `npm run plan:refresh-examples` regenerates the local example outputs under `out/` after a change to the generator
 
 `out/` is intentionally gitignored.

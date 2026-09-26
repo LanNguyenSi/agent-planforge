@@ -43,6 +43,25 @@ flowchart LR
   O4 --> SK
 ```
 
+## Inputs And Outputs
+
+Given rough input such as:
+
+- product goal
+- target users
+- core features
+- constraints
+- data sensitivity
+- integrations
+- timeline
+- planning profile
+
+planforge produces a first planning package that also includes:
+
+- intake completeness and targeted follow-up questions
+- phase rationale and recommended artifacts
+- explicit guidance areas beyond the local planning playbook
+
 ## Design Principles
 
 - small, reviewable outputs beat ambitious but opaque planning

@@ -50,7 +50,7 @@ curl -X POST http://localhost:8223/api/generate \
   }'
 ```
 
-Run the service locally with `cd server && PLANFORGE_SERVICE_TOKEN=dev-token npm run dev`, or as a container (`docker build -f server/Dockerfile -t agent-planforge .`). Full endpoint, environment, and deployment reference: [server/README.md](server/README.md).
+Run the service locally with `cd server && npm install && PLANFORGE_SERVICE_TOKEN=dev-token npm run dev` (requires Node.js 20+), or as a container (`docker build -f server/Dockerfile -t agent-planforge .`). Full endpoint, environment, and deployment reference: [server/README.md](server/README.md).
 
 ## Documentation
 
@@ -63,10 +63,10 @@ Run the service locally with `cd server && PLANFORGE_SERVICE_TOKEN=dev-token npm
 
 ## Development And Contributing
 
-Install dependencies with `npm install`, then run the test suite with `npm test` (CLI tests plus `server/` tests). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow and pull request expectations, [SECURITY.md](SECURITY.md) for vulnerability reporting, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
+Install root dependencies with `npm install`, then install the server's own dependencies with `npm install --prefix server` (the server is a separate package, Node.js 20+). Run the full test suite with `npm test` (CLI tests plus `server/` tests). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow and pull request expectations, [SECURITY.md](SECURITY.md) for vulnerability reporting, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
 
 ## License
 
 This project is licensed under the MIT license. See [LICENSE](LICENSE).
 
-Status: pre-1.0 (`0.5.2`), maintained on a best-effort basis. The initial hardening backlog in `tasks/` is complete; remaining work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues). CLI and output schema compatibility is not yet guaranteed across minor versions.
+Status: pre-1.0, maintained on a best-effort basis. The initial hardening backlog in `tasks/` is complete; remaining work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues). CLI, HTTP API, and output schema compatibility is not yet guaranteed across minor versions.

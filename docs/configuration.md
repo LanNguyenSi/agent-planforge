@@ -27,4 +27,4 @@ node scripts/bootstrap-plan.js \
   --config examples/planner-config.override.json
 ```
 
-The base and override schemas are defined in `models/planner-config.schema.json`.
+The merged config is validated against `models/planner-config.schema.json`; override keys are checked structurally before merging.
