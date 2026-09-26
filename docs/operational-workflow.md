@@ -98,3 +98,42 @@ Review:
 - `prompts/analyze-prompt.md`
 
 Use the report as a CI gate or pre-implementation sanity check when tasks, plan output, or task markdown may have drifted.
+
+## 7. Other CLI Options
+
+Concise summary instead of the full artifact list:
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample \
+  --summary
+```
+
+Custom planner config override (see [docs/configuration.md](configuration.md) for merge semantics):
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample-custom \
+  --config examples/planner-config.override.json
+```
+
+Skip the automatic `npm install` in the output directory (useful for CI, or when no `package.json` was generated):
+
+```bash
+node scripts/bootstrap-plan.js \
+  --input examples/sample-input.json \
+  --outdir out/sample \
+  --no-install
+```
+
+By default, if a `package.json` file exists in the output directory after generation, `bootstrap-plan` runs `npm install` there and exits non-zero if that install fails.
+
+Equivalent npm scripts:
+
+- `npm run plan:bootstrap` runs the sample bootstrap shown in [Start With The Best Available Input](#1-start-with-the-best-available-input)
+- `npm run plan:analyze` runs the consistency analysis shown in [Run Consistency Analysis Before Implementation](#6-run-consistency-analysis-before-implementation)
+- `npm run plan:refresh-examples` regenerates the checked-in example outputs under `out/` after a change to the generator
+
+`out/` is intentionally gitignored.
