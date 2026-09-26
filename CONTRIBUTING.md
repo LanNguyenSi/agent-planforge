@@ -9,12 +9,13 @@
 - Read [README.md](README.md) for project scope and current limitations.
 - Open work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues); [tasks/](tasks/) holds the completed hardening backlog.
 - Prefer small, reviewable pull requests over broad refactors.
+- For now, the most useful contributions are replanning semantics and downstream integration polish.
 
 ## Development Workflow
 
 Requirements:
 
-- Node.js 18+
+- Node.js 18+ (Node.js 20+ for `server/`)
 
 Useful command:
 
@@ -25,6 +26,7 @@ node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/s
 Automated checks:
 
 ```bash
+npm install && npm install --prefix server
 npm test
 node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/sample --validate-only
 ```
