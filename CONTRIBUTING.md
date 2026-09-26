@@ -15,7 +15,7 @@
 
 Requirements:
 
-- Node.js 18+
+- Node.js 18+ (Node.js 20+ for `server/`)
 
 Useful command:
 
@@ -26,6 +26,7 @@ node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/s
 Automated checks:
 
 ```bash
+npm install && npm install --prefix server
 npm test
 node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/sample --validate-only
 ```

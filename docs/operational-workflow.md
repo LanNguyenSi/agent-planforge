@@ -162,5 +162,3 @@ Equivalent npm scripts:
 - `npm run plan:bootstrap` runs the sample bootstrap shown in [Start With The Best Available Input](#1-start-with-the-best-available-input)
 - `npm run plan:analyze` runs the consistency analysis shown in [Run Consistency Analysis Before Implementation](#6-run-consistency-analysis-before-implementation)
 - `npm run plan:refresh-examples` regenerates the local example outputs under `out/` after a change to the generator
-
-`out/` is intentionally gitignored.
