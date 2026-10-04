@@ -128,15 +128,3 @@ npm test
 Integration tests spin the Hono app via `app.fetch()` (no port binding) and
 exercise the real CLI against `examples/sample-input.json`. Typical runtime
 is a few hundred milliseconds per test on a warm cache.
-
-## What's next
-
-This ticket ships the HTTP service layer only. The companion follow-ups:
-
-1. **project-forge client swap** (ticket `8080321b-0919-4289-8bf7-26afe765e871`)
-   — replace the two shell-outs in project-forge with one `POST /generate`.
-2. **deploy-panel compose slot + token distribution** (ticket
-   `8d9fe14f-5631-4a13-b669-cc6d5f846bf0`).
-3. **Drop Python from project-forge** (agent-tasks `31e6f7db`) — blocked on
-   this package running scaffoldkit in-container, which landed with the
-   `scaffoldkit` field on `done` and the 50 MiB tarball cap. Unblocked.

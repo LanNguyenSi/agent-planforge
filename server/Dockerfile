@@ -5,7 +5,7 @@
 #   2. `scaffoldkit`    — clones scaffoldkit, installs it into a pinned
 #                          Python venv at /opt/sk-venv. The clone stays at
 #                          /opt/scaffoldkit so `loadScaffoldkitContext()`
-#                          (scripts/bootstrap-plan.js:1036) finds its
+#                          (scripts/bootstrap-plan.js) finds its
 #                          `src/scaffoldkit/blueprints/` directory.
 #   3. final (`node:22-bookworm-slim`) — bundles the planforge CLI,
 #                          the compiled server, and both scaffoldkit

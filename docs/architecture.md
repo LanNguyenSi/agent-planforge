@@ -117,17 +117,23 @@ See [docs/scaffoldkit-planforge-workflow.md](scaffoldkit-planforge-workflow.md) 
 - `LICENSE`
 - `SECURITY.md`
 - `config/planner-config.json`
+- `config/stack-patterns.json`
 - `docs/`
 - `examples/sample-input.json`
 - `examples/sample-input.md`
+- `models/planforge-index.schema.json`
+- `models/planner-config.schema.json`
 - `models/planning-input.schema.json`
 - `models/planning-output.schema.json`
-- `models/planner-config.schema.json`
+- `models/playbook-adoption-model.json`
 - `playbooks/planning-and-scoping.md`
+- `scripts/analyze-artifacts.js`
 - `scripts/bootstrap-plan.js`
+- `scripts/lib/`
+- `scripts/refresh-example-outputs.js`
 - `server/` (HTTP service sub-package)
 - `templates/`
-- `tasks/`
+- `tests/`
 
 ## Testing
 
