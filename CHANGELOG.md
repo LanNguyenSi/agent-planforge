@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped the bundled scaffoldkit pin to `d1ba6a4` (from `f4283d1`). The range changes only docs, the upstream notify-planforge script and its tests; no blueprint, schema or CLI change.
+
 ### Security
 
 - **hono bumped to `4.13.7`** in `server/` (GHSA-gqvv-2mrq-wpjv, GHSA-g6gw-c38x-mqfc, GHSA-crvj-82cr-hjcx; CVE sweep 2026-09-11).
