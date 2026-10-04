@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped the bundled scaffoldkit pin to `94ff55c` (scaffoldkit 0.4.2, from `d1ba6a4`). The range changes only docs, the docker wrapper's help text and the version strings; no blueprint, schema or CLI change.
+
 ## [0.5.3] - 2026-10-04
 
 Fixes for the generate and SSE paths, scaffold routing, and dependency security bumps.
