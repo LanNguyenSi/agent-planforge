@@ -45,12 +45,12 @@ RUN cd server && npm run build
 # and the venv's python3 binary would fail at runtime with
 # `cannot open shared object file: libpython3.12.so.1.0`.
 FROM python:3.11-slim AS scaffoldkit
-# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ d1ba6a4 (2026-10).
+# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ 94ff55c (2026-10).
 # Update this when bumping scaffoldkit; image build will pull a fresh
-# clone and rebuild the venv. Bump f4283d1..d1ba6a4 touches only docs, the
-# notify-planforge script and its tests; it changes no blueprint, package
-# source, planforge input schema or from-planforge CLI contract.
-ARG SCAFFOLDKIT_REF=d1ba6a49aa50d9129414f201413cbd5a548d8d8d
+# clone and rebuild the venv. Bump d1ba6a4..94ff55c touches only docs, the
+# docker wrapper's help text and the 0.4.2 version strings; it changes no
+# blueprint, planforge input schema or from-planforge CLI contract.
+ARG SCAFFOLDKIT_REF=94ff55c962ee2a4729107c2e59aede778ae72fe9
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y git ca-certificates \
