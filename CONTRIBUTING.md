@@ -7,7 +7,7 @@
 ## Before You Start
 
 - Read [README.md](README.md) for project scope and current limitations.
-- Open work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues); [tasks/](tasks/) holds the completed hardening backlog.
+- Open work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues).
 - Prefer small, reviewable pull requests over broad refactors.
 - For now, the most useful contributions are replanning semantics and downstream integration polish.
 

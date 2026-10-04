@@ -69,4 +69,4 @@ Install root dependencies with `npm install`, then install the server's own depe
 
 This project is licensed under the MIT license. See [LICENSE](LICENSE).
 
-Status: pre-1.0, maintained on a best-effort basis. The initial hardening backlog in `tasks/` is complete; remaining work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues). CLI, HTTP API, and output schema compatibility is not yet guaranteed across minor versions.
+Status: pre-1.0, maintained on a best-effort basis. Work is tracked as [GitHub Issues](https://github.com/LanNguyenSi/agent-planforge/issues). CLI, HTTP API, and output schema compatibility is not yet guaranteed across minor versions.
