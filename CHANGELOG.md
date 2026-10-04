@@ -20,11 +20,12 @@ Fixes for the generate and SSE paths, scaffold routing, and dependency security 
 ### Changed
 
 - **Server moved to `@hono/node-server` 2.x** (GHSA-frvp-7c67-39w9, PR #104). The `serve({ fetch, port }, cb)` call is unchanged; the server already required Node 20 or newer.
-- Bumped the bundled scaffoldkit pin to `d1ba6a4` (from `f4283d1`). The range changes only docs, the upstream notify-planforge script and its tests; no blueprint, schema or CLI change.
+- Bumped the bundled scaffoldkit pin to `d1ba6a4` (from `26d9ce1` in 0.5.2, via `11e2729` and `f4283d1`; PRs #110, #115, #120). The last step changes only docs, the upstream notify-planforge script and its tests.
 
 ### Security
 
 - **Root and server HIGH advisories closed; lockfile-only bumps of hono (`4.12.26`, then `4.13.1`) and nanoid (`3.3.18`)** (PRs #100, #103, #106; CVE sweeps 2026-06-16 to 2026-08-04).
+- Lockfile-only bumps of fast-uri (`3.1.7`, then `3.1.8`) and brace-expansion to patched releases (PRs #114, #119).
 - **hono bumped to `4.13.7`** in `server/` (GHSA-gqvv-2mrq-wpjv, GHSA-g6gw-c38x-mqfc, GHSA-crvj-82cr-hjcx; CVE sweep 2026-09-11).
 - **vitest and `@vitest/mocker` bumped to `4.1.11`** in `server/` (GHSA-82fw-gwwq-j7x9; CVE sweep 2026-09-11). Dev-only dependency, not in the production install closure.
 
