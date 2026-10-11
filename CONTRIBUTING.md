@@ -15,7 +15,7 @@
 
 Requirements:
 
-- Node.js 18+ (Node.js 20+ for `server/`)
+- Node.js 18+ (Node.js 20.19+ or 22.12+ for `server/`)
 
 Useful command:
 

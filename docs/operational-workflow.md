@@ -14,9 +14,17 @@ Use `--validate-only` when you want schema and generation validation without wri
 If the source input is still underspecified, generate clarification questions first:
 
 ```bash
-node scripts/bootstrap-plan.js --input examples/minimal-input.json --clarify
+node scripts/bootstrap-plan.js --input examples/minimal-input.json --outdir out/minimal --clarify
 node scripts/bootstrap-plan.js --input examples/minimal-input.json --outdir out/sample --auto-clarify
 ```
+
+Clarification loop:
+
+- `--clarify` writes `specs/clarifications.md` and `prompts/clarify-prompt.md` into the `--outdir`, or into the current directory when `--outdir` is omitted.
+- If any question has no answer, the run stops there with exit code 0.
+- Fill the `Answer:` line under each `### CLARIFY-<id>:` heading and rerun the same command. Placeholder answers such as `TBD` or `TODO` do not count.
+- `--auto-clarify` fills unanswered items with their defaults and continues.
+- Without `--outdir`, a completed `--clarify` run writes the full planning package into the current directory and runs `npm install` there if a `package.json` exists. Pass `--outdir` to choose where the package is written.
 
 ## 2. Review The First Planning Package
 
@@ -52,16 +60,20 @@ A bootstrap run creates:
 - `out/sample/.planforge/docs/project-charter.md`
 - `out/sample/.planforge/docs/architecture-overview.md`
 - `out/sample/.planforge/docs/delivery-plan.md`
+- `out/sample/.planforge/tooling/BRANCH_INFO.md`
+- `out/sample/.planforge/tooling/` `Makefile`, `Dockerfile.dev`, `docker-compose.dev.yml`, `.dockerignore`, `.husky-pre-commit` and `lint-staged.config.js`, only when the output directory already contains a `package.json`, or when the recommended blueprint is `nextjs-fullstack`, `nextjs-frontend`, `express-api`, `rest-api` or `saas-dashboard` and the input does not say it has no external database or uses git as its store
 - `out/sample/planning/rerun-report.json`
 - `out/sample/planning/rerun-summary.md`
 - `out/sample/exports/scaffoldkit-input.json`
 - `out/sample/.ai/`
-- `out/sample/specs/clarifications.md` when `--clarify` or `--auto-clarify` is used
+- `out/sample/specs/clarifications.md` and `out/sample/prompts/clarify-prompt.md` when `--clarify` or `--auto-clarify` is used
 - `out/sample/adrs/`
 - `out/sample/tasks/`
-- `out/sample/outputs/consistency-report.md` when `analyze-artifacts.js` is run
-- `out/sample/governance/` for enterprise-path starter docs when relevant
-- `out/sample/runbooks/` for production-oriented starter runbooks when relevant
+- `out/sample/outputs/consistency-report.md` and `out/sample/prompts/analyze-prompt.md` when `analyze-artifacts.js` is run
+- `out/sample/governance/` (`service-ownership.md`, `data-classification-matrix.md`, `access-review-plan.md`, `exception-register.md`) for the enterprise path
+- `out/sample/runbooks/release-readiness.md` for `phase_2` and `phase_3`
+
+See [Phase, Path, And Profile](architecture.md#phase-path-and-profile) for how phase and path are chosen.
 
 `out/` is intentionally gitignored.
 
@@ -76,7 +88,15 @@ Default review flow:
 
 ## 4. Rerun Or Resume Deliberately
 
-Use `--rerun-from` when you want a fresh planning pass with explicit diff reporting:
+`--rerun-from` and `--resume-from` behave the same way:
+
+- Both take a previous output directory or its `plan-output.json`.
+- Both compare that run with the new one and write `planning/rerun-report.json` and `planning/rerun-summary.md`.
+- Both copy `reviews/`, `notes/`, `resume-notes.md`, `handoff-status.json`, `runner/` and `handoff/runner/` from the previous run into the new output directory when they exist.
+- The only difference is the `mode` value recorded in the report: `rerun` or `resume`.
+- The two flags cannot be combined. To start without old run state, run without either flag.
+
+Rerun against a previous output directory:
 
 ```bash
 node scripts/bootstrap-plan.js \
@@ -85,7 +105,7 @@ node scripts/bootstrap-plan.js \
   --rerun-from out/sample
 ```
 
-Use `--resume-from` when you want the new run to preserve manual run state such as `reviews/` or `notes/`:
+Or record the run as a resume:
 
 ```bash
 node scripts/bootstrap-plan.js \
@@ -109,7 +129,7 @@ Every run also emits:
 - `.ai/` context files for coding agents
 
 Treat these as generated derivatives of the planning package. If the plan changes materially, rerun the planner instead of editing them by hand.
-When ScaffoldKit is available, `exports/scaffoldkit-input.json` can be used directly with `scaffoldkit from-planforge`.
+When ScaffoldKit is available, `exports/scaffoldkit-input.json` can be used directly with `scaffoldkit from-planforge`. Its fields are listed in [Export Fields](scaffoldkit-planforge-workflow.md#export-fields).
 
 ## 6. Run Consistency Analysis Before Implementation
 
@@ -126,7 +146,11 @@ Review:
 
 Use the report as a CI gate or pre-implementation sanity check when tasks, plan output, or task markdown may have drifted.
 
+`analyze-artifacts.js` exits 1 when the report contains a critical issue, which is what makes it usable as a CI gate. It also exits 1 on a usage error and 2 on a runtime error.
+
 ## 7. Other CLI Options
+
+Pass `--input -` to read the planning input from standard input. `--format` accepts `json` (the default), `text` or `markdown`.
 
 Print a structured summary (project, input format, phase, path, profile, architecture, wave 1 tasks, playbook count) instead of the default one-line `Generated planning artifacts in <outdir>`:
 
@@ -137,7 +161,7 @@ node scripts/bootstrap-plan.js \
   --summary
 ```
 
-Custom planner config override (see [docs/configuration.md](configuration.md) for merge semantics):
+Custom planner config override (see [docs/configuration.md](configuration.md) for merge semantics and [the accepted keys](configuration.md#planner-config-keys)). A relative `--config` path is resolved against the agent-planforge checkout, not the current directory:
 
 ```bash
 node scripts/bootstrap-plan.js \
@@ -156,6 +180,17 @@ node scripts/bootstrap-plan.js \
 ```
 
 By default, if a `package.json` file exists in the output directory after generation, `bootstrap-plan` runs `npm install` there and exits non-zero if that install fails.
+
+The CLI also reads two optional environment variables, `AGENT_ENGINEERING_PLAYBOOK_ROOT` and `SCAFFOLDKIT_ROOT`; see [Environment Variables (CLI)](configuration.md#environment-variables-cli).
+
+Exit codes of `bootstrap-plan.js`:
+
+| Code | Meaning |
+|---|---|
+| 0 | success, including a `--clarify` run that stops for answers |
+| 1 | usage error, such as an unknown flag, a missing `--input` or `--outdir`, both rerun flags, or an unsupported `--format` |
+| 2 | validation error: invalid JSON, or schema or structure validation of the input, the planner config or the generated output |
+| 3 | runtime error, including an unreadable file, a previous run without `plan-output.json`, and a failed `npm install` |
 
 Equivalent npm scripts:
 

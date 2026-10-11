@@ -16,15 +16,14 @@ Planning prose and machine-oriented artifacts now live in grouped directories.
 ## New Layout
 
 - `.planforge/docs/` for planning prose (charter, architecture overview, delivery plan, intake questionnaire)
-- `.planforge/tooling/` for generic tooling templates (Makefile, Docker dev files, pre-commit helpers, BRANCH_INFO)
+- `.planforge/tooling/` for generic tooling templates (Makefile, Docker dev files, pre-commit helpers, BRANCH_INFO). `BRANCH_INFO.md` is always written; the Makefile, Docker and pre-commit templates only under the conditions listed in [Output Layout](operational-workflow.md#output-layout)
 - `planning/` for planning state and rerun metadata
-- `handoff/` for orchestration and runner state
 - `exports/` for downstream tool exports
 - `.ai/` for agent-facing context
 
 ## Removed Artifacts
 
-As of the runner-vision removal, `agent-planforge` no longer emits `handoff/manifest.json`, `handoff/runner-contract.json`, `handoff/runner/`, `prompts/*.md` role packs, or `exports/devreview.json` at all. The `handoff/` directory and the related rows in the table below are retained only to explain pre-removal outputs, so people reading older generated packages can still resolve where those files came from. Current runs do not produce them.
+As of the runner-vision removal, `agent-planforge` no longer emits `handoff/manifest.json`, `handoff/runner-contract.json`, `handoff/runner/`, `prompts/*.md` role packs, or `exports/devreview.json` at all. The `handoff/` directory and the related rows in the table below are retained only to explain pre-removal outputs, so people reading older generated packages can still resolve where those files came from. Current runs do not produce them. A user-authored `handoff/runner/` in a previous output directory is still copied by `--rerun-from` and `--resume-from`.
 
 ## Old To New Paths
 
