@@ -3,7 +3,7 @@ type: overview
 title: CLI run overview
 description: The step order of one scripts/bootstrap-plan.js run (main), its two root directories, its exit codes, and which concept doc covers each later step.
 tags: [overview, cli, exit-codes]
-timestamp: 2026-10-11T15:44:44Z
+timestamp: 2026-10-11T16:10:35Z
 sources:
   - scripts/bootstrap-plan.js
 ---
