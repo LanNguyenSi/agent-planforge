@@ -127,12 +127,12 @@ export interface GenerateEvent {
   /**
    * Base64-encoded gzipped tarball of the CLI's output tempdir. Present on
    * `done` so callers like project-forge can reconstruct the full file
-   * tree (planforge-index.json, planning/, handoff/, exports/, tasks/,
-   * architecture-overview.md, …) that the CLI wrote on disk. Encoding
+   * tree (planforge-index.json, planning/, exports/, tasks/, .ai/,
+   * .planforge/docs/, …) that the CLI wrote on disk. Encoding
    * choice: base64 inside the SSE `data:` frame keeps the payload as a
    * single atomic blob — no partial-tar delivery to handle on the client.
-   * Typical size for the sample input is ~60-120 KB; the cap at 10 MiB
-   * below keeps a pathological prompt from OOMing the service.
+   * Typical size for the sample input is ~60-120 KB; the TARBALL_MAX_BYTES
+   * cap (50 MiB) below keeps a pathological prompt from OOMing the service.
    */
   outputTarGz?: string;
   /** present on `done` — always populated so callers can branch on it */
@@ -463,11 +463,11 @@ export async function* runGenerate(
       return;
     }
     const scaffoldkitInputPath = resolve(outdir, "exports", "scaffoldkit-input.json");
-    // Distinguish "file does not exist" (common — not every planning input
-    // produces a scaffoldkit input) from "file exists but is unreadable /
-    // malformed" (rare — almost certainly a CLI bug). The first case is
-    // a normal skip; the second is diagnostic information the caller wants
-    // surfaced so a silently broken CLI doesn't masquerade as no-op.
+    // Distinguish "file does not exist" (the current CLI writes it on every
+    // successful run, so this points at a CLI regression) from "file exists
+    // but is unreadable / malformed" (almost certainly a CLI bug). The first
+    // case is reported as a skip; the second is diagnostic information the
+    // caller wants surfaced so a silently broken CLI doesn't masquerade as no-op.
     let scaffoldkitInputReadError: string | null = null;
     try {
       scaffoldkitInput = JSON.parse(await readFile(scaffoldkitInputPath, "utf8"));
@@ -522,7 +522,7 @@ export async function* runGenerate(
 
     // Tar the full output tree so the caller can reconstruct the file
     // layout the CLI wrote on disk. project-forge reads ~30 files from
-    // nested subdirectories (planning/, handoff/, exports/, tasks/) and
+    // nested subdirectories (planning/, exports/, tasks/) and
     // needs all of them, not just the two JSON blobs above.
     let outputTarGz: string | undefined;
     try {

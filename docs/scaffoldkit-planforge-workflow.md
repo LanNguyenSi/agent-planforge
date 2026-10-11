@@ -61,7 +61,9 @@ If you are updating older automation that expected root-level JSON artifacts, re
 - `planning/rerun-summary.md`
 - `exports/scaffoldkit-input.json`
 - `governance/` when the enterprise path applies
-- `runbooks/` when production-oriented phases apply
+- `runbooks/` for `phase_2` and `phase_3`
+
+See [Phase, Path, And Profile](architecture.md#phase-path-and-profile) for when these apply.
 
 ### planforge Tooling Templates (under `.planforge/tooling/`)
 
@@ -69,6 +71,8 @@ If you are updating older automation that expected root-level JSON artifacts, re
 - `.planforge/tooling/Dockerfile.dev`, `.planforge/tooling/docker-compose.dev.yml`, `.planforge/tooling/.dockerignore`
 - `.planforge/tooling/.husky-pre-commit`, `.planforge/tooling/lint-staged.config.js`
 - `.planforge/tooling/BRANCH_INFO.md`
+
+`BRANCH_INFO.md` is always written. The Makefile, Docker and pre-commit templates are written only under the conditions listed in [Output Layout](operational-workflow.md#output-layout): the output directory already contains a `package.json`, or the recommended blueprint is one of the web or API blueprints listed there and the input neither rules out an external database nor uses git as its store.
 
 planforge writes its generic tooling templates under `.planforge/tooling/`, so they no longer overwrite scaffoldkit's blueprint-specific root `Makefile`, Docker, or pre-commit files. scaffoldkit owns the root copies; treat planforge's as reference templates to wire in deliberately.
 
@@ -105,7 +109,7 @@ Create a planning input file inside the target project, for example `planforge-i
 }
 ```
 
-Use only fields defined by `models/planning-input.schema.json`.
+Use only fields defined by `models/planning-input.schema.json`; unknown keys fail validation. The fields are listed in [Inputs And Outputs](architecture.md#inputs-and-outputs).
 
 ### 3. Run planforge
 
@@ -120,8 +124,11 @@ If the input is still underspecified, do a clarification pass first:
 ```bash
 node /path/to/agent-planforge/scripts/bootstrap-plan.js \
   --input /path/to/my-app/planforge-input.json \
+  --outdir /path/to/my-app \
   --clarify
 ```
+
+The run writes `specs/clarifications.md` into the output directory and stops while questions are unanswered. Fill in the `Answer:` lines and rerun the same command. Without `--outdir`, the files, and after a completed run the whole planning package, are written into the current directory. See the clarification loop in [operational-workflow.md](operational-workflow.md#1-start-with-the-best-available-input).
 
 Or continue with default answers:
 
@@ -178,15 +185,41 @@ scaffoldkit from-planforge /path/to/my-app/exports/scaffoldkit-input.json --targ
 
 `agent-planforge` now recommends real ScaffoldKit blueprints and includes `suggestedVariables` so ScaffoldKit can scaffold from the plan without manual re-entry.
 
+### Export Fields
+
+`exports/scaffoldkit-input.json` has these fields:
+
+| Field | Content |
+|---|---|
+| `version` | export format version (`1.1`) |
+| `exportedBy` | `agent-planforge` |
+| `projectName` | from the planning input |
+| `summary` | from the planning input |
+| `blueprint` | recommended scaffoldkit blueprint |
+| `blueprintCandidates` | candidate blueprints in order of preference |
+| `blueprintReason` | why the blueprint was chosen |
+| `blueprintConfidence` | `strong`, `medium` or `weak` |
+| `blueprintValidatedLocally` | whether the blueprint was found in a local scaffoldkit checkout |
+| `agentMustCreateStructure` | `true` exactly when `blueprintConfidence` is `weak` |
+| `scaffoldExecutionSummary` | how to treat the scaffold |
+| `scaffoldExecutionReason` | why manual structure work may be needed |
+| `plannerProfile` | profile used for the plan |
+| `architecture` | `shape`, `optionId`, `phase`, `path` |
+| `stack` | `hint`, `dataStore`, `integrations` |
+| `features` | the input's `coreFeatures` |
+| `constraints` | the input's `constraints` |
+| `suggestedVariables` | blueprint variables derived from the plan |
+| `playbooks` | recommended playbook URLs |
+| `aiContextFiles` | the `.ai/` context files |
+
+`blueprintConfidence: weak` sets `agentMustCreateStructure` to `true` and means the scaffold is only a partial fit. `blueprintValidatedLocally` is `true` only when the blueprint was found in a local scaffoldkit checkout (see `SCAFFOLDKIT_ROOT` in [configuration.md](configuration.md#environment-variables-cli)).
+
 ## Re-Running Safely
 
 Planforge overwrites its generated artifacts in the selected output directory.
 Do not rely on manual cleanup as the normal rerun workflow.
 
-Use these modes deliberately:
-
-- `--rerun-from <dir>` for a fresh planning pass plus changed-assumption reporting
-- `--resume-from <dir>` when manual execution notes should be preserved into a new output directory
+`--rerun-from <dir>` and `--resume-from <dir>` behave the same way: both compare the previous run with the new one, write `planning/rerun-report.json` and `planning/rerun-summary.md`, and copy `reviews/`, `notes/`, `resume-notes.md`, `handoff-status.json`, `runner/` and `handoff/runner/` from the previous run into the new output directory when they exist. The only difference is the `mode` recorded in the report (`rerun` or `resume`). To start without old run state, run without either flag.
 
 Examples:
 
@@ -253,3 +286,5 @@ Review:
 - `prompts/analyze-prompt.md`
 
 Use this before implementation if task documents, prompts, or plan outputs may have drifted.
+
+`analyze-artifacts.js` exits 1 when the report contains a critical issue, 1 on a usage error, and 2 on a runtime error. See [operational-workflow.md](operational-workflow.md#7-other-cli-options) for the exit codes of `bootstrap-plan.js`.

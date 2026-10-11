@@ -37,7 +37,9 @@ Request:
   scaffoldkit against the planforge-produced `scaffoldkit-input.json` and
   the resulting project tree lands in the response tarball alongside the
   planning artifacts. Set to `false` for planning-only runs (preview UIs,
-  callers that scaffold separately, tests).
+  callers that scaffold separately, tests). scaffoldkit runs as
+  `from-planforge --overwrite --no-install --no-ai-context` against the
+  CLI's output directory.
 - `attachments` — optional. Array of `{ name, mimeType, tier, inlineText?, contentRef? }`
   where `tier` is one of `text | diagram | structured`. Shape is validated
   at the edge (400 `bad_request` on malformed entries).
@@ -65,6 +67,44 @@ Request:
     surfacing this upload in a UI should make it clear that attached
     documents influence the generated plan beyond prompt interpolation.
 
+Request flow: the sequence below shows what one request does, where it
+can fail, and which subprocesses run.
+
+```mermaid
+sequenceDiagram
+  participant C as HTTP caller
+  participant S as Service (routes.ts, generate.ts)
+  participant P as planforge CLI
+  participant K as scaffoldkit
+  C->>S: POST /api/generate (Bearer token)
+  alt missing or wrong token
+    S-->>C: 401 unauthorized / 403 forbidden
+  else invalid body or attachments
+    S-->>C: 400 bad_request / attachments_too_large
+  else valid request
+    S->>S: prepend text-tier attachments to input.summary
+    S->>S: create temp dir, write input.json (mode 0600)
+    S->>P: spawn --input --outdir --no-install (allow-listed env)
+    P-->>S: stdout and stderr lines
+    S-->>C: event: progress (one per line)
+    alt CLI exit code is not 0
+      S-->>C: event: error
+    else CLI succeeded
+      S->>S: read plan-output.json and scaffoldkit-input.json
+      opt scaffold is not false and the export was read
+        S->>K: from-planforge --overwrite --no-install --no-ai-context
+        K-->>S: exit code, stderr (4 KiB cap, 5 min timeout)
+      end
+      S->>S: tar output dir (50 MiB cap)
+      S-->>C: event: done (planOutput, scaffoldkit, outputTarGz)
+    end
+    S->>S: remove temp dir (always)
+  end
+```
+
+The temp directory is removed on success, failure and client disconnect;
+planning artifacts are returned even when scaffoldkit fails.
+
 Response: `Content-Type: text/event-stream`. Events:
 
 - `progress` — `{ requestId, stream: "stdout" | "stderr", line }` — one per
@@ -78,7 +118,7 @@ tells callers why scaffolding was not performed:
 | `skipped` | Meaning |
 | --- | --- |
 | `opt_out` | Caller passed `scaffold: false` |
-| `no_input` | CLI did not write `scaffoldkit-input.json` (not every input produces one) |
+| `no_input` | `scaffoldkit-input.json` was missing after a successful CLI run. The current CLI writes it on every successful run, so this indicates a CLI regression rather than a property of the input. |
 | `input_unreadable` | `scaffoldkit-input.json` exists but read / `JSON.parse` failed — almost always a CLI bug. The underlying error message is in `inputReadError` so callers can distinguish a parse failure from a permission issue. |
 | `not_installed` | `SCAFFOLDKIT_PYTHON` is missing — dev env without the venv; production containers always have it |
 
@@ -97,7 +137,38 @@ scaffold is fatal to its flow.
 | `SCAFFOLDKIT_PYTHON` | `/opt/sk-venv/bin/python3` | Python binary that runs `scaffoldkit.cli from-planforge`. The Dockerfile lays down the pinned venv; local dev points this at any Python that has scaffoldkit installed, or skips scaffolding via `scaffold: false` in the request body. |
 | `PLANFORGE_ALLOW_MISSING_SCAFFOLDKIT` | *(unset)* | Set to `1` to acknowledge a dev env without scaffoldkit: downgrades the missing-`SCAFFOLDKIT_PYTHON` boot warning to a single info line. Unset, the service still boots but logs a loud multi-line warning. |
 
+## Security Model And Limits
+
+- **Auth**: one shared bearer token (`PLANFORGE_SERVICE_TOKEN`) for every
+  `/api` route, compared in constant time, with no scopes. A request
+  without a `Bearer` header gets 401 `unauthorized`; a wrong token gets
+  403 `forbidden`.
+- **Health**: `GET /healthz` needs no token and returns
+  `{ status, service, uptime, scaffoldkitPython }`, where
+  `scaffoldkitPython` is `ok` or `missing`. `missing` does not change
+  `status`.
+- **Network**: the service listens on all interfaces at the configured
+  `PORT`. Run it on a private network or behind a proxy.
+- **Limits**: there is no request-body, rate or concurrency limit.
+  Text-tier attachments are capped at 50,000 chars in total. The planner
+  CLI subprocess has no timeout. scaffoldkit is stopped after 5 minutes
+  (SIGTERM, then SIGKILL) and reported as `exitCode: -1`, with its stderr
+  cut to 4 KiB. The `done` tarball is capped at 50 MiB.
+- **Isolation**: the CLI and scaffoldkit subprocesses receive only `PATH`,
+  `HOME`, `NODE_ENV`, `TMPDIR`, `LANG` and `LC_ALL` from the service's
+  environment. Each request uses its own temp directory with `input.json`
+  at mode 0600, removed on success, failure and client disconnect. A
+  client disconnect terminates the running subprocess. Request bodies are
+  not logged.
+- **Errors**: 400 `bad_request` (body not JSON, missing `input`, malformed
+  `attachments`), 400 `attachments_too_large`, 401 `unauthorized`, 403
+  `forbidden`, and SSE `error` events once streaming has started.
+
 ## Running
+
+Install dependencies first: `npm install` in the repository root (the
+planner CLI the service spawns needs the root package's dependencies) and
+`npm install` in `server/`.
 
 Dev (reloads on edit):
 
@@ -125,6 +196,11 @@ docker run -p 8223:8223 -e PLANFORGE_SERVICE_TOKEN=<token> agent-planforge
 npm test
 ```
 
-Integration tests spin the Hono app via `app.fetch()` (no port binding) and
-exercise the real CLI against `examples/sample-input.json`. Typical runtime
-is a few hundred milliseconds per test on a warm cache.
+Most suites call the Hono app through `app.fetch()`;
+`tests/node-server-adapter.test.ts` serves it through `@hono/node-server` on
+an ephemeral loopback port to cover the socket and SSE streaming path. The
+route tests exercise the real CLI against `examples/sample-input.json`.
+Typical runtime is a few hundred milliseconds per test on a warm cache.
+
+CI also runs `npm run typecheck`, `npm run build` and `npm run test:coverage`;
+the coverage run enforces the thresholds in `vitest.config.ts`.

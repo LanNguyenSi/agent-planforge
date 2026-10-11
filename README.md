@@ -7,14 +7,14 @@ Planning bootstrap for AI agents: turns rough project requirements into a first 
 
 ## Overview
 
-Rough planning input (JSON, markdown, or plain text) enters through a CLI or an HTTP service, both driving the same planning core: an external planner ruleset, JSON schema validation, and profile-aware planning modes for startup, product, enterprise, and platform work. The output is a structured planning package (project charter, architecture overview with scored options, an initial ADR candidate, a task backlog, and a delivery plan) plus a `.ai/` context export for downstream coding agents and a `scaffoldkit`-compatible export. [project-forge](https://github.com/LanNguyenSi/project-forge) uses `agent-planforge` as its planning backbone, calling the HTTP API and surfacing the results in an interactive preview before any code is generated. The goal is not perfect planning, but a repeatable and reviewable starting point.
+Rough planning input enters through a CLI (JSON, markdown, or plain text) or an HTTP service (a JSON planning-input object, optionally with text attachments that are added to the summary); both drive the same planning core: an external planner ruleset, JSON schema validation, and profile-aware planning modes for startup, product, enterprise, and platform work. The output is a structured planning package (project charter, architecture overview with scored options, an initial ADR candidate, a task backlog, and a delivery plan) plus a `.ai/` context export for downstream coding agents and a `scaffoldkit`-compatible export. [project-forge](https://github.com/LanNguyenSi/project-forge) uses `agent-planforge` as its planning backbone, calling the HTTP API and surfacing the results in an interactive preview before any code is generated. The goal is not perfect planning, but a repeatable and reviewable starting point.
 
 ## Key Features
 
 - external planner ruleset (`config/planner-config.json`) with override merge semantics
 - JSON schema validation for planning input, config, and generated output
-- profile-aware planning modes: startup, product, enterprise, platform
-- gap detection and an interactive clarification pass for underspecified input
+- profile-aware planning modes: startup, product, enterprise, platform (see [docs/architecture.md](docs/architecture.md#phase-path-and-profile) for how profile, phase and path are chosen)
+- gap detection and a file-based clarification pass for underspecified input (questions written to `specs/clarifications.md`, answered in the file, then rerun, or defaulted with `--auto-clarify`)
 - rerun and resume support with diff reporting
 - `.ai/` context export plus a `scaffoldkit`-compatible export
 - a thin HTTP service alongside the CLI (see [Usage](#usage))
@@ -50,20 +50,20 @@ curl -X POST http://localhost:8223/api/generate \
   }'
 ```
 
-Run the service locally with `cd server && npm install && PLANFORGE_SERVICE_TOKEN=dev-token npm run dev` (requires Node.js 20+), or as a container (`docker build -f server/Dockerfile -t agent-planforge .`). Full endpoint, environment, and deployment reference: [server/README.md](server/README.md).
+Run the service locally with `cd server && npm install && PLANFORGE_SERVICE_TOKEN=dev-token npm run dev` (requires Node.js 20.19+ or 22.12+), or as a container (`docker build -f server/Dockerfile -t agent-planforge .`). Full endpoint, environment, and deployment reference: [server/README.md](server/README.md).
 
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md): how planning works end to end, design principles, current scope, and repository layout
-- [docs/operational-workflow.md](docs/operational-workflow.md): the full CLI workflow: input formats, clarification, rerun/resume, consistency analysis, remaining flags
-- [docs/configuration.md](docs/configuration.md): planner config override merge semantics
+- [docs/operational-workflow.md](docs/operational-workflow.md): the full CLI workflow: input formats, clarification, rerun/resume, consistency analysis, remaining flags, exit codes
+- [docs/configuration.md](docs/configuration.md): planner config keys, override merge semantics, and CLI environment variables
 - [docs/output-layout-migration.md](docs/output-layout-migration.md): migrating from the older flat output layout
 - [docs/scaffoldkit-planforge-workflow.md](docs/scaffoldkit-planforge-workflow.md): division of responsibility with scaffoldkit
 - [server/README.md](server/README.md): HTTP service endpoint, environment, and deployment reference
 
 ## Development And Contributing
 
-Install root dependencies with `npm install`, then install the server's own dependencies with `npm install --prefix server` (the server is a separate package, Node.js 20+). Run the full test suite with `npm test` (CLI tests plus `server/` tests). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow and pull request expectations, [SECURITY.md](SECURITY.md) for vulnerability reporting, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
+Install root dependencies with `npm install`, then install the server's own dependencies with `npm install --prefix server` (the server is a separate package, Node.js 20.19+ or 22.12+). Run the full test suite with `npm test` (CLI tests plus `server/` tests). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow and pull request expectations, [SECURITY.md](SECURITY.md) for vulnerability reporting, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
 
 ## License
 

@@ -8,9 +8,9 @@ import { runGenerate } from "./generate.js";
 export const app = new Hono();
 
 /**
- * Attachment tiers the service contract recognises. v0.1a accepts shape
- * only — no tier triggers any processing yet. v0.1b will add text-tier
- * prompt enrichment; later slices bring diagram + structured handling.
+ * Attachment tiers the service contract recognises. Text-tier inlineText
+ * is prepended to input.summary; diagram and structured tiers are
+ * shape-validated only.
  */
 const ATTACHMENT_TIERS = ["text", "diagram", "structured"] as const;
 type AttachmentTier = (typeof ATTACHMENT_TIERS)[number];
@@ -138,7 +138,7 @@ export function buildAdditionalContextBlock(
  * `input.additionalContext`):
  *   - `summary` already flows into every relevant CLI prompt template
  *     slot (`clarify-prompt-template.md:{{summary}}`, architecture prompt,
- *     heuristic text-matchers at bootstrap-plan.js:1470).
+ *     the CLI's matchers hasNoExternalDatabaseConstraint, usesGitAsPrimaryStore).
  *   - Adding a new input field would require touching the CLI's 4k-line
  *     script AND every downstream template, inverting the v0.1a
  *     "service layer owns attachment→input translation" commitment.
@@ -222,7 +222,7 @@ api.use("*", async (c, next) => {
 // POST /api/generate — runs the planforge CLI in an isolated tempdir and
 // streams progress via SSE. Response content-type is text/event-stream.
 //
-// Request body: { input: <planning-input>, scaffold?: boolean }
+// Request body: { input: <planning-input>, scaffold?: boolean, attachments?: Attachment[] }
 //   - `scaffold` (default true): after the CLI writes scaffoldkit-input.json,
 //     invoke scaffoldkit against the outdir so the `done` tarball contains
 //     scaffolded project files. Set `false` for planning-only runs.
