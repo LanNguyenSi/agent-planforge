@@ -3,7 +3,7 @@ type: module
 title: HTTP generate pipeline
 description: What the server/ package does around one CLI run per POST /api/generate request (bearer auth, body and attachment checks, temp dir, CLI subprocess, optional scaffoldkit subprocess, tarball, SSE events, cleanup), and how the boot-time scaffoldkit probe relates to the per-request skip reasons.
 tags: [module, server, http, sse, scaffoldkit]
-timestamp: 2026-10-11T16:10:35Z
+timestamp: 2026-10-11T17:08:34Z
 sources:
   - server/src/index.ts
   - server/src/config.ts
