@@ -42,8 +42,13 @@ sources:
   a `--clarify` or `--auto-clarify` run has already written the two
   clarification files by then
   (`scripts/bootstrap-plan.js:3582-3583#"prepareClarifications(planforgeRoot"`),
-  and the schema rejects keys it does not define
-  (`models/planforge-index.schema.json:1-5#"additionalProperties"`).
+  and the schema rejects unknown top-level and `context` keys
+  (`models/planforge-index.schema.json:1-5#"additionalProperties"`,
+  `models/planforge-index.schema.json:27-29#"additionalProperties"`). Its path
+  maps (`rootFiles`, `directories`, `planning`, `exports`, `ai`) accept any
+  alphanumeric key
+  (`models/planforge-index.schema.json:80-85#"^[A-Za-z][A-Za-z0-9]*$"`), so
+  the registry, not the schema, fixes which paths appear.
 - The rerun report's `regeneratedArtifacts` list is built from registry
   entries too
   (`scripts/bootstrap-plan.js:2930-2937#"LAYOUT_REGISTRY.exports.scaffoldkit"`).

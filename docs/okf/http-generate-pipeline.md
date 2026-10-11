@@ -56,7 +56,8 @@ invalid environment prints the issues and exits with code 1
 
 1. The body must parse as JSON and contain `input`; otherwise the route
    answers 400 `bad_request`
-   (`server/src/routes.ts:241-245#"Body must be JSON"`).
+   (`server/src/routes.ts:241-245#"Body must be JSON"`,
+   `server/src/routes.ts:247-251#"Body must be { input: <planning-input>"`).
 2. `scaffold` defaults to true; only an explicit `false` turns it off
    (`server/src/routes.ts:263#".scaffold !== false"`).
 3. `attachments` is optional. Each entry needs `name`, `mimeType` and a `tier`
@@ -149,7 +150,9 @@ flowchart TD
    (`server/src/generate.ts:297#"exitCode: code ?? -1"`), so a failed scaffold
    still produces a `done` event. Captured stderr is capped at 4096 bytes
    (`server/src/generate.ts:187#"SCAFFOLDKIT_STDERR_MAX_BYTES = 4096"`).
-   After five minutes the watchdog sends SIGTERM
+   After five minutes
+   (`server/src/generate.ts:171#"SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000"`) the
+   watchdog sends SIGTERM
    (`server/src/generate.ts:264-266#"if (!child.killed) child.kill("`). It also
    schedules a SIGKILL five seconds later, but that call runs only while
    `child.killed` is false

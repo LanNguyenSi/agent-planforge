@@ -73,9 +73,10 @@ on every run, including a fresh one
 - **`preservedArtifacts`** lists which of six fixed candidates exist in the
   previous run's directory: `handoff/runner`, `handoff-status.json`,
   `resume-notes.md`, `reviews`, `notes` and `runner`
-  (`scripts/bootstrap-plan.js:2989-2997#"preservedCandidates.filter"`). These
-  names appear nowhere else in the script, so no writer emits them; they are
-  entries a user or an agent placed in the earlier outdir.
+  (`scripts/bootstrap-plan.js:2989-2997#"preservedCandidates.filter"`). No
+  output writer creates these paths (the only `handoffPath` call is the first
+  entry of this list), so they are entries a user or an agent placed in the
+  earlier outdir.
 
 ## Preservation runs in both modes
 

@@ -75,13 +75,23 @@ sources:
 (`scripts/bootstrap-plan.js:11-15#"RUNTIME: 3"`):
 
 - `1` (usage): an unknown flag, a missing `--input` or `--outdir`, both
-  previous-run flags at once, or an unsupported `--format`
-  (`scripts/bootstrap-plan.js:711-712#"Unsupported format"`).
-- `2` (validation): input that is not valid JSON, or a planning input,
-  planner config or generated output that fails its schema
-  (`scripts/bootstrap-plan.js:284-293#"Schema validation failed for"`).
-- `3` (runtime): a file that cannot be read, a previous run without a plan
-  output, a failed `npm install`
+  previous-run flags at once, an unsupported `--format`
+  (`scripts/bootstrap-plan.js:711-712#"Unsupported format"`), or a
+  previous-run path that is neither a directory nor `plan-output.json`
+  (`scripts/bootstrap-plan.js:2897#"must be a directory or plan-output.json"`).
+- `2` (validation): input that is not valid JSON, a planning input, planner
+  config or generated output that fails its schema
+  (`scripts/bootstrap-plan.js:284-293#"Schema validation failed for"`), or a
+  planner config or `--config` override that fails the structure checks of
+  `validatePlannerConfigStructure` and
+  `validatePlannerConfigOverrideStructure`
+  (`scripts/bootstrap-plan.js:308#"Invalid planner config: ${message}"`,
+  `scripts/bootstrap-plan.js:362#"Invalid planner config override: ${message}"`,
+  `scripts/bootstrap-plan.js:399#"root must be an object"`).
+- `3` (runtime): a file that cannot be read, a previous-run path that does
+  not exist
+  (`scripts/bootstrap-plan.js:2887#"Previous run path does not exist"`),
+  a previous run without a plan output, a failed `npm install`
   (`scripts/bootstrap-plan.js:3520-3522#"EXIT_CODES.RUNTIME"`), and any error
   that is not a `CliError`
   (`scripts/bootstrap-plan.js:3653-3661#"process.exit(EXIT_CODES.RUNTIME)"`).
