@@ -96,14 +96,19 @@ sequenceDiagram
         K-->>S: exit code, stderr (4 KiB cap, 5 min timeout)
       end
       S->>S: tar output dir (50 MiB cap)
-      S-->>C: event: done (planOutput, scaffoldkit, outputTarGz)
+      alt plan-output.json unreadable, scaffoldkit spawn error<br/>other than not installed, tar error or tarball over 50 MiB
+        S-->>C: event: error
+      else no error
+        S-->>C: event: done (planOutput, scaffoldkit, outputTarGz)
+      end
     end
     S->>S: remove temp dir (always)
   end
 ```
 
 The temp directory is removed on success, failure and client disconnect;
-planning artifacts are returned even when scaffoldkit fails.
+planning artifacts are returned even when scaffoldkit exits non-zero, times
+out, or is not installed.
 
 Response: `Content-Type: text/event-stream`. Events:
 
@@ -196,7 +201,8 @@ docker run -p 8223:8223 -e PLANFORGE_SERVICE_TOKEN=<token> agent-planforge
 npm test
 ```
 
-Most suites call the Hono app through `app.fetch()`;
+The route suites (`tests/routes.test.ts`, `tests/routes.sse-spawn-error.test.ts`)
+call the Hono app through `app.fetch()`;
 `tests/node-server-adapter.test.ts` serves it through `@hono/node-server` on
 an ephemeral loopback port to cover the socket and SSE streaming path. The
 route tests exercise the real CLI against `examples/sample-input.json`.

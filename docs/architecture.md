@@ -2,7 +2,7 @@
 
 ## How It Works
 
-Planning input enters through the CLI or the HTTP service. The CLI reads JSON, markdown, or plain text from a file or standard input. The HTTP service takes a JSON planning-input object (text-tier attachments are prepended to its `summary`) and runs the CLI as a subprocess. Both drive the same planning core (planner config, playbook adoption model, schema validation), which writes a structured set of artifact directories plus `exports/scaffoldkit-input.json`. The HTTP service then runs scaffoldkit `from-planforge` on that export itself, unless the request sets `scaffold: false`, and returns the whole output tree to the caller as a base64 tarball in the SSE `done` event. CLI users run scaffoldkit themselves.
+Planning input enters through the CLI or the HTTP service. The CLI reads JSON, markdown, or plain text from a file or standard input. The HTTP service takes a JSON planning-input object (text-tier attachments are prepended to its `summary`) and runs the CLI as a subprocess. Both drive the same planning core (planner config, playbook adoption model, schema validation), which writes a structured set of artifact directories plus `exports/scaffoldkit-input.json`. The HTTP service then runs scaffoldkit `from-planforge` on that export itself when scaffoldkit is installed and the request does not set `scaffold: false` (other skip reasons are listed in [server/README.md](../server/README.md)), and returns the whole output tree to the caller as a base64 tarball in the SSE `done` event. CLI users run scaffoldkit themselves.
 
 The diagram shows both entry points with the input each accepts, the planning core, the generated artifacts, and the two ways scaffoldkit is reached.
 
@@ -33,11 +33,11 @@ flowchart TD
   I1 --> E1
   I2 --> E2
   E2 -->|"subprocess"| E1
-  C1 -->|"load, AJV validate"| E1
+  C1 -->|"load; schemas AJV-validate<br/>config, input, output"| E1
   E1 --> O0
   E1 --> O4
   O4 -->|"CLI users run it manually"| SK
-  E2 -->|"from-planforge, unless scaffold: false"| SK
+  E2 -->|"from-planforge, if installed<br/>and not scaffold: false"| SK
   E2 -->|"SSE done: plan + tarball"| CL
 ```
 
@@ -45,7 +45,7 @@ The bundled `models/playbook-adoption-model.json` is used only when no external 
 
 ### CLI Pipeline
 
-One CLI run has a planning pass and a write pass. The planning pass loads context, config and input, optionally stops for clarification, builds the plan and validates it; `--validate-only` ends the run there without writing files.
+One CLI run has a planning pass and a write pass. The planning pass loads context, config and input, optionally stops for clarification, builds the plan and validates it; `--validate-only` ends the run there, before the write pass. A `--clarify` or `--auto-clarify` run writes the clarification files first, so those two files are written even with `--validate-only`.
 
 ```mermaid
 flowchart TD
@@ -53,12 +53,15 @@ flowchart TD
   B --> C["load planner config<br/>merge --config override, validate"]
   C --> D["load input<br/>JSON, or heuristic text/markdown parse, validate"]
   D --> E{"--clarify or --auto-clarify?"}
-  E -->|"questions unanswered,<br/>no --auto-clarify"| STOP["write specs/clarifications.md<br/>and prompts/clarify-prompt.md, exit 0"]
-  E -->|"not used, all answered,<br/>or --auto-clarify"| F["load previous run<br/>--rerun-from or --resume-from"]
+  E -->|"yes"| CW["write specs/clarifications.md<br/>and prompts/clarify-prompt.md"]
+  CW --> Q{"questions unanswered<br/>and no --auto-clarify?"}
+  Q -->|"yes"| STOP["exit 0"]
+  E -->|"no"| F["load previous run<br/>--rerun-from or --resume-from"]
+  Q -->|"no"| F
   F --> G["buildOutput<br/>phase, path, profile, architecture,<br/>blueprint, tasks, waves"]
   G --> H["validate output and index schemas"]
   H --> I{"--validate-only?"}
-  I -->|"yes"| EXIT["print result, write nothing"]
+  I -->|"yes"| EXIT["print result,<br/>write no planning artifacts"]
   I -->|"no"| W["write pass"]
 ```
 
@@ -216,7 +219,7 @@ Run the automated suite with `npm test` (see [CONTRIBUTING.md](../CONTRIBUTING.m
 - config merge behavior
 - consistency analysis
 - playbook references and `.ai/` artifact generation
-- `npm install` success and failure handling
+- `npm install` failure handling and the `--no-install` opt-out
 - the HTTP service suite under `server/tests`, which `npm test` runs through `test:server`
 
-The platform and minimal example inputs have no test case; CI runs the platform input once with `--summary`.
+The platform and minimal example inputs have no test case; CI runs the platform input with `--summary` in each CLI matrix job.
