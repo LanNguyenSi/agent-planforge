@@ -19,16 +19,11 @@ flowchart TD
   end
 
   subgraph core["Planning Core"]
-    C1[("planner-config.json<br/>config/")]
-    C2[("playbook-adoption-model.json<br/>models/ (bundled fallback)")]
-    C3[("JSON schemas<br/>models/")]
+    C1[("config/planner-config.json<br/>models/playbook-adoption-model.json<br/>(bundled fallback)<br/>models/ JSON schemas")]
   end
 
   subgraph artifacts["Output Artifacts"]
-    O0[("AGENTS.md · CLAUDE.md<br/>planforge-index.json")]
-    O1[(".planforge/docs/<br/>charter · arch · plan")]
-    O2[("planning/<br/>plan-output.json")]
-    O3[("adrs/ · tasks/ · .ai/")]
+    O0[("AGENTS.md · CLAUDE.md<br/>planforge-index.json<br/>.planforge/docs/<br/>charter · arch · plan<br/>planning/plan-output.json<br/>adrs/ · tasks/ · .ai/")]
     O4[("exports/<br/>scaffoldkit-input.json")]
   end
 
@@ -38,13 +33,8 @@ flowchart TD
   I1 --> E1
   I2 --> E2
   E2 -->|"subprocess"| E1
-  C1 --> E1
-  C2 --> E1
-  C3 -->|"AJV validate"| E1
+  C1 -->|"load, AJV validate"| E1
   E1 --> O0
-  E1 --> O1
-  E1 --> O2
-  E1 --> O3
   E1 --> O4
   O4 -->|"CLI users run it manually"| SK
   E2 -->|"from-planforge, unless scaffold: false"| SK
