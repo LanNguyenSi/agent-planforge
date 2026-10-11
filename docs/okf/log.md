@@ -2,6 +2,13 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-11T17:08:34Z, re-verified http-generate-pipeline after code-comment edits in
+  `server/src/routes.ts` and `server/src/generate.ts` (attachment tier
+  handling, request body shape, tarball cap, missing scaffoldkit export).
+  No line moved and every claim and citation still holds, so only the
+  timestamp changed. `okf-kit check --json --require-anchors docs/okf` at
+  okf-kit@0.16.0: 0 errors, 0 warnings, 0 notices.
+
 - 2026-10-11T16:10:35Z, tightened claims and citations against the code.
   cli-run-overview: the exit-code lists now include the previous-run path
   errors (1 and 3) and the planner config structure checks (2).
