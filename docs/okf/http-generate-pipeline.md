@@ -3,7 +3,7 @@ type: module
 title: HTTP generate pipeline
 description: What the server/ package does around one CLI run per POST /api/generate request (bearer auth, body and attachment checks, temp dir, CLI subprocess, optional scaffoldkit subprocess, tarball, SSE events, cleanup), and how the boot-time scaffoldkit probe relates to the per-request skip reasons.
 tags: [module, server, http, sse, scaffoldkit]
-timestamp: 2026-10-11T12:43:21Z
+timestamp: 2026-10-11T15:44:44Z
 sources:
   - server/src/index.ts
   - server/src/config.ts
@@ -148,12 +148,17 @@ flowchart TD
    returned as data, not thrown
    (`server/src/generate.ts:297#"exitCode: code ?? -1"`), so a failed scaffold
    still produces a `done` event. Captured stderr is capped at 4096 bytes
-   (`server/src/generate.ts:187#"SCAFFOLDKIT_STDERR_MAX_BYTES = 4096"`). The
-   run is sent SIGTERM after five minutes and SIGKILL five seconds later
-   (`server/src/generate.ts:264-271#"}, SCAFFOLDKIT_TIMEOUT_MS"`), and a timed
-   out run reports `exitCode: -1` with a timeout message
-   (`server/src/generate.ts:290-293#"scaffoldkit timed out after"`). A client
-   disconnect also sends SIGTERM
+   (`server/src/generate.ts:187#"SCAFFOLDKIT_STDERR_MAX_BYTES = 4096"`).
+   After five minutes the watchdog sends SIGTERM
+   (`server/src/generate.ts:264-266#"if (!child.killed) child.kill("`). It also
+   schedules a SIGKILL five seconds later, but that call runs only while
+   `child.killed` is false
+   (`server/src/generate.ts:267-269#"}, 5_000);"`), and Node sets
+   `child.killed` as soon as the SIGTERM is delivered, so the SIGKILL does not
+   fire. A child that exits on SIGTERM ends with `exitCode: -1` and a timeout
+   message (`server/src/generate.ts:290-293#"scaffoldkit timed out after"`);
+   a child that ignores SIGTERM keeps running and the request stays open. A
+   client disconnect also sends SIGTERM
    (`server/src/generate.ts:277-280#"args.abortSignal?.addEventListener"`).
 8. **Tarball.** The outdir contents are packed with the system `tar`
    (`server/src/generate.ts:310-315#"maxBuffer: TARBALL_MAX_BYTES"`), with a

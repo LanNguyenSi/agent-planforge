@@ -3,7 +3,7 @@ type: overview
 title: CLI run overview
 description: The step order of one scripts/bootstrap-plan.js run (main), its two root directories, its exit codes, and which concept doc covers each later step.
 tags: [overview, cli, exit-codes]
-timestamp: 2026-10-11T12:43:21Z
+timestamp: 2026-10-11T15:44:44Z
 sources:
   - scripts/bootstrap-plan.js
 ---
@@ -57,7 +57,10 @@ sources:
    schemas
    (`scripts/bootstrap-plan.js:3594-3604#"models/planforge-index.schema.json"`).
 7. **Validate-only exit.** `--validate-only` stops here and writes nothing
-   (`scripts/bootstrap-plan.js:3606-3610#"Validation succeeded for input, config, and generated planning output."`).
+   further
+   (`scripts/bootstrap-plan.js:3606-3610#"Validation succeeded for input, config, and generated planning output."`);
+   with `--clarify` or `--auto-clarify` the clarification files from step 4
+   are already on disk.
 8. **Writes.** The output tree is written in a fixed order and earlier-run
    state is copied in last; see
    [Output layout and conditional groups](output-layout.md).

@@ -3,7 +3,7 @@ type: invariant
 title: Output layout and conditional groups
 description: LAYOUT_REGISTRY is the one list of generated paths; the specs, runbooks and governance groups are gated by the same predicate in the writer and in planforge-index.json; prompts/ and the runtime templates are written outside that index contract; a reused outdir keeps files from earlier runs.
 tags: [output, layout, planforge-index, conditional-groups]
-timestamp: 2026-10-11T12:43:21Z
+timestamp: 2026-10-11T15:44:44Z
 sources:
   - scripts/bootstrap-plan.js
   - models/planforge-index.schema.json
@@ -37,8 +37,11 @@ sources:
   `runbooks/release-readiness.md` and the four `governance/` files
   (`scripts/bootstrap-plan.js:3366-3375#"exception-register.md"`).
 - The index is validated against `models/planforge-index.schema.json` before
-  anything is written
-  (`scripts/bootstrap-plan.js:3603-3604#"models/planforge-index.schema.json"`),
+  the output tree is written
+  (`scripts/bootstrap-plan.js:3603-3604#"models/planforge-index.schema.json"`);
+  a `--clarify` or `--auto-clarify` run has already written the two
+  clarification files by then
+  (`scripts/bootstrap-plan.js:3582-3583#"prepareClarifications(planforgeRoot"`),
   and the schema rejects keys it does not define
   (`models/planforge-index.schema.json:1-5#"additionalProperties"`).
 - The rerun report's `regeneratedArtifacts` list is built from registry
