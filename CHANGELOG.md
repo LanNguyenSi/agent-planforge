@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Server image pins scaffoldkit at 264ac41 (was 94ff55c). Planforge imports with any TypeScript stack hint now infer `framework=express` for the rest-api blueprint, and the from-planforge fallback notice tells an inferred blueprint from a missing primary (task 2406891d).
+- Server image pins scaffoldkit at 264ac41 (was 94ff55c). Planforge imports with any TypeScript stack hint now infer `framework=express` for the rest-api blueprint, and the from-planforge fallback notice tells an inferred blueprint from a missing primary (task 6ceed745).
 
 ## [0.5.4] - 2026-10-05
 
