@@ -9,7 +9,7 @@ node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/s
 node scripts/bootstrap-plan.js --input examples/sample-input.md --format markdown --outdir out/sample-md
 ```
 
-Use `--validate-only` when you want schema and generation validation without writing any files. This also holds with `--clarify` or `--auto-clarify`: existing clarification answers are read, but `specs/clarifications.md` and `prompts/clarify-prompt.md` are not written, and a run with unanswered questions does not stop early; it continues to validation and exits 0 on success.
+Use `--validate-only` when you want schema and generation validation without writing any files. This also holds with `--clarify` or `--auto-clarify`: existing clarification answers are read, but `specs/clarifications.md` and `prompts/clarify-prompt.md` are not written, and a run with unanswered questions does not stop early; it prints a one-line note that a run without `--validate-only` would stop for them, continues to validation and exits 0 on success.
 
 If the source input is still underspecified, generate clarification questions first:
 

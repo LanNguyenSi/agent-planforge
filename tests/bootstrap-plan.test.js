@@ -744,7 +744,10 @@ runCase("clarify mode writes questions and pauses until answers exist", () => {
 
   const result = runPlanner(["--input", "input.json", "--clarify"], { cwd: fixtureDir });
   assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Clarifications written/);
   assert.equal(fs.existsSync(path.join(fixtureDir, "plan-output.json")), false);
+  assert.equal(fs.existsSync(path.join(fixtureDir, "planning", "plan-output.json")), false);
+  assert.equal(fs.existsSync(path.join(fixtureDir, "PROJECT.md")), false);
   assert.ok(fs.existsSync(path.join(fixtureDir, "specs", "clarifications.md")));
   assert.ok(fs.existsSync(path.join(fixtureDir, "prompts", "clarify-prompt.md")));
 
@@ -962,6 +965,11 @@ function listTree(root) {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Validation succeeded/);
     assert.doesNotMatch(result.stdout, /Clarifications written/);
+    if (!clarifyFlags.includes("--auto-clarify")) {
+      assert.match(result.stdout, /Note: \d+ clarification questions are unanswered; a run without --validate-only stops for them\./);
+    } else {
+      assert.doesNotMatch(result.stdout, /Note: \d+ clarification questions/);
+    }
     assert.deepEqual(listTree(cwd), before);
   });
 });

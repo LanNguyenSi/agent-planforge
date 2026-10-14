@@ -26,12 +26,12 @@ sources:
   (`scripts/bootstrap-plan.js:3565-3566#"not both"`).
 - `main()` loads the previous run from whichever flag is set and derives the
   mode label `resume`, `rerun` or `fresh` from which one it was
-  (`scripts/bootstrap-plan.js:3602-3603#"const rerunMode"`).
+  (`scripts/bootstrap-plan.js:3607-3608#"const rerunMode"`).
 
 ## Locating the previous run
 
 - `loadPreviousRun` is called with the cwd
-  (`scripts/bootstrap-plan.js:3602#"loadPreviousRun(workingDir"`), and
+  (`scripts/bootstrap-plan.js:3607#"loadPreviousRun(workingDir"`), and
   `resolveRunDirectory` resolves the given path against it
   (`scripts/bootstrap-plan.js:2887#"path.resolve(repoRoot, runPath)"`), so a
   relative path resolves against the directory the command runs in, not
@@ -83,7 +83,7 @@ on every run, including a fresh one
 - `buildRerunReport` fills `preservedArtifacts` without looking at the mode,
   and `main()` calls `preservePreviousRunArtifacts` after every writer, for
   every non-validate run
-  (`scripts/bootstrap-plan.js:3651-3652#"preservePreviousRunArtifacts(previousRun"`).
+  (`scripts/bootstrap-plan.js:3656-3657#"preservePreviousRunArtifacts(previousRun"`).
   So `--rerun-from` copies the same entries as `--resume-from`; the flag only
   changes the `mode` value in the report and summary.
 - `preservePreviousRunArtifacts` skips an entry whose source and target
@@ -101,7 +101,7 @@ on every run, including a fresh one
   `handoff/runner/custom-note.txt`, a resumed run with a changed summary, and
   assertions on `mode`, `changedAssumptions`, `preservedArtifacts` and the
   copied file
-  (`tests/bootstrap-plan.test.js:819-851#"handoffRunnerFile(resumedOutdir"`).
+  (`tests/bootstrap-plan.test.js:822-854#"handoffRunnerFile(resumedOutdir"`).
   A second case does the same through `--rerun-from` and also checks the
   copied `reviews/`, `notes/` and `resume-notes.md`.
 

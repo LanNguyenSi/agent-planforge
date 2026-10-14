@@ -32,13 +32,13 @@ sources:
   (`scripts/bootstrap-plan.js:3120-3129#"directories[key] = dir"`).
 - `main()` computes the flags: `specs` from `--clarify`, `runbooks` and
   `governance` from `shouldWriteRunbooks` and `shouldWriteGovernance`
-  (`scripts/bootstrap-plan.js:3605-3609#"governance: shouldWriteGovernance(output)"`).
+  (`scripts/bootstrap-plan.js:3610-3614#"governance: shouldWriteGovernance(output)"`).
   `writeTemplateArtifacts` calls the same two predicates before writing
   `runbooks/release-readiness.md` and the four `governance/` files
   (`scripts/bootstrap-plan.js:3368-3377#"exception-register.md"`).
 - The index is validated against `models/planforge-index.schema.json` before
   the output tree is written
-  (`scripts/bootstrap-plan.js:3613-3614#"models/planforge-index.schema.json"`);
+  (`scripts/bootstrap-plan.js:3618-3619#"models/planforge-index.schema.json"`);
   a `--clarify` or `--auto-clarify` run has already written the two
   clarification files by then, unless `--validate-only` is set, which skips
   those writes
@@ -68,9 +68,9 @@ sources:
 Details behind the table:
 
 - The always-written files come from the write sequence in `main()`
-  (`scripts/bootstrap-plan.js:3637-3652#"preservePreviousRunArtifacts(previousRun"`).
+  (`scripts/bootstrap-plan.js:3642-3657#"preservePreviousRunArtifacts(previousRun"`).
   `BRANCH_INFO.md` is written unconditionally
-  (`scripts/bootstrap-plan.js:3651#"writeBranchInfo(planforgeRoot"`), so the
+  (`scripts/bootstrap-plan.js:3656#"writeBranchInfo(planforgeRoot"`), so the
   `.planforge/tooling` directory the index always lists exists on every run.
 - The clarify step writes `specs/clarifications.md` and
   `prompts/clarify-prompt.md` under the outdir, or under the cwd when no
@@ -92,7 +92,7 @@ Details behind the table:
   (`scripts/bootstrap-plan.js:3403-3428#"has(blueprint)"`). The blueprint it
   reads is the one this run just wrote, because `writeOperationalArtifacts`
   runs before the check
-  (`scripts/bootstrap-plan.js:3644-3646#"shouldWriteRuntimeTemplates(input"`).
+  (`scripts/bootstrap-plan.js:3649-3651#"shouldWriteRuntimeTemplates(input"`).
   The two heuristics are regular expressions over the summary and
   constraints, plus the core features for the git one
   (`scripts/bootstrap-plan.js:1555-1560#"filesystem is the source of truth"`,
@@ -109,7 +109,7 @@ Details behind the table:
 - A predicate called in only one of the two places (writer or index flags):
   the index then names a directory that is missing, or omits one that exists.
 - A reused outdir. The run creates the outdir with `ensureDir` and writes files
-  into it (`scripts/bootstrap-plan.js:3625-3628#"ensureDir(outdir)"`);
+  into it (`scripts/bootstrap-plan.js:3630-3633#"ensureDir(outdir)"`);
   `writeFile` only creates parent directories and overwrites
   (`scripts/bootstrap-plan.js:131-137#"fs.writeFileSync(targetPath"`), and no
   step removes files. A `governance/` or `runbooks/` directory, a runtime

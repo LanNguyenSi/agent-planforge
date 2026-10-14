@@ -21,7 +21,7 @@ sources:
 ## Where to start reading
 
 - `main()` drives the whole run inside one `try`/`catch`
-  (`scripts/bootstrap-plan.js:3552-3673#"process.exit(EXIT_CODES.RUNTIME)"`).
+  (`scripts/bootstrap-plan.js:3552-3678#"process.exit(EXIT_CODES.RUNTIME)"`).
   The rest of the file is helpers that `main()` calls in a fixed order.
 
 ## Step order
@@ -48,18 +48,18 @@ sources:
    and returns with exit 0 while any question is unanswered, unless
    `--auto-clarify` fills in the defaults; answered questions are folded into
    the input. With `--validate-only` the files are not written and the run does
-   not stop: it reads existing answers, folds them in and continues
-   (`scripts/bootstrap-plan.js:3584-3600#"input = clarification.enrichedInput"`).
+   not stop: it reads existing answers, folds them in, prints a one-line note when questions are unanswered (and `--auto-clarify` is not set) and continues
+   (`scripts/bootstrap-plan.js:3584-3605#"input = clarification.enrichedInput"`).
 5. **Previous run.** `--resume-from` or `--rerun-from` loads an earlier run;
    see [Rerun and resume](rerun-and-resume.md).
 6. **Plan.** `buildOutput` infers phase and path, picks the architecture and
    blueprint, and builds tasks; the run then renders the index, builds the
    rerun report, and validates both the plan and the index against their
    schemas
-   (`scripts/bootstrap-plan.js:3604-3614#"models/planforge-index.schema.json"`).
+   (`scripts/bootstrap-plan.js:3609-3619#"models/planforge-index.schema.json"`).
 7. **Validate-only exit.** `--validate-only` stops here and writes nothing
    further
-   (`scripts/bootstrap-plan.js:3616-3620#"Validation succeeded for input, config, and generated planning output."`);
+   (`scripts/bootstrap-plan.js:3621-3625#"Validation succeeded for input, config, and generated planning output."`);
    this holds with `--clarify` or `--auto-clarify` too, because step 4 skips
    its writes in validate-only mode.
 8. **Writes.** The output tree is written in a fixed order and earlier-run
@@ -95,7 +95,7 @@ sources:
   a previous run without a plan output, a failed `npm install`
   (`scripts/bootstrap-plan.js:3522-3524#"EXIT_CODES.RUNTIME"`), and any error
   that is not a `CliError`
-  (`scripts/bootstrap-plan.js:3663-3671#"process.exit(EXIT_CODES.RUNTIME)"`).
+  (`scripts/bootstrap-plan.js:3668-3676#"process.exit(EXIT_CODES.RUNTIME)"`).
 
 A clarify run that stops for answers and a `--help` run both exit 0.
 

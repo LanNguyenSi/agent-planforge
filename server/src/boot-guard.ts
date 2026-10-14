@@ -29,8 +29,8 @@ export function getScaffoldkitStatus(): ScaffoldkitStatus {
  * Boot-time loud-warn when SCAFFOLDKIT_PYTHON is missing/non-executable.
  * Without this guard a misconfigured deployment boots cleanly, then every
  * /api/generate with scaffold:true (the default) misbehaves: a path that
- * does not exist (ENOENT) returns `skipped: "not_installed"` silently —
- * easy to miss in monitoring for hours — while a path that exists but is
+ * does not exist (ENOENT) returns `skipped: "not_installed"` silently
+ * (easy to miss in monitoring for hours), while a path that exists but is
  * not executable (EACCES) ends the request with an SSE `error` event
  * ("Failed to spawn scaffoldkit"). Only ENOENT is mapped to a skip
  * reason. Idempotent: only logs on the first call.

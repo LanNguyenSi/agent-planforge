@@ -3591,6 +3591,11 @@ function main() {
         !args.validateOnly
       );
       // validate-only writes nothing, so there is no file to answer: keep going and validate.
+      if (clarification.unanswered.length && !args.autoClarify && args.validateOnly) {
+        console.log(
+          `Note: ${clarification.unanswered.length} clarification questions are unanswered; a run without --validate-only stops for them.`
+        );
+      }
       if (clarification.unanswered.length && !args.autoClarify && !args.validateOnly) {
         console.log(`Clarifications written to ${clarification.paths.spec}`);
         console.log("Answer the questions, then rerun with --clarify or use --auto-clarify.");
