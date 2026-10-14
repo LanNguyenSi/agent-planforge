@@ -3,7 +3,7 @@ type: invariant
 title: Output layout and conditional groups
 description: LAYOUT_REGISTRY is the one list of generated paths; the specs, runbooks and governance groups are gated by the same predicate in the writer and in planforge-index.json; prompts/ and the runtime templates are written outside that index contract; a reused outdir keeps files from earlier runs.
 tags: [output, layout, planforge-index, conditional-groups]
-timestamp: 2026-10-11T16:10:35Z
+timestamp: 2026-10-14T04:39:46Z
 sources:
   - scripts/bootstrap-plan.js
   - models/planforge-index.schema.json

@@ -3,7 +3,7 @@ type: runbook
 title: External lookups (scaffoldkit and engineering playbook)
 description: The two optional sibling checkouts the CLI reads (SCAFFOLDKIT_ROOT and AGENT_ENGINEERING_PLAYBOOK_ROOT), what each changes in the output, how to point a direct CLI run at them or force the bundled fallback, and how to verify the result.
 tags: [runbook, cli, scaffoldkit, playbooks, environment]
-timestamp: 2026-10-11T12:43:21Z
+timestamp: 2026-10-14T04:39:46Z
 sources:
   - scripts/bootstrap-plan.js
   - scripts/refresh-example-outputs.js
