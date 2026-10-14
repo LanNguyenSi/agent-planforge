@@ -9,7 +9,7 @@ node scripts/bootstrap-plan.js --input examples/sample-input.json --outdir out/s
 node scripts/bootstrap-plan.js --input examples/sample-input.md --format markdown --outdir out/sample-md
 ```
 
-Use `--validate-only` when you want schema and generation validation without writing artifacts.
+Use `--validate-only` when you want schema and generation validation without writing any files. This also holds with `--clarify` or `--auto-clarify`: existing clarification answers are read, but `specs/clarifications.md` and `prompts/clarify-prompt.md` are not written, and a run with unanswered questions does not stop early; it continues to validation and exits 0 on success.
 
 If the source input is still underspecified, generate clarification questions first:
 
@@ -24,6 +24,7 @@ Clarification loop:
 - If any question has no answer, the run stops there with exit code 0.
 - Fill the `Answer:` line under each `### CLARIFY-<id>:` heading and rerun the same command. Placeholder answers such as `TBD` or `TODO` do not count.
 - `--auto-clarify` fills unanswered items with their defaults and continues.
+- With `--validate-only`, neither flag writes the two files; see above.
 - Without `--outdir`, a completed `--clarify` run writes the full planning package into the current directory and runs `npm install` there if a `package.json` exists. Pass `--outdir` to choose where the package is written.
 
 ## 2. Review The First Planning Package

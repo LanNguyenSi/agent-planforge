@@ -6,6 +6,9 @@
  * /tmp covers the "missing" case without depending on filesystem state.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const ORIGINAL_SCAFFOLDKIT_PYTHON = process.env.SCAFFOLDKIT_PYTHON;
 const ORIGINAL_ALLOW = process.env.PLANFORGE_ALLOW_MISSING_SCAFFOLDKIT;
@@ -80,7 +83,26 @@ describe("boot-guard reportScaffoldkitStatusOnBoot", () => {
     // the opt-in escape hatch — both required so an operator reading the
     // log can act without grep-ing the codebase.
     expect(message).toContain("not_installed");
+    // A path that exists but is not executable is not a skip: the warning
+    // must say those requests end with an error event.
+    expect(message).toContain("not executable ends the request with an error event");
     expect(message).toContain("PLANFORGE_ALLOW_MISSING_SCAFFOLDKIT=1");
+  });
+
+  it("treats an existing but non-executable SCAFFOLDKIT_PYTHON as missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "boot-guard-noexec-"));
+    const file = join(dir, "python3");
+    writeFileSync(file, "#!/bin/sh\n");
+    chmodSync(file, 0o644);
+    try {
+      process.env.SCAFFOLDKIT_PYTHON = file;
+      delete process.env.PLANFORGE_ALLOW_MISSING_SCAFFOLDKIT;
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { getScaffoldkitStatus } = await import("../src/boot-guard.js");
+      expect(getScaffoldkitStatus()).toBe("missing");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("emits a single mild line when missing with opt-in env", async () => {

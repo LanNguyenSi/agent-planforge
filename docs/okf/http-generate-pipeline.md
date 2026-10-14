@@ -110,71 +110,72 @@ flowchart TD
 ```
 
 1. **Temp dir.** A temp directory named after a fresh request id is created
-   (`server/src/generate.ts:325-330#"mkdtemp(resolve(tmpdir()"`), and the
+   (`server/src/generate.ts:332-337#"mkdtemp(resolve(tmpdir()"`), and the
    request's `input` is written to `input.json` with `JSON.stringify` and file
-   mode 0600 (`server/src/generate.ts:345#"mode: 0o600"`).
+   mode 0600 (`server/src/generate.ts:352#"mode: 0o600"`).
 2. **CLI run.** The CLI is spawned with `--input`, `--outdir` and
    `--no-install` only, in the temp dir
-   (`server/src/generate.ts:347-351#"cwd: tmp"`). No `--format` is passed,
+   (`server/src/generate.ts:354-358#"cwd: tmp"`). No `--format` is passed,
    so the CLI's `json` default applies
    (`scripts/bootstrap-plan.js:31#"format:"`), and no previous-run
    flag is passed, so every service run is a fresh run. The abort signal kills
    the child with SIGTERM
-   (`server/src/generate.ts:363-366#"addEventListener"`).
+   (`server/src/generate.ts:370-373#"addEventListener"`).
 3. **Progress.** stdout and stderr are split into lines, and each line becomes
    a `progress` event tagged with its stream
-   (`server/src/generate.ts:391-395#"requestId, stream: tag, line"`).
+   (`server/src/generate.ts:398-402#"requestId, stream: tag, line"`).
 4. **Exit.** A spawn failure emits one `error` event and ends the run
-   (`server/src/generate.ts:418-420#"message: err.message"`). A non-zero exit
+   (`server/src/generate.ts:425-427#"message: err.message"`). A non-zero exit
    emits `error` with the exit code
-   (`server/src/generate.ts:440-444#"planforge CLI exited with code"`).
+   (`server/src/generate.ts:447-451#"planforge CLI exited with code"`).
 5. **Read results.** After exit 0, an unreadable `planning/plan-output.json`
    ends the run with `error`
-   (`server/src/generate.ts:452-460#"Failed to read plan-output.json"`). A
+   (`server/src/generate.ts:459-467#"Failed to read plan-output.json"`). A
    missing `exports/scaffoldkit-input.json` sets the export to `null`; any
    other read or parse failure is kept as `inputReadError`
-   (`server/src/generate.ts:472-477#"scaffoldkitInputReadError = (err as Error).message"`).
+   (`server/src/generate.ts:479-484#"scaffoldkitInputReadError = (err as Error).message"`).
    The CLI writes that export on every run that reaches its write step
-   (`scripts/bootstrap-plan.js:3345-3347#"renderScaffoldKitInput(input, output, scaffoldkitContext)"`),
+   (`scripts/bootstrap-plan.js:3347-3349#"renderScaffoldKitInput(input, output, scaffoldkitContext)"`),
    so with the current CLI a missing export after exit 0 is not expected.
 6. **Scaffold decision.** `scaffold: false` gives `skipped: "opt_out"`, a
    read failure gives `input_unreadable`, a missing export gives `no_input`
-   (`server/src/generate.ts:485-494#"no_input"`). Otherwise `runScaffoldkit`
+   (`server/src/generate.ts:492-501#"no_input"`). Otherwise `runScaffoldkit`
    runs; an `ENOENT` spawn error gives `skipped: "not_installed"`, and any
    other spawn error ends the run with `error`
-   (`server/src/generate.ts:504-515#"Failed to spawn scaffoldkit"`).
+   (`server/src/generate.ts:511-522#"Failed to spawn scaffoldkit"`).
 7. **Scaffoldkit subprocess.** The arguments are
    `-m scaffoldkit.cli from-planforge <export> --target <outdir> --overwrite --no-install --no-ai-context`
-   (`server/src/generate.ts:220-231#"--no-ai-context"`). A non-zero exit is
+   (`server/src/generate.ts:222-233#"--no-ai-context"`). A non-zero exit is
    returned as data, not thrown
-   (`server/src/generate.ts:297#"exitCode: code ?? -1"`), so a failed scaffold
+   (`server/src/generate.ts:304#"exitCode: code ?? -1"`), so a failed scaffold
    still produces a `done` event. Captured stderr is capped at 4096 bytes
    (`server/src/generate.ts:187#"SCAFFOLDKIT_STDERR_MAX_BYTES = 4096"`).
    After five minutes
    (`server/src/generate.ts:171#"SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000"`) the
    watchdog sends SIGTERM
-   (`server/src/generate.ts:264-266#"if (!child.killed) child.kill("`). It also
-   schedules a SIGKILL five seconds later, but that call runs only while
-   `child.killed` is false
-   (`server/src/generate.ts:267-269#"}, 5_000);"`), and Node sets
-   `child.killed` as soon as the SIGTERM is delivered, so the SIGKILL does not
-   fire. A child that exits on SIGTERM ends with `exitCode: -1` and a timeout
-   message (`server/src/generate.ts:290-293#"scaffoldkit timed out after"`);
-   a child that ignores SIGTERM keeps running and the request stays open. A
+   (`server/src/generate.ts:269-271#"if (!child.killed) child.kill("`). It also
+   schedules a SIGKILL five seconds later, guarded by
+   `child.exitCode === null && child.signalCode === null`
+   (`server/src/generate.ts:272-276#"}, 5_000);"`), not by `child.killed`,
+   because Node sets `killed` as soon as the SIGTERM is delivered, not when the
+   child exits. So a child that ignores SIGTERM is force-killed five seconds
+   later. Either way the request ends with `exitCode: -1` and a timeout
+   message (`server/src/generate.ts:297-300#"scaffoldkit timed out after"`).
+   A
    client disconnect also sends SIGTERM
-   (`server/src/generate.ts:277-280#"args.abortSignal?.addEventListener"`).
+   (`server/src/generate.ts:284-287#"args.abortSignal?.addEventListener"`).
 8. **Tarball.** The outdir contents are packed with the system `tar`
-   (`server/src/generate.ts:310-315#"maxBuffer: TARBALL_MAX_BYTES"`), with a
+   (`server/src/generate.ts:317-322#"maxBuffer: TARBALL_MAX_BYTES"`), with a
    cap of 50 MiB (`server/src/generate.ts:161#"TARBALL_MAX_BYTES = 50 * 1024 * 1024"`).
    An oversized or failed tar ends the run with `error`; otherwise the tarball
    is base64-encoded
-   (`server/src/generate.ts:529-540#"buf.toString"`).
+   (`server/src/generate.ts:536-547#"buf.toString"`).
 9. **Done.** The `done` event carries `planOutput`, `scaffoldkitInput`, the
    `scaffoldkit` result object, `outputTarGz` and `exitCode: 0`
-   (`server/src/generate.ts:551-558#"exitCode: 0"`).
+   (`server/src/generate.ts:558-565#"exitCode: 0"`).
 10. **Cleanup.** A `finally` block removes the abort listener and deletes the
     temp dir on every path, success or failure
-    (`server/src/generate.ts:560-562#"rm(tmp, { recursive: true, force: true })"`).
+    (`server/src/generate.ts:567-569#"rm(tmp, { recursive: true, force: true })"`).
 
 ## Boot probe versus per-request skip reasons
 
@@ -184,8 +185,10 @@ flowchart TD
   `server/src/boot-guard.ts:23-25#"return cachedStatus"`). At boot a
   `missing` result prints a warning, shortened to one line when
   `PLANFORGE_ALLOW_MISSING_SCAFFOLDKIT=1`
-  (`server/src/boot-guard.ts:44#"const allowMissing"`). The probe never
-  changes `/healthz`'s `status` and never gates a request.
+  (`server/src/boot-guard.ts:47#"const allowMissing"`). The probe never
+  changes `/healthz`'s `status` and never gates a request. The loud warning
+  names both per-request outcomes described next, since the probe cannot tell
+  a missing path from a non-executable one.
 - Per request, only `ENOENT` from spawning the Python binary maps to
   `skipped: "not_installed"`. A path that exists but is not executable fails
   the spawn with `EACCES`, which ends the request with an `error` event

@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Generated playbook links resolve again.** The phase playbook URLs in generated packages pointed at the retired standalone `agent-engineering-playbook` repository (404). They now point at `packages/agent-engineering-playbook` in the `agent-dx` repository (task 2b40db1d).
+- **Scaffoldkit timeout kills a child that ignores SIGTERM.** The SIGKILL escalation was guarded by `child.killed`, which Node sets as soon as the SIGTERM is delivered, so it never fired; it now checks `exitCode`/`signalCode`. A test with a real SIGTERM-ignoring child covers it (task 2b40db1d).
+- **`--validate-only` writes no files with `--clarify` or `--auto-clarify`.** It used to write `specs/clarifications.md` and `prompts/clarify-prompt.md` first, and stopped without validating when questions were unanswered. It now skips those writes and validates (exit 0 on success) (task 2b40db1d).
+- **Server boot warning and docs match the spawn behaviour.** A `SCAFFOLDKIT_PYTHON` that exists but is not executable ends the request with an `error` event; only a missing path is reported as `skipped: "not_installed"` (task 2b40db1d).
+
 ### Changed
+
+- The default `AGENT_ENGINEERING_PLAYBOOK_ROOT` is now `../agent-dx/packages/agent-engineering-playbook` (was `../agent-engineering-playbook`); the variable still overrides it and the bundled adoption model stays the fallback (task 2b40db1d).
+- `--rerun-from` is documented as preserving previous run state exactly like `--resume-from`; the help text says so, and a test covers it (task 2b40db1d).
+- The server `engines.node` is now `^20.19.0 || >=22.12.0`, the floor `import.meta.dirname` needs (task 2b40db1d).
 
 - Server image pins scaffoldkit at 264ac41 (was 94ff55c). Planforge imports with any TypeScript stack hint now infer `framework=express` for the rest-api blueprint, and the from-planforge fallback notice tells an inferred blueprint from a missing primary (task 6ceed745).
 

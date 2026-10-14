@@ -21,7 +21,7 @@ sources:
 ## Where to start reading
 
 - `main()` drives the whole run inside one `try`/`catch`
-  (`scripts/bootstrap-plan.js:3550-3663#"process.exit(EXIT_CODES.RUNTIME)"`).
+  (`scripts/bootstrap-plan.js:3552-3673#"process.exit(EXIT_CODES.RUNTIME)"`).
   The rest of the file is helpers that `main()` calls in a fixed order.
 
 ## Step order
@@ -31,42 +31,43 @@ sources:
    (`scripts/bootstrap-plan.js:79#"Unknown argument"`). `main()` then requires
    `--input`, rejects `--resume-from` together with `--rerun-from`, and
    requires `--outdir` unless `--validate-only` or `--clarify` is set
-   (`scripts/bootstrap-plan.js:3559-3569#"Missing required argument: --outdir"`).
+   (`scripts/bootstrap-plan.js:3561-3571#"Missing required argument: --outdir"`).
 2. **Two roots.** `planforgeRoot` is the checkout the script lives in and
    `workingDir` is the process cwd
-   (`scripts/bootstrap-plan.js:3572-3573#"const workingDir = process.cwd()"`).
+   (`scripts/bootstrap-plan.js:3574-3575#"const workingDir = process.cwd()"`).
    `--input` and `--outdir` resolve against the cwd, while the planner config
    and an override passed with `--config` resolve against the checkout
    (`scripts/bootstrap-plan.js:528-530#"const overrideConfig = readJson(resolvedOverridePath"`).
 3. **Context.** The playbook adoption model, the scaffoldkit blueprint list,
    the planner config and the planning input are loaded before any planning
    happens
-   (`scripts/bootstrap-plan.js:3575-3578#"const loadedInput = loadPlanningInput"`).
+   (`scripts/bootstrap-plan.js:3577-3580#"const loadedInput = loadPlanningInput"`).
    The first two can come from sibling checkouts; see
    [External lookups](external-lookups.md).
 4. **Clarify stop.** With `--clarify`, the run writes the clarification files
    and returns with exit 0 while any question is unanswered, unless
    `--auto-clarify` fills in the defaults; answered questions are folded into
-   the input
-   (`scripts/bootstrap-plan.js:3582-3590#"input = clarification.enrichedInput"`).
+   the input. With `--validate-only` the files are not written and the run does
+   not stop: it reads existing answers, folds them in and continues
+   (`scripts/bootstrap-plan.js:3584-3600#"input = clarification.enrichedInput"`).
 5. **Previous run.** `--resume-from` or `--rerun-from` loads an earlier run;
    see [Rerun and resume](rerun-and-resume.md).
 6. **Plan.** `buildOutput` infers phase and path, picks the architecture and
    blueprint, and builds tasks; the run then renders the index, builds the
    rerun report, and validates both the plan and the index against their
    schemas
-   (`scripts/bootstrap-plan.js:3594-3604#"models/planforge-index.schema.json"`).
+   (`scripts/bootstrap-plan.js:3604-3614#"models/planforge-index.schema.json"`).
 7. **Validate-only exit.** `--validate-only` stops here and writes nothing
    further
-   (`scripts/bootstrap-plan.js:3606-3610#"Validation succeeded for input, config, and generated planning output."`);
-   with `--clarify` or `--auto-clarify` the clarification files from step 4
-   are already on disk.
+   (`scripts/bootstrap-plan.js:3616-3620#"Validation succeeded for input, config, and generated planning output."`);
+   this holds with `--clarify` or `--auto-clarify` too, because step 4 skips
+   its writes in validate-only mode.
 8. **Writes.** The output tree is written in a fixed order and earlier-run
    state is copied in last; see
    [Output layout and conditional groups](output-layout.md).
 9. **Install.** Unless `--no-install` is passed, `runNpmInstall` runs
    `npm install` in the outdir, but only when the outdir has a `package.json`
-   (`scripts/bootstrap-plan.js:3486-3490#"if (!fs.existsSync(packageJsonPath))"`).
+   (`scripts/bootstrap-plan.js:3488-3492#"if (!fs.existsSync(packageJsonPath))"`).
    The HTTP service always passes `--no-install`.
 
 ## Exit codes
@@ -78,7 +79,7 @@ sources:
   previous-run flags at once, an unsupported `--format`
   (`scripts/bootstrap-plan.js:711-712#"Unsupported format"`), or a
   previous-run path that is neither a directory nor `plan-output.json`
-  (`scripts/bootstrap-plan.js:2897#"must be a directory or plan-output.json"`).
+  (`scripts/bootstrap-plan.js:2899#"must be a directory or plan-output.json"`).
 - `2` (validation): input that is not valid JSON, a planning input, planner
   config or generated output that fails its schema
   (`scripts/bootstrap-plan.js:284-293#"Schema validation failed for"`), or a
@@ -90,11 +91,11 @@ sources:
   `scripts/bootstrap-plan.js:399#"root must be an object"`).
 - `3` (runtime): a file that cannot be read, a previous-run path that does
   not exist
-  (`scripts/bootstrap-plan.js:2887#"Previous run path does not exist"`),
+  (`scripts/bootstrap-plan.js:2889#"Previous run path does not exist"`),
   a previous run without a plan output, a failed `npm install`
-  (`scripts/bootstrap-plan.js:3520-3522#"EXIT_CODES.RUNTIME"`), and any error
+  (`scripts/bootstrap-plan.js:3522-3524#"EXIT_CODES.RUNTIME"`), and any error
   that is not a `CliError`
-  (`scripts/bootstrap-plan.js:3653-3661#"process.exit(EXIT_CODES.RUNTIME)"`).
+  (`scripts/bootstrap-plan.js:3663-3671#"process.exit(EXIT_CODES.RUNTIME)"`).
 
 A clarify run that stops for answers and a `--help` run both exit 0.
 

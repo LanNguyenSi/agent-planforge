@@ -713,6 +713,41 @@ describe("POST /api/generate — scaffoldkit", () => {
   );
 
   it(
+    "ends the request with an `error` event (not a skip) when SCAFFOLDKIT_PYTHON exists but is not executable",
+    async () => {
+      const { mkdtemp, writeFile, chmod, rm } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { resolve } = await import("node:path");
+      const stubDir = await mkdtemp(resolve(tmpdir(), "scaffoldkit-noexec-"));
+      const stub = resolve(stubDir, "python3");
+      await writeFile(stub, "#!/bin/sh\nexit 0\n");
+      await chmod(stub, 0o644);
+      const orig = env.SCAFFOLDKIT_PYTHON;
+      env.SCAFFOLDKIT_PYTHON = stub;
+      try {
+        const res = await app.fetch(
+          new Request("http://test/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: AUTH },
+            body: JSON.stringify({ input: sampleInput }),
+          }),
+        );
+        expect(res.status).toBe(200);
+        const events = await collectSSE(res.body);
+        const names = events.map((e) => e.event);
+        expect(names).toContain("error");
+        expect(names).not.toContain("done");
+        const error = events.find((e) => e.event === "error")!.data as { message: string };
+        expect(error.message).toMatch(/Failed to spawn scaffoldkit.*EACCES/);
+      } finally {
+        env.SCAFFOLDKIT_PYTHON = orig;
+        await rm(stubDir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it(
     "surfaces scaffoldkit's exit code + stderr in the `done` event when invoked",
     async () => {
       // Stub "python" = /bin/sh invoking a script that echoes to stderr

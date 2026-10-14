@@ -91,10 +91,10 @@ function usageText() {
     "  --config <file>      Override planner config JSON file with merge semantics",
     "  --format <type>      Input format: json, text, markdown",
     "  --resume-from <dir>  Resume from a previous generated output directory or plan-output.json",
-    "  --rerun-from <dir>   Compare against a previous run and emit rerun metadata",
+    "  --rerun-from <dir>   Like --resume-from: compare against a previous run, emit rerun metadata, and carry its preserved state (reviews, notes, runner) over",
     "  --summary            Print a concise planning summary",
-    "  --validate-only      Validate input, config, and generated output without writing files",
-    "  --clarify            Generate specs/clarifications.md before planning continues",
+    "  --validate-only      Validate input, config, and generated output without writing any files, also with --clarify or --auto-clarify",
+    "  --clarify            Generate specs/clarifications.md before planning continues (with --validate-only: nothing is written and the run continues to validation)",
     "  --auto-clarify       Accept default clarification answers and continue automatically",
     "  --install            Run npm install after generation (default: true)",
     "  --no-install         Skip npm install after generation",
@@ -157,10 +157,10 @@ function toolingPath(...segments) {
   return path.join(".planforge", "tooling", ...segments);
 }
 
-// Single source of truth for the generated artifact layout. renderPlanforgeIndex,
-// the handoff manifest (sharedArtifacts), and the rerun report (regeneratedArtifacts)
-// all derive their paths from here so the three maps cannot drift apart. Keep paths
-// byte-identical to what the writers emit; the index `version` is independent of this.
+// Single source of truth for the generated artifact layout. renderPlanforgeIndex
+// and the rerun report (regeneratedArtifacts) derive their paths from here so
+// the two maps cannot drift apart. Keep paths byte-identical to what the writers
+// emit; the index `version` is independent of this.
 const LAYOUT_REGISTRY = {
   indexFile: "planforge-index.json",
   rootFiles: {
@@ -1046,7 +1046,7 @@ function applyClarificationAnswers(input, questions, answerMap) {
   return nextInput;
 }
 
-function prepareClarifications(repoRoot, workingDir, outdir, input, autoClarify) {
+function prepareClarifications(repoRoot, workingDir, outdir, input, autoClarify, writeFiles = true) {
   const questions = buildClarificationQuestions(input);
   const paths = clarificationPaths(workingDir, outdir);
   const existingAnswers = parseClarificationAnswers(paths.spec);
@@ -1068,8 +1068,10 @@ function prepareClarifications(repoRoot, workingDir, outdir, input, autoClarify)
     }
   });
 
-  writeFile(paths.spec, renderClarifications(questions, answerMap, autoClarify));
-  writeFile(paths.prompt, renderClarifyPrompt(repoRoot, input, questions));
+  if (writeFiles) {
+    writeFile(paths.spec, renderClarifications(questions, answerMap, autoClarify));
+    writeFile(paths.prompt, renderClarifyPrompt(repoRoot, input, questions));
+  }
 
   const unanswered = questions.filter((question) => !isMeaningfulClarificationAnswer(answerMap.get(question.id)));
 
@@ -1085,7 +1087,7 @@ function prepareClarifications(repoRoot, workingDir, outdir, input, autoClarify)
 function loadPlaybookContext(repoRoot) {
   const configuredRoot = process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT
     ? path.resolve(process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT)
-    : path.resolve(repoRoot, "../agent-engineering-playbook");
+    : path.resolve(repoRoot, "../agent-dx/packages/agent-engineering-playbook");
   const externalModelPath = path.join(configuredRoot, "models", "adoption-model.json");
   const bundledModelPath = path.join(repoRoot, "models", "playbook-adoption-model.json");
 
@@ -1130,11 +1132,11 @@ function loadScaffoldkitContext(repoRoot) {
 // filesystem paths: the playbook files are never copied into the generated repo, so
 // a relative path dangles for the consumer and an absolute path leaks the planforge
 // container's /app working dir. planning-and-scoping ships in this repo; the phase
-// playbooks live in the external agent-engineering-playbook library.
+// playbooks live in the agent-engineering-playbook package of the agent-dx repository.
 const PLANFORGE_PLAYBOOK_URL =
   "https://github.com/LanNguyenSi/agent-planforge/blob/main/playbooks/planning-and-scoping.md";
 const ENGINEERING_PLAYBOOK_BASE =
-  "https://github.com/LanNguyenSi/agent-engineering-playbook/blob/main";
+  "https://github.com/LanNguyenSi/agent-dx/blob/master/packages/agent-engineering-playbook";
 
 function resolvePlaybookPath(relativePath) {
   // Always emit a stable external URL. A local/absolute filesystem path (the prior
@@ -3580,8 +3582,16 @@ function main() {
     let input = loadedInput.input;
 
     if (args.clarify) {
-      const clarification = prepareClarifications(planforgeRoot, workingDir, args.outdir, input, args.autoClarify);
-      if (clarification.unanswered.length && !args.autoClarify) {
+      const clarification = prepareClarifications(
+        planforgeRoot,
+        workingDir,
+        args.outdir,
+        input,
+        args.autoClarify,
+        !args.validateOnly
+      );
+      // validate-only writes nothing, so there is no file to answer: keep going and validate.
+      if (clarification.unanswered.length && !args.autoClarify && !args.validateOnly) {
         console.log(`Clarifications written to ${clarification.paths.spec}`);
         console.log("Answer the questions, then rerun with --clarify or use --auto-clarify.");
         return;
@@ -3666,4 +3676,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { scaffoldkitBlueprintRecommendation, hasFrontendSignal, hasBackendSignal, blueprintLanguage, inferTechStack };
+module.exports = { loadPlaybookContext, scaffoldkitBlueprintRecommendation, hasFrontendSignal, hasBackendSignal, blueprintLanguage, inferTechStack };

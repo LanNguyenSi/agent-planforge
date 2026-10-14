@@ -24,6 +24,8 @@ function tempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+const missingPlaybookRoot = path.join(tempDir("planforge-no-playbook-"), "missing");
+
 function runPlanner(args, options = {}) {
   // Default to --no-install for fast tests unless the test explicitly wants install behavior.
   const argsWithNoInstall =
@@ -33,7 +35,10 @@ function runPlanner(args, options = {}) {
   return spawnSync("node", [scriptPath, ...argsWithNoInstall], {
     cwd: options.cwd || repoRoot,
     encoding: "utf8",
-    input: options.input
+    input: options.input,
+    // Keep runs independent of a sibling agent-dx checkout on the developer machine:
+    // the default playbook root points at one, which would swap in its adoption model.
+    env: { ...process.env, AGENT_ENGINEERING_PLAYBOOK_ROOT: missingPlaybookRoot, ...options.env }
   });
 }
 
@@ -115,6 +120,19 @@ runCase("sample input generates enterprise artifacts and downstream exports", ()
   assert.ok(
     output.recommendedPlaybooks.every((entry) => /^https:\/\//.test(entry)),
     `recommendedPlaybooks must be https URLs, got: ${output.recommendedPlaybooks.join(", ")}`
+  );
+  // The phase playbooks live in the agent-dx repository; every non-planforge entry must
+  // point there (the old standalone repository no longer resolves).
+  const engineeringBase = "https://github.com/LanNguyenSi/agent-dx/blob/master/packages/agent-engineering-playbook/";
+  const phaseEntries = output.recommendedPlaybooks.filter((entry) => !entry.includes("/agent-planforge/"));
+  assert.ok(phaseEntries.length > 0, "expected phase playbook entries");
+  assert.ok(
+    phaseEntries.every((entry) => entry.startsWith(engineeringBase) && entry.endsWith(".md")),
+    `phase playbooks must live under ${engineeringBase}, got: ${phaseEntries.join(", ")}`
+  );
+  assert.ok(
+    output.recommendedPlaybooks.every((entry) => !entry.includes("LanNguyenSi/agent-engineering-playbook")),
+    "no link may point at the retired standalone playbook repository"
   );
   assert.ok(
     output.recommendedPlaybooks.every((entry) => !entry.startsWith("/") && !entry.includes("/app/")),
@@ -833,6 +851,50 @@ runCase("resume-from writes rerun metadata and preserves runner state", () => {
   assert.ok(fs.existsSync(handoffRunnerFile(resumedOutdir, "custom-note.txt")));
 });
 
+runCase("rerun-from writes rerun metadata and preserves previous run state like resume-from", () => {
+  const baseOutdir = tempDir("planforge-rerun-base-");
+  let result = runPlanner(["--input", "examples/sample-input.json", "--outdir", baseOutdir]);
+  assert.equal(result.status, 0, result.stderr);
+
+  fs.mkdirSync(path.join(baseOutdir, "reviews"), { recursive: true });
+  fs.writeFileSync(path.join(baseOutdir, "reviews", "review-1.md"), "keep review\n");
+  fs.mkdirSync(path.join(baseOutdir, "notes"), { recursive: true });
+  fs.writeFileSync(path.join(baseOutdir, "notes", "note-1.md"), "keep note\n");
+  fs.writeFileSync(path.join(baseOutdir, "resume-notes.md"), "keep resume notes\n");
+  const extraRunnerFile = handoffRunnerFile(baseOutdir, "custom-note.txt");
+  fs.mkdirSync(path.dirname(extraRunnerFile), { recursive: true });
+  fs.writeFileSync(extraRunnerFile, "keep me\n");
+
+  const modifiedInputPath = path.join(tempDir("planforge-rerun-input-"), "modified-input.json");
+  const modifiedInput = readJson(path.join(repoRoot, "examples", "sample-input.json"));
+  modifiedInput.summary = `${modifiedInput.summary} Updated after architecture review.`;
+  writeJson(modifiedInputPath, modifiedInput);
+
+  const rerunOutdir = tempDir("planforge-rerun-out-");
+  result = runPlanner([
+    "--input",
+    modifiedInputPath,
+    "--outdir",
+    rerunOutdir,
+    "--rerun-from",
+    baseOutdir
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+
+  const rerunReport = readJson(planningFile(rerunOutdir, "rerun-report.json"));
+  assert.equal(rerunReport.mode, "rerun");
+  assert.equal(rerunReport.sourceRun, baseOutdir);
+  assert.ok(rerunReport.changedAssumptions.includes("summary"));
+  ["handoff/runner", "resume-notes.md", "reviews", "notes"].forEach((entry) => {
+    assert.ok(rerunReport.preservedArtifacts.includes(entry), `preservedArtifacts should list ${entry}`);
+  });
+  assert.equal(readText(handoffRunnerFile(rerunOutdir, "custom-note.txt")), "keep me\n");
+  assert.equal(readText(path.join(rerunOutdir, "reviews", "review-1.md")), "keep review\n");
+  assert.equal(readText(path.join(rerunOutdir, "notes", "note-1.md")), "keep note\n");
+  assert.equal(readText(path.join(rerunOutdir, "resume-notes.md")), "keep resume notes\n");
+});
+
 runCase("planner fails when npm install is requested and package.json is invalid", () => {
   const fixtureDir = tempDir("planforge-install-fail-");
   const outdir = path.join(fixtureDir, "out");
@@ -869,7 +931,113 @@ runCase("planner succeeds with --no-install even if output package.json is inval
   assert.ok(fs.existsSync(planningFile(outdir, "plan-output.json")));
 });
 
-runCase("validate-only mode succeeds without writing artifacts", () => {
+function listTree(root) {
+  const found = [];
+  const walk = (dir) => {
+    fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+      const full = path.join(dir, entry.name);
+      found.push(path.relative(root, full));
+      if (entry.isDirectory()) {
+        walk(full);
+      }
+    });
+  };
+  walk(root);
+  return found.sort();
+}
+
+[["--clarify"], ["--auto-clarify"], ["--clarify", "--auto-clarify"]].forEach((clarifyFlags) => {
+  runCase(`validate-only writes no files with ${clarifyFlags.join(" ")}`, () => {
+    const cwd = tempDir("planforge-validate-clarify-");
+    fs.copyFileSync(path.join(repoRoot, "examples", "minimal-input.json"), path.join(cwd, "input.json"));
+    const before = listTree(cwd);
+
+    const result = runPlanner(
+      ["--input", "input.json", "--outdir", "out", "--validate-only", ...clarifyFlags],
+      { cwd }
+    );
+
+    // Exit 0, and the run reaches validation even with unanswered questions:
+    // there is no clarification file to answer, so it does not stop early.
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Validation succeeded/);
+    assert.doesNotMatch(result.stdout, /Clarifications written/);
+    assert.deepEqual(listTree(cwd), before);
+  });
+});
+
+runCase("validate-only with --clarify reads existing answers but leaves the clarification files untouched", () => {
+  const cwd = tempDir("planforge-validate-clarify-existing-");
+  fs.copyFileSync(path.join(repoRoot, "examples", "minimal-input.json"), path.join(cwd, "input.json"));
+  let result = runPlanner(["--input", "input.json", "--outdir", "out", "--clarify"], { cwd });
+  assert.equal(result.status, 0, result.stderr);
+  const specPath = path.join(cwd, "out", "specs", "clarifications.md");
+  const promptPath = path.join(cwd, "out", "prompts", "clarify-prompt.md");
+  assert.ok(fs.existsSync(specPath) && fs.existsSync(promptPath));
+  const specBefore = readText(specPath);
+  const promptBefore = readText(promptPath);
+  const before = listTree(cwd);
+
+  result = runPlanner(
+    ["--input", "input.json", "--outdir", "out", "--validate-only", "--auto-clarify"],
+    { cwd }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readText(specPath), specBefore);
+  assert.equal(readText(promptPath), promptBefore);
+  assert.deepEqual(listTree(cwd), before);
+});
+
+runCase("default playbook root is the agent-dx playbook package and the env variable overrides it", () => {
+  const { loadPlaybookContext } = require("../scripts/bootstrap-plan.js");
+  const saved = process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT;
+  delete process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT;
+  try {
+    const workspace = tempDir("planforge-playbook-root-");
+    const fakeRepoRoot = path.join(workspace, "agent-planforge");
+    const playbookRoot = path.join(workspace, "agent-dx", "packages", "agent-engineering-playbook");
+    fs.mkdirSync(fakeRepoRoot, { recursive: true });
+    fs.mkdirSync(path.join(playbookRoot, "models"), { recursive: true });
+    writeJson(path.join(playbookRoot, "models", "adoption-model.json"), { marker: "sibling-agent-dx" });
+
+    const copyBundledModel = (targetRoot) => {
+      fs.mkdirSync(path.join(targetRoot, "models"), { recursive: true });
+      fs.copyFileSync(
+        path.join(repoRoot, "models", "playbook-adoption-model.json"),
+        path.join(targetRoot, "models", "playbook-adoption-model.json")
+      );
+    };
+
+    // Bundled fallback when the sibling checkout is absent.
+    const loneRepoRoot = path.join(tempDir("planforge-playbook-lone-"), "agent-planforge");
+    copyBundledModel(loneRepoRoot);
+    const bundled = loadPlaybookContext(loneRepoRoot);
+    assert.equal(bundled.root, "");
+    assert.equal(bundled.model.marker, undefined);
+
+    // Default location next to the checkout: ../agent-dx/packages/agent-engineering-playbook.
+    copyBundledModel(fakeRepoRoot);
+    const byDefault = loadPlaybookContext(fakeRepoRoot);
+    assert.equal(byDefault.root, playbookRoot);
+    assert.equal(byDefault.model.marker, "sibling-agent-dx");
+
+    // The environment variable wins over the default.
+    const overrideRoot = path.join(workspace, "override");
+    fs.mkdirSync(path.join(overrideRoot, "models"), { recursive: true });
+    writeJson(path.join(overrideRoot, "models", "adoption-model.json"), { marker: "env-override" });
+    process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT = overrideRoot;
+    assert.equal(loadPlaybookContext(fakeRepoRoot).model.marker, "env-override");
+  } finally {
+    if (saved === undefined) {
+      delete process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT;
+    } else {
+      process.env.AGENT_ENGINEERING_PLAYBOOK_ROOT = saved;
+    }
+  }
+});
+
+runCase("validate-only mode in a plain run succeeds without writing artifacts", () => {
   const outdir = path.join(tempDir("planforge-validate-"), "unused-output");
   const result = runPlanner([
     "--input",

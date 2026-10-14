@@ -43,7 +43,8 @@ jobs:
 
   server:
     # The HTTP service sub-package ships TypeScript + Hono and targets
-    # Node ≥20 (matches agent-relay / agent-tasks). It has its own npm
+    # Node 20.19+ or 22.12+ (the floor `import.meta.dirname` needs, set as
+    # `engines` in server/package.json). It has its own npm
     # install under `server/` because it's a separate package — the
     # root `npm ci` doesn't reach into sub-packages.
     runs-on: ubuntu-latest

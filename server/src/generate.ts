@@ -192,8 +192,10 @@ const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
  * on a nonzero exit — that's surfaced to the caller as metadata so a
  * failed scaffold doesn't mask a successful plan.
  *
- * Timeout → SIGTERM → SIGKILL, with `exitCode: -1` + a clear stderr
- * marker so callers can detect the timeout case in `done.scaffoldkit`.
+ * Timeout → SIGTERM, then SIGKILL 5s later if the child has still not
+ * exited (a child that ignores SIGTERM is force-killed), with
+ * `exitCode: -1` + a clear stderr marker so callers can detect the
+ * timeout case in `done.scaffoldkit`.
  *
  * AbortSignal propagation: when the HTTP client disconnects mid-scaffold,
  * the subprocess is killed so the server doesn't run orphaned work to
@@ -260,12 +262,17 @@ export async function runScaffoldkit(args: {
     });
 
     // Timeout watchdog: SIGTERM the child after SCAFFOLDKIT_TIMEOUT_MS.
-    // SIGKILL 5s later if it hasn't exited.
+    // SIGKILL 5s later if it hasn't exited. The SIGKILL guard checks
+    // exitCode/signalCode, not `child.killed`: Node sets `killed` as soon as
+    // the SIGTERM is delivered, not when the child exits, so a `killed`
+    // guard would never escalate for a child that ignores SIGTERM.
     const timeout = setTimeout(() => {
       timedOut = true;
       if (!child.killed) child.kill("SIGTERM");
       const kill = setTimeout(() => {
-        if (!child.killed) child.kill("SIGKILL");
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
       }, 5_000);
       kill.unref?.();
     }, SCAFFOLDKIT_TIMEOUT_MS);
