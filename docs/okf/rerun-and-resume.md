@@ -3,7 +3,7 @@ type: module
 title: Rerun and resume
 description: How --resume-from and --rerun-from locate an earlier run, what planning/rerun-report.json compares, and why both flags copy the same user-authored entries into the new outdir; the two flags differ only in the mode label.
 tags: [module, cli, rerun, resume]
-timestamp: 2026-10-14T04:39:46Z
+timestamp: 2026-10-14T04:53:58Z
 sources:
   - scripts/bootstrap-plan.js
   - tests/bootstrap-plan.test.js

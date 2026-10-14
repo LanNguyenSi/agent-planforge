@@ -2,6 +2,12 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-14T04:53:58Z, re-verified all five docs after review fixes: `--validate-only` with
+  `--clarify` and unanswered questions now prints a one-line note before
+  validating (cli-run-overview), and line citations moved with the added
+  lines. No other claim changed. `okf-kit check --require-anchors docs/okf`
+  at okf-kit@0.18.0: 0 errors, 0 warnings, 0 notices.
+
 - 2026-10-14T04:39:46Z, re-verified all five docs after the code changes for task 2b40db1d.
   external-lookups: the default playbook root is now
   `../agent-dx/packages/agent-engineering-playbook` and the playbook base URL
