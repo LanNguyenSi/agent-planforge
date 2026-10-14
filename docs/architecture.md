@@ -45,7 +45,7 @@ The bundled `models/playbook-adoption-model.json` is used only when no external 
 
 ### CLI Pipeline
 
-One CLI run has a planning pass and a write pass. The planning pass loads context, config and input, optionally stops for clarification, builds the plan and validates it; `--validate-only` ends the run there, before the write pass. A `--clarify` or `--auto-clarify` run writes the clarification files first, so those two files are written even with `--validate-only`.
+One CLI run has a planning pass and a write pass. The planning pass loads context, config and input, optionally stops for clarification, builds the plan and validates it; `--validate-only` ends the run there, before the write pass. A `--clarify` or `--auto-clarify` run writes the clarification files first, except with `--validate-only`, which writes no files at all and does not stop for unanswered questions.
 
 ```mermaid
 flowchart TD
@@ -53,8 +53,8 @@ flowchart TD
   B --> C["load planner config<br/>merge --config override, validate"]
   C --> D["load input<br/>JSON, or heuristic text/markdown parse, validate"]
   D --> E{"--clarify or --auto-clarify?"}
-  E -->|"yes"| CW["write specs/clarifications.md<br/>and prompts/clarify-prompt.md"]
-  CW --> Q{"questions unanswered<br/>and no --auto-clarify?"}
+  E -->|"yes"| CW["write specs/clarifications.md<br/>and prompts/clarify-prompt.md<br/>(skipped with --validate-only)"]
+  CW --> Q{"questions unanswered, no --auto-clarify<br/>and no --validate-only?"}
   Q -->|"yes"| STOP["exit 0"]
   E -->|"no"| F["load previous run<br/>--rerun-from or --resume-from"]
   Q -->|"no"| F

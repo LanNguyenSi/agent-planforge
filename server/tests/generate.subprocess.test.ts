@@ -31,12 +31,14 @@ const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
 
 /**
  * Minimal fake ChildProcess: EventEmitter + kill spy + inert Readable streams.
- * The `kill` spy sets `killed = true` so the timeout SIGKILL branch
- * (`if (!child.killed)`) correctly skips the second kill.
+ * Like a real ChildProcess, the `kill` spy sets `killed = true` as soon as a
+ * signal is "delivered" while `exitCode`/`signalCode` stay null until exit.
  */
 function fakeChild() {
   const c = new EventEmitter() as any;
   c.killed = false;
+  c.exitCode = null;
+  c.signalCode = null;
   c.kill = vi.fn((_sig?: string) => {
     c.killed = true;
     return true;
@@ -80,6 +82,57 @@ describe("runScaffoldkit subprocess lifecycle", () => {
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
     expect(result.exitCode).toBe(-1);
     expect(result.stderr).toMatch(/scaffoldkit timed out/);
+  });
+
+  it("timeout escalates to SIGKILL 5s after SIGTERM while the child has not exited", async () => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockReturnValue(child);
+
+    vi.useFakeTimers();
+
+    const promise = runScaffoldkit({
+      python: "python3",
+      inputPath: "/tmp/input.json",
+      outdir: "/tmp/out",
+    });
+
+    await vi.advanceTimersByTimeAsync(SCAFFOLDKIT_TIMEOUT_MS + 1);
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.kill).toHaveBeenLastCalledWith("SIGTERM");
+
+    // `killed` is already true (SIGTERM delivered) but the child has not exited.
+    expect(child.killed).toBe(true);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(child.kill).toHaveBeenCalledTimes(2);
+    expect(child.kill).toHaveBeenLastCalledWith("SIGKILL");
+
+    child.emit("close", null, "SIGKILL");
+    const result = await promise;
+    expect(result.exitCode).toBe(-1);
+    expect(result.stderr).toMatch(/SIGKILL/);
+  });
+
+  it("timeout does not SIGKILL a child that exited after the SIGTERM", async () => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockReturnValue(child);
+
+    vi.useFakeTimers();
+
+    const promise = runScaffoldkit({
+      python: "python3",
+      inputPath: "/tmp/input.json",
+      outdir: "/tmp/out",
+    });
+
+    await vi.advanceTimersByTimeAsync(SCAFFOLDKIT_TIMEOUT_MS + 1);
+    // The child exits on SIGTERM; the close handler clears the timers only
+    // after the stream drains, so mark the exit state first like Node does.
+    child.signalCode = "SIGTERM";
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(child.kill).toHaveBeenCalledTimes(1);
+
+    child.emit("close", null, "SIGTERM");
+    await promise;
   });
 
   it("AbortSignal propagation SIGTERMs the child when the caller disconnects", async () => {

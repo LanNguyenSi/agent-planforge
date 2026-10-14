@@ -2,6 +2,25 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-14T04:53:58Z, re-verified all five docs after review fixes: `--validate-only` with
+  `--clarify` and unanswered questions now prints a one-line note before
+  validating (cli-run-overview), and line citations moved with the added
+  lines. No other claim changed. `okf-kit check --require-anchors docs/okf`
+  at okf-kit@0.18.0: 0 errors, 0 warnings, 0 notices.
+
+- 2026-10-14T04:39:46Z, re-verified all five docs after the code changes for task 2b40db1d.
+  external-lookups: the default playbook root is now
+  `../agent-dx/packages/agent-engineering-playbook` and the playbook base URL
+  is the agent-dx tree (every path in the bundled adoption model was checked
+  against that tree). cli-run-overview and output-layout: `--validate-only`
+  skips the clarification writes and does not stop for unanswered questions.
+  rerun-and-resume: a `--rerun-from` test now exists. http-generate-pipeline:
+  the SIGKILL escalation is guarded by `exitCode`/`signalCode` and fires for a
+  child that ignores SIGTERM; the boot warning names both the missing-path and
+  non-executable outcomes. Line citations were re-pointed to the shifted code.
+  `okf-kit check --require-anchors docs/okf` at okf-kit@0.18.0: 0 errors,
+  0 warnings, 0 notices.
+
 - 2026-10-11T17:08:34Z, re-verified http-generate-pipeline after code-comment edits in
   `server/src/routes.ts` and `server/src/generate.ts` (attachment tier
   handling, request body shape, tarball cap, missing scaffoldkit export).

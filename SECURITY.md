@@ -8,6 +8,8 @@ This project is still in early development. Only the latest state of `main` is c
 
 Do not open a public issue for a suspected vulnerability.
 
+For what the HTTP service does and does not protect against (shared bearer token, no rate limits, subprocess isolation), see [Security Model And Limits](server/README.md#security-model-and-limits).
+
 Email **contact@lan-nguyen-si.de** with:
 
 - affected component or file

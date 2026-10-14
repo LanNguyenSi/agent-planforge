@@ -56,5 +56,5 @@ The merged config is validated against `models/planner-config.schema.json`; over
 
 | Variable | Default | Effect |
 |---|---|---|
-| `AGENT_ENGINEERING_PLAYBOOK_ROOT` | `../agent-engineering-playbook` next to the agent-planforge checkout | When `<root>/models/adoption-model.json` exists, it replaces the bundled `models/playbook-adoption-model.json`; otherwise the bundled model is used. Generated playbook links are GitHub URLs either way. |
+| `AGENT_ENGINEERING_PLAYBOOK_ROOT` | `../agent-dx/packages/agent-engineering-playbook` next to the agent-planforge checkout (the playbook package inside an agent-dx checkout) | When `<root>/models/adoption-model.json` exists, it replaces the bundled `models/playbook-adoption-model.json`; otherwise the bundled model is used. Generated playbook links are GitHub URLs either way. |
 | `SCAFFOLDKIT_ROOT` | `../scaffoldkit` next to the agent-planforge checkout | When `<root>/src/scaffoldkit/blueprints/` exists, the recommended blueprint is the first candidate available there, and `blueprintValidatedLocally` in `exports/scaffoldkit-input.json` says whether it was found. Otherwise the first candidate is used and the flag is `false`. |

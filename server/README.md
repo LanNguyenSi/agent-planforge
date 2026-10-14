@@ -125,7 +125,7 @@ tells callers why scaffolding was not performed:
 | `opt_out` | Caller passed `scaffold: false` |
 | `no_input` | `scaffoldkit-input.json` was missing after a successful CLI run. The current CLI writes it on every successful run, so this indicates a CLI regression rather than a property of the input. |
 | `input_unreadable` | `scaffoldkit-input.json` exists but read / `JSON.parse` failed — almost always a CLI bug. The underlying error message is in `inputReadError` so callers can distinguish a parse failure from a permission issue. |
-| `not_installed` | `SCAFFOLDKIT_PYTHON` is missing — dev env without the venv; production containers always have it |
+| `not_installed` | `SCAFFOLDKIT_PYTHON` does not exist (`ENOENT`) — dev env without the venv; production containers always have it. A path that exists but is not executable is not a skip: the request ends with an SSE `error` event ("Failed to spawn scaffoldkit"). |
 
 A nonzero `scaffoldkit.exitCode` does **not** fail the request — planning
 artifacts are still returned, and the caller decides whether the failed
@@ -157,8 +157,9 @@ scaffold is fatal to its flow.
 - **Limits**: there is no request-body, rate or concurrency limit.
   Text-tier attachments are capped at 50,000 chars in total. The planner
   CLI subprocess has no timeout. scaffoldkit is stopped after 5 minutes
-  (SIGTERM, then SIGKILL) and reported as `exitCode: -1`, with its stderr
-  cut to 4 KiB. The `done` tarball is capped at 50 MiB.
+  (SIGTERM, then SIGKILL 5 seconds later if it has still not exited, so a
+  child that ignores SIGTERM is force-killed) and reported as
+  `exitCode: -1`, with its stderr cut to 4 KiB. The `done` tarball is capped at 50 MiB.
 - **Isolation**: the CLI and scaffoldkit subprocesses receive only `PATH`,
   `HOME`, `NODE_ENV`, `TMPDIR`, `LANG` and `LC_ALL` from the service's
   environment. Each request uses its own temp directory with `input.json`
