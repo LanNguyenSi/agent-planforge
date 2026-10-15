@@ -67,7 +67,7 @@ export interface GenerateOptions {
   tarballMaxBytes?: number;
   /** Override the CLI subprocess wall-clock cap (default CLI_TIMEOUT_MS). */
   cliTimeoutMs?: number;
-  /** Override the SIGTERM-to-SIGKILL grace (default KILL_GRACE_MS). */
+  /** Override the SIGTERM-to-SIGKILL grace for the CLI subprocess (default KILL_GRACE_MS). */
   killGraceMs?: number;
 }
 

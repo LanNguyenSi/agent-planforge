@@ -3,7 +3,7 @@ type: module
 title: HTTP generate pipeline
 description: What the server/ package does around one CLI run per POST /api/generate request (bearer auth, body and attachment checks, temp dir, CLI subprocess, optional scaffoldkit subprocess, tarball, SSE events, cleanup), and how the boot-time scaffoldkit probe relates to the per-request skip reasons.
 tags: [module, server, http, sse, scaffoldkit]
-timestamp: 2026-10-15T04:18:26Z
+timestamp: 2026-10-15T04:28:45Z
 sources:
   - server/src/index.ts
   - server/src/config.ts
@@ -161,7 +161,7 @@ flowchart TD
    (`server/src/generate.ts:311-313#"terminateChild(child, graceMs);"`). The
    helper sends SIGTERM and schedules a SIGKILL after the grace of five
    seconds (`server/src/generate.ts:193#"KILL_GRACE_MS = 5_000"`), guarded by
-   `child.exitCode !== null || child.signalCode !== null`
+   `!hasExited(child)` (`exitCode` and `signalCode` both still `null`)
    (`server/src/generate.ts:208-210#"if (!hasExited(child)) child.kill("`), not
    by `child.killed`, because Node sets `killed` as soon as the SIGTERM is
    delivered, not when the child exits. So a child that ignores SIGTERM is
@@ -179,7 +179,7 @@ flowchart TD
    (`server/src/generate.ts:590-601#"buf.toString"`).
 9. **Done.** The `done` event carries `planOutput`, `scaffoldkitInput`, the
    `scaffoldkit` result object, `outputTarGz` and `exitCode: 0`
-   (`server/src/generate.ts:590-597#"exitCode: 0"`).
+   (`server/src/generate.ts:612-619#"exitCode: 0"`).
 10. **Cleanup.** A `finally` block removes the abort listener and deletes the
     temp dir on every path, success or failure
     (`server/src/generate.ts:621-623#"rm(tmp, { recursive: true, force: true })"`).

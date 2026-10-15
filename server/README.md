@@ -87,7 +87,7 @@ sequenceDiagram
     S->>P: spawn --input --outdir --no-install (allow-listed env)
     P-->>S: stdout and stderr lines
     S-->>C: event: progress (one per line)
-    alt CLI exit code is not 0
+    alt CLI exit code is not 0 or the CLI timed out (5 min)
       S-->>C: event: error
     else CLI succeeded
       S->>S: read plan-output.json and scaffoldkit-input.json

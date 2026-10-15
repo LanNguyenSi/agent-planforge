@@ -2,6 +2,11 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-15T04:28:45Z, re-verified http-generate-pipeline after review: the Done step citation
+  points at the `done` yield again, and the escalation guard is described as
+  `!hasExited(child)`. `okf-kit check --require-anchors docs/okf`: 0 errors,
+  0 warnings, 0 notices.
+
 - 2026-10-15T04:18:26Z, re-verified http-generate-pipeline after the kill-path change in
   `server/src/generate.ts`: a client disconnect now escalates to SIGKILL after
   the grace through the same helper as the scaffoldkit timeout, and the CLI
