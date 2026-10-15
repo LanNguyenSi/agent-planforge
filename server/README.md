@@ -87,7 +87,7 @@ sequenceDiagram
     S->>P: spawn --input --outdir --no-install (allow-listed env)
     P-->>S: stdout and stderr lines
     S-->>C: event: progress (one per line)
-    alt CLI exit code is not 0
+    alt CLI exit code is not 0 or the CLI timed out (5 min)
       S-->>C: event: error
     else CLI succeeded
       S->>S: read plan-output.json and scaffoldkit-input.json
@@ -156,10 +156,12 @@ scaffold is fatal to its flow.
   `PORT`. Run it on a private network or behind a proxy.
 - **Limits**: there is no request-body, rate or concurrency limit.
   Text-tier attachments are capped at 50,000 chars in total. The planner
-  CLI subprocess has no timeout. scaffoldkit is stopped after 5 minutes
-  (SIGTERM, then SIGKILL 5 seconds later if it has still not exited, so a
-  child that ignores SIGTERM is force-killed) and reported as
-  `exitCode: -1`, with its stderr cut to 4 KiB. The `done` tarball is capped at 50 MiB.
+  CLI subprocess is stopped after 5 minutes and the request ends with an
+  `error` event "planforge CLI timed out after <ms>ms". scaffoldkit is
+  stopped after 5 minutes and reported as `exitCode: -1`, with its stderr cut
+  to 4 KiB. Both stops, and a client disconnect, send SIGTERM and then
+  SIGKILL 5 seconds later if the child has still not exited, so a child that
+  ignores SIGTERM is force-killed. The `done` tarball is capped at 50 MiB.
 - **Isolation**: the CLI and scaffoldkit subprocesses receive only `PATH`,
   `HOME`, `NODE_ENV`, `TMPDIR`, `LANG` and `LC_ALL` from the service's
   environment. Each request uses its own temp directory with `input.json`

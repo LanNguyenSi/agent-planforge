@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Client disconnect kills a child that ignores SIGTERM.** The abort path sent SIGTERM only, so a scaffoldkit or CLI child that ignored it ran on until the 5-minute watchdog. Abort, the scaffoldkit timeout and the new CLI bound now share one helper that sends SIGTERM and then SIGKILL after a 5-second grace if the child is still running. Real-child tests cover each path.
+- **The planforge CLI subprocess is bounded.** It had no timeout; it now stops after 5 minutes and the SSE stream ends with an `error` event "planforge CLI timed out after <ms>ms".
 - **Generated playbook links resolve again.** The phase playbook URLs in generated packages pointed at the retired standalone `agent-engineering-playbook` repository (404). They now point at `packages/agent-engineering-playbook` in the `agent-dx` repository (task 2b40db1d).
 - **Scaffoldkit timeout kills a child that ignores SIGTERM.** The SIGKILL escalation was guarded by `child.killed`, which Node sets as soon as the SIGTERM is delivered, so it never fired; it now checks `exitCode`/`signalCode`. A test with a real SIGTERM-ignoring child covers it (task 2b40db1d).
 - **`--validate-only` writes no files with `--clarify` or `--auto-clarify`.** It used to write `specs/clarifications.md` and `prompts/clarify-prompt.md` first, and stopped without validating when questions were unanswered. It now skips those writes and validates (exit 0 on success) (task 2b40db1d).

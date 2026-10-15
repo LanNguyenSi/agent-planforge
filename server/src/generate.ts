@@ -20,7 +20,7 @@
  * Not handled in v1 (see ADR-0002 § "Risks"):
  *   - No resumption. A mid-run crash means the caller re-POSTs; no partial recovery.
  */
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -47,7 +47,8 @@ export interface GenerateOptions {
    */
   scaffold: boolean;
   /**
-   * When aborted, the CLI subprocess is killed with SIGTERM and the
+   * When aborted, the CLI subprocess is killed with SIGTERM (SIGKILL after
+   * the grace if it ignores it) and the
    * generator exits on its next `yield`. The `finally` block still runs,
    * so the tempdir is cleaned up.
    */
@@ -64,6 +65,10 @@ export interface GenerateOptions {
    * callers should not pass this.
    */
   tarballMaxBytes?: number;
+  /** Override the CLI subprocess wall-clock cap (default CLI_TIMEOUT_MS). */
+  cliTimeoutMs?: number;
+  /** Override the SIGTERM-to-SIGKILL grace for the CLI subprocess (default KILL_GRACE_MS). */
+  killGraceMs?: number;
 }
 
 /**
@@ -171,6 +176,43 @@ const TARBALL_MAX_BYTES = 50 * 1024 * 1024;
 const SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000;
 
 /**
+ * Wall-clock cap on the planforge CLI subprocess. Generation is local CPU
+ * and file work that finishes in seconds; 5 minutes leaves wide headroom
+ * while still ending a hung CLI deterministically instead of holding the
+ * SSE request and its tempdir open forever. On expiry the stream ends with
+ * an `error` event naming the timeout. Override via
+ * `GenerateOptions.cliTimeoutMs` (tests).
+ */
+const CLI_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Grace between SIGTERM and SIGKILL for every kill path (scaffoldkit
+ * timeout, client disconnect, CLI timeout). A child that ignores SIGTERM is
+ * force-killed once this has elapsed. Override via `killGraceMs` (tests).
+ */
+const KILL_GRACE_MS = 5_000;
+
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+/**
+ * Shared escalation: SIGTERM now, SIGKILL after `graceMs` if the child is
+ * still running. The SIGKILL guard checks exitCode/signalCode, not
+ * `child.killed`: Node sets `killed` as soon as a signal is delivered, not
+ * when the child exits, so a `killed` guard would never escalate for a child
+ * that ignores SIGTERM. Safe to call repeatedly.
+ */
+function terminateChild(child: ChildProcess, graceMs: number): void {
+  if (hasExited(child) || child.killed) return;
+  child.kill("SIGTERM");
+  const kill = setTimeout(() => {
+    if (!hasExited(child)) child.kill("SIGKILL");
+  }, graceMs);
+  kill.unref?.();
+}
+
+/**
  * Max captured scaffoldkit stderr that rides out on the `done` event.
  * Kept deliberately small: scaffoldkit may echo user-supplied input
  * values in its error messages, and the `done` frame is delivered to
@@ -209,7 +251,10 @@ export async function runScaffoldkit(args: {
   inputPath: string;
   outdir: string;
   abortSignal?: AbortSignal;
+  /** Override the SIGTERM-to-SIGKILL grace (default KILL_GRACE_MS). */
+  killGraceMs?: number;
 }): Promise<{ exitCode: number; stderr: string }> {
+  const graceMs = args.killGraceMs ?? KILL_GRACE_MS;
   return await new Promise((resolvePromise, rejectPromise) => {
     // Arg shape: `from-planforge <input> --target <outdir> --overwrite
     // --no-install --no-ai-context`. `--no-install` keeps the service off the
@@ -261,29 +306,19 @@ export async function runScaffoldkit(args: {
       }
     });
 
-    // Timeout watchdog: SIGTERM the child after SCAFFOLDKIT_TIMEOUT_MS.
-    // SIGKILL 5s later if it hasn't exited. The SIGKILL guard checks
-    // exitCode/signalCode, not `child.killed`: Node sets `killed` as soon as
-    // the SIGTERM is delivered, not when the child exits, so a `killed`
-    // guard would never escalate for a child that ignores SIGTERM.
+    // Timeout watchdog: SIGTERM the child after SCAFFOLDKIT_TIMEOUT_MS,
+    // SIGKILL after the grace if it has not exited (see terminateChild).
     const timeout = setTimeout(() => {
       timedOut = true;
-      if (!child.killed) child.kill("SIGTERM");
-      const kill = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) {
-          child.kill("SIGKILL");
-        }
-      }, 5_000);
-      kill.unref?.();
+      terminateChild(child, graceMs);
     }, SCAFFOLDKIT_TIMEOUT_MS);
     timeout.unref?.();
 
     // Abort propagation: when the HTTP client disconnects, kill the
-    // scaffold subprocess too. Without this, a hung scaffold keeps
-    // running on the server after the caller gave up.
-    const onAbort = () => {
-      if (!child.killed) child.kill("SIGTERM");
-    };
+    // scaffold subprocess too, escalating to SIGKILL after the grace.
+    // Without this, a hung scaffold keeps running on the server after the
+    // caller gave up.
+    const onAbort = () => terminateChild(child, graceMs);
     args.abortSignal?.addEventListener("abort", onAbort, { once: true });
 
     child.on("error", (err) => {
@@ -367,9 +402,8 @@ export async function* runGenerate(
     // Propagate client disconnect → kill the subprocess. Without this, a
     // dropped SSE consumer leaves the CLI running to completion on the
     // server. The tempdir cleanup in the outer `finally` still runs.
-    onAbort = () => {
-      if (!child.killed) child.kill("SIGTERM");
-    };
+    const graceMs = opts.killGraceMs ?? KILL_GRACE_MS;
+    onAbort = () => terminateChild(child, graceMs);
     opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
 
     // Buffer lines rather than raw chunks so the caller always sees
@@ -412,17 +446,27 @@ export async function* runGenerate(
     attachLineReader(child.stderr!, "stderr");
 
     let exitCode: number | null = null;
+    // Wall-clock bound on the CLI: SIGTERM, then SIGKILL after the grace.
+    const cliTimeoutMs = opts.cliTimeoutMs ?? CLI_TIMEOUT_MS;
+    let cliTimedOut = false;
+    const cliTimer = setTimeout(() => {
+      cliTimedOut = true;
+      terminateChild(child, graceMs);
+    }, cliTimeoutMs);
+    cliTimer.unref?.();
     // Set when the child's own "error" event (e.g. spawn ENOENT) already
     // queued a real error frame. In that case there is no "close" event, so
     // exitCode stays null and the exit-code fallback below would otherwise
     // queue a second, misleading error frame for the same failure.
     let spawnErrorEmitted = false;
     child.on("close", (code) => {
+      clearTimeout(cliTimer);
       exitCode = code;
       done = true;
       wake();
     });
     child.on("error", (err) => {
+      clearTimeout(cliTimer);
       spawnErrorEmitted = true;
       queue.push({ type: "error", requestId, message: err.message });
       done = true;
@@ -441,6 +485,16 @@ export async function* runGenerate(
     }
 
     if (spawnErrorEmitted) {
+      return;
+    }
+
+    if (cliTimedOut) {
+      yield {
+        type: "error",
+        requestId,
+        message: `planforge CLI timed out after ${cliTimeoutMs}ms`,
+        exitCode: exitCode ?? undefined,
+      };
       return;
     }
 
