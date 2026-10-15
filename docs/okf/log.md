@@ -2,6 +2,13 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-15T04:18:26Z, re-verified http-generate-pipeline after the kill-path change in
+  `server/src/generate.ts`: a client disconnect now escalates to SIGKILL after
+  the grace through the same helper as the scaffoldkit timeout, and the CLI
+  subprocess has a five-minute wall-clock bound that ends the run with an
+  `error` event. All line citations were re-pointed to the shifted code.
+  `okf-kit check --require-anchors docs/okf`: 0 errors, 0 warnings, 0 notices.
+
 - 2026-10-14T04:53:58Z, re-verified all five docs after review fixes: `--validate-only` with
   `--clarify` and unanswered questions now prints a one-line note before
   validating (cli-run-overview), and line citations moved with the added
