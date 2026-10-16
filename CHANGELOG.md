@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `--rerun-from` is documented as preserving previous run state exactly like `--resume-from`; the help text says so, and a test covers it (task 2b40db1d).
 - The server `engines.node` is now `^20.19.0 || >=22.12.0`, the floor `import.meta.dirname` needs (task 2b40db1d).
 
-- Server image pins scaffoldkit at 264ac41 (was 94ff55c). Planforge imports with any TypeScript stack hint now infer `framework=express` for the rest-api blueprint, and the from-planforge fallback notice tells an inferred blueprint from a missing primary (task 6ceed745).
+- Server image pins scaffoldkit at 6c3fa65 (was 94ff55c); the last step, 264ac41..6c3fa65, only changes scaffoldkit's own CI workflow. Since 264ac41: planforge imports with any TypeScript stack hint now infer `framework=express` for the rest-api blueprint, and the from-planforge fallback notice tells an inferred blueprint from a missing primary (task 6ceed745).
 
 ## [0.5.4] - 2026-10-05
 
