@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **zod migrated from v3 to `^4.6.7` in `server/`, closing GHSA-mrhx-c7xc-m3w5** (Zod could exhaust memory while validating oversized constrained collections; fixed only in the v4 core). `server/src/config.ts` now uses the native v4 API; the environment schema accepts and rejects the same inputs and produces the same values as before. One visible change: an absent `PLANFORGE_SERVICE_TOKEN` is now reported as `Invalid input: expected string, received undefined` (was `Required`); the custom empty-string message `PLANFORGE_SERVICE_TOKEN is required` is unchanged.
+
 ### Fixed
 
 - **Client disconnect kills a child that ignores SIGTERM.** The abort path sent SIGTERM only, so a scaffoldkit or CLI child that ignored it ran on until the 5-minute watchdog. Abort, the scaffoldkit timeout and the new CLI bound now share one helper that sends SIGTERM and then SIGKILL after a 5-second grace if the child is still running. Real-child tests cover each path.
