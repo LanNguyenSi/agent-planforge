@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-25
+
 ### Security
 
 - **zod migrated from v3 to `^4.6.7` in `server/`, closing GHSA-mrhx-c7xc-m3w5** (Zod could exhaust memory while validating oversized constrained collections; fixed only in the v4 core). `server/src/config.ts` now uses the native v4 API; the environment schema accepts and rejects the same inputs and produces the same values as before, except that `PORT` values above `Number.MAX_SAFE_INTEGER` are now rejected (no valid port is affected). zod's default issue wording changes; for example an absent `PLANFORGE_SERVICE_TOKEN` is now reported as `Invalid input: expected string, received undefined` (was `Required`); the custom empty-string message `PLANFORGE_SERVICE_TOKEN is required` is unchanged.
+- **hono bumped to `4.13.13`** in `server/` (lockfile-only, `@hono/node-server` range unchanged; CVE sweep 2026-10-21).
 
 ### Fixed
 
