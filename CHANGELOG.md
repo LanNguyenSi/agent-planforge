@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Server image pins scaffoldkit at f951fc7, its v0.4.3 release (was 6c3fa65). The step changes only scaffoldkit's CHANGELOG and package version, so `scaffoldkit --version` in the image reports 0.4.3; no blueprint, schema or CLI change.
+
 ## [0.6.0] - 2026-10-25
 
 ### Security

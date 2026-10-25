@@ -45,9 +45,11 @@ RUN cd server && npm run build
 # and the venv's python3 binary would fail at runtime with
 # `cannot open shared object file: libpython3.12.so.1.0`.
 FROM python:3.11-slim AS scaffoldkit
-# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ 6c3fa65 (2026-10).
+# Pinned to https://github.com/LanNguyenSi/scaffoldkit @ f951fc7 (v0.4.3, 2026-10).
 # Update this when bumping scaffoldkit; image build will pull a fresh
-# clone and rebuild the venv. Bump 264ac41..6c3fa65 changes only scaffoldkit's
+# clone and rebuild the venv. Bump 6c3fa65..f951fc7 is the v0.4.3 release
+# commit (CHANGELOG and pyproject version only); no blueprint, schema or CLI
+# change. Bump 264ac41..6c3fa65 changes only scaffoldkit's
 # own CI workflow-guard workflow; no blueprint, schema or CLI change.
 # Bump 94ff55c..264ac41 changes docs, the
 # notify-planforge script, the from-planforge fallback notice wording, help
@@ -55,7 +57,7 @@ FROM python:3.11-slim AS scaffoldkit
 # TypeScript stack hint (not only the service stack). It changes no
 # blueprint template, planforge input schema field or from-planforge CLI
 # argument.
-ARG SCAFFOLDKIT_REF=6c3fa65b396f217be5e028026d1918659c6ba081
+ARG SCAFFOLDKIT_REF=f951fc702e8393543f4dc08f65ddb0dcf7ce126f
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y git ca-certificates \
