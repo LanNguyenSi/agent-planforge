@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **`@hono/node-server` 2.1.5** (GHSA-rmxm-3fg6-px4f): the `server/` lockfile resolves 2.1.5 (was 2.0.12), which fixes `serveStatic` decoding the request path a second time and so letting a request bypass middleware on static paths (affected: `>= 1.19.10, < 2.1.3`). Lockfile only, a direct dependency whose range is unchanged.
+
 ### Changed
 
 - Server image pins scaffoldkit at f951fc7, its v0.4.3 release (was 6c3fa65). The step changes only scaffoldkit's CHANGELOG and package version, so `scaffoldkit --version` in the image reports 0.4.3; no blueprint, schema or CLI change.
