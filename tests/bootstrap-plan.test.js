@@ -216,6 +216,8 @@ runCase("sample input generates enterprise artifacts and downstream exports", ()
   assert.equal(planforgeIndex.directories.prompts, undefined);
 
   assert.equal(fs.existsSync(path.join(outdir, ".planforge", "tooling", "Makefile")), true);
+  const devDockerfile = fs.readFileSync(path.join(outdir, ".planforge", "tooling", "Dockerfile.dev"), "utf8");
+  assert.match(devDockerfile, /^FROM node:24-slim$/m, "generated Dockerfile.dev builds on the Node 24 LTS image");
 });
 
 runCase("service-oriented plans export a real scaffoldkit backend blueprint", () => {

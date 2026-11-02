@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Runtime and CI move from Node 20 (EOL) to Node 24 LTS: the CLI CI matrix is `[22, 24]` (was `[18, 20]`), the server CI job runs on 22 like the server image, and `templates/Dockerfile.dev.template` uses 24 (was 20). `@types/node` is unchanged: `server/` keeps `^22` because its image stays `node:22-bookworm-slim`, and the root package has none.
 - Server image pins scaffoldkit at f951fc7, its v0.4.3 release (was 6c3fa65). The step changes only scaffoldkit's CHANGELOG and package version, so `scaffoldkit --version` in the image reports 0.4.3; no blueprint, schema or CLI change.
 
 ## [0.6.0] - 2026-10-25
