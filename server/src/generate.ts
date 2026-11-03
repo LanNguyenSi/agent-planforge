@@ -50,7 +50,8 @@ export interface GenerateOptions {
    * When aborted, the CLI subprocess is killed with SIGTERM (SIGKILL after
    * the grace if it ignores it) and the
    * generator exits on its next `yield`. The `finally` block still runs,
-   * so the tempdir is cleaned up.
+   * so the tempdir is cleaned up. The signal goes to the subprocess's
+   * process group, so a grandchild it spawned is killed too.
    */
   abortSignal?: AbortSignal;
   /**
@@ -187,29 +188,134 @@ const CLI_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * Grace between SIGTERM and SIGKILL for every kill path (scaffoldkit
- * timeout, client disconnect, CLI timeout). A child that ignores SIGTERM is
- * force-killed once this has elapsed. Override via `killGraceMs` (tests).
+ * timeout, client disconnect, CLI timeout). A process group whose `close` has
+ * not fired once this has elapsed is force-killed, whether the one ignoring
+ * SIGTERM is the direct child or a grandchild that holds the pipes open.
+ * Override via `killGraceMs` (tests).
  */
 const KILL_GRACE_MS = 5_000;
 
-function hasExited(child: ChildProcess): boolean {
-  return child.exitCode !== null || child.signalCode !== null;
+/**
+ * Send `signal` to the whole process group led by `pid`. Both subprocesses
+ * are spawned `detached`, so the direct child is the group leader and a group
+ * kill also reaches any grandchild it spawned. That matters for the wall-clock
+ * bound: a grandchild that inherited the stdout/stderr pipe keeps the read end
+ * open after the direct child dies, so `close` (and with it the end of the
+ * generate run) never arrives.
+ *
+ * Returns false when the group could not be signalled, so the caller can fall
+ * back to the direct child: `ESRCH` (no such group: already gone, or `pid` is
+ * not a group leader) and `EPERM` (not our group to signal) are the expected
+ * ones; a platform without process groups (Windows) and an unusable pid
+ * (undefined after a failed spawn) take the same path. Never throws: this runs
+ * from watchdog timers and abort handlers, where an escaping error would take
+ * the service down.
+ */
+function killProcessGroup(pid: number | undefined, signal: NodeJS.Signals): boolean {
+  if (typeof pid !== "number" || pid <= 0) return false;
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Shared escalation: SIGTERM now, SIGKILL after `graceMs` if the child is
- * still running. The SIGKILL guard checks exitCode/signalCode, not
- * `child.killed`: Node sets `killed` as soon as a signal is delivered, not
- * when the child exits, so a `killed` guard would never escalate for a child
- * that ignores SIGTERM. Safe to call repeatedly.
+ * Group kill first, direct child only if the group could not be signalled.
+ * Keeping the fallback means a child that somehow is not a group leader
+ * behaves exactly as before this existed.
+ */
+function signalChildTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (killProcessGroup(child.pid, signal)) return;
+  child.kill(signal);
+}
+
+/**
+ * Children whose `close` event has already fired, recorded by `trackChild` at
+ * spawn time. `close` means the direct child exited AND every holder of the
+ * inherited pipes let go; a group member holding no pipe may live on and is not
+ * chased (no signal to a pgid that may be reused). `exitCode`/`signalCode` say nothing about
+ * the group: a grandchild that traps SIGTERM and inherited stdout/stderr keeps
+ * `close` pending (and the generate run with it) long after the direct child
+ * died, which is why the escalation is gated on `close` and not on the direct
+ * child having exited.
+ */
+const closedChildren = new WeakSet<ChildProcess>();
+
+/**
+ * Children we have started escalating, so a repeated `terminateChild` call
+ * (abort AND timeout can both fire for one run) neither re-signals nor stacks
+ * a second SIGKILL timer. `child.killed` cannot carry this for the group path:
+ * it is only set by `child.kill`, which the group path does not call.
+ */
+const escalating = new WeakSet<ChildProcess>();
+
+/**
+ * Shared escalation: SIGTERM now, SIGKILL after `graceMs` unless the child's
+ * `close` has fired by then. The guard is `close`, not `exitCode`/`signalCode`:
+ * the direct child dying on SIGTERM says nothing about a grandchild in the same
+ * group that traps it and still holds the pipes open. Nor `child.killed`: Node
+ * sets `killed` as soon as a signal is delivered, not when the child exits, so a
+ * `killed` guard would never escalate for a child that ignores SIGTERM. A
+ * SIGKILL into a group that has meanwhile emptied is harmless (`ESRCH`, and
+ * `signalChildTree` falls back to the already-dead direct child). Safe to call
+ * repeatedly.
  */
 function terminateChild(child: ChildProcess, graceMs: number): void {
-  if (hasExited(child) || child.killed) return;
-  child.kill("SIGTERM");
+  if (closedChildren.has(child) || child.killed || escalating.has(child)) return;
+  escalating.add(child);
+  signalChildTree(child, "SIGTERM");
   const kill = setTimeout(() => {
-    if (!hasExited(child)) child.kill("SIGKILL");
+    if (!closedChildren.has(child)) signalChildTree(child, "SIGKILL");
   }, graceMs);
   kill.unref?.();
+}
+
+/**
+ * Subprocesses that may still be running. A detached child is no longer in the
+ * service's process group, so it no longer shares the service's fate: before
+ * `detached` it was stopped by a terminal Ctrl-C only because the terminal
+ * signals the whole foreground group, and `index.ts`'s shutdown path never
+ * signals children at all. This set plus the `exit` hook below keeps that
+ * inherited guarantee instead of leaning on group membership. SIGKILL (no
+ * grace) because a process that is exiting has no event loop left to run a
+ * graceful escalation in. The hook covers a NORMAL exit of the service process
+ * only: a SIGKILL or an OOM kill, or a death from an unhandled signal, runs no
+ * `exit` listeners at all, so those still leave a detached child behind.
+ */
+const liveChildren = new Set<ChildProcess>();
+let childCleanupInstalled = false;
+
+function killLiveChildren(): void {
+  for (const child of liveChildren) {
+    if (!killProcessGroup(child.pid, "SIGKILL")) child.kill("SIGKILL");
+  }
+  liveChildren.clear();
+}
+
+/**
+ * Track a spawned child so it cannot outlive the service, and stop tracking it
+ * once it is gone. Records `close` in `closedChildren` (the escalation gate, see
+ * `terminateChild`) before its own bookkeeping, so a kill path can never signal
+ * a group after the run already closed. Not `child.unref()`: the pipes stay
+ * referenced (so a hung child still holds the run open and hits the watchdog)
+ * and the process stays killable from the `exit` hook.
+ */
+function trackChild(child: ChildProcess): void {
+  liveChildren.add(child);
+  if (!childCleanupInstalled) {
+    childCleanupInstalled = true;
+    process.on("exit", killLiveChildren);
+  }
+  const forget = () => {
+    liveChildren.delete(child);
+  };
+  child.once("close", () => {
+    closedChildren.add(child);
+    forget();
+  });
+  child.once("error", forget);
 }
 
 /**
@@ -234,8 +340,9 @@ const SCAFFOLDKIT_STDERR_MAX_BYTES = 4096;
  * on a nonzero exit — that's surfaced to the caller as metadata so a
  * failed scaffold doesn't mask a successful plan.
  *
- * Timeout → SIGTERM, then SIGKILL 5s later if the child has still not
- * exited (a child that ignores SIGTERM is force-killed), with
+ * Timeout → SIGTERM, then SIGKILL 5s later if the child's `close` has still
+ * not fired (a child that ignores SIGTERM, or a grandchild in the same process
+ * group that ignores it while holding the pipes open, is force-killed), with
  * `exitCode: -1` + a clear stderr marker so callers can detect the
  * timeout case in `done.scaffoldkit`.
  *
@@ -281,8 +388,12 @@ export async function runScaffoldkit(args: {
         cwd: args.outdir,
         env: buildChildEnv(),
         stdio: ["ignore", "ignore", "pipe"],
+        // Own process group, so terminateChild can take scaffoldkit down
+        // together with anything it spawned (see killProcessGroup).
+        detached: true,
       },
     );
+    trackChild(child);
     let stderr = "";
     let timedOut = false;
     child.stderr.setEncoding("utf8");
@@ -307,7 +418,8 @@ export async function runScaffoldkit(args: {
     });
 
     // Timeout watchdog: SIGTERM the child after SCAFFOLDKIT_TIMEOUT_MS,
-    // SIGKILL after the grace if it has not exited (see terminateChild).
+    // SIGKILL after the grace unless the child's `close` fired by then (see
+    // terminateChild).
     const timeout = setTimeout(() => {
       timedOut = true;
       terminateChild(child, graceMs);
@@ -396,8 +508,13 @@ export async function* runGenerate(
         // 4k-line CLI script.
         env: buildChildEnv(),
         stdio: ["ignore", "pipe", "pipe"],
+        // Own process group: the CLI is a 4k-line script that shells out, and
+        // a grandchild holding the stdout/stderr pipe open would keep the SSE
+        // run past its time bound (see killProcessGroup).
+        detached: true,
       },
     );
+    trackChild(child);
 
     // Propagate client disconnect → kill the subprocess. Without this, a
     // dropped SSE consumer leaves the CLI running to completion on the

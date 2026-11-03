@@ -112,7 +112,7 @@ describe("runScaffoldkit subprocess lifecycle", () => {
     expect(result.stderr).toMatch(/SIGKILL/);
   });
 
-  it("timeout does not SIGKILL a child that exited after the SIGTERM", async () => {
+  it("timeout still escalates when the direct child exited but the run has not closed", async () => {
     const child = fakeChild();
     vi.mocked(spawn).mockReturnValue(child);
 
@@ -125,11 +125,14 @@ describe("runScaffoldkit subprocess lifecycle", () => {
     });
 
     await vi.advanceTimersByTimeAsync(SCAFFOLDKIT_TIMEOUT_MS + 1);
-    // The child exits on SIGTERM; the close handler clears the timers only
-    // after the stream drains, so mark the exit state first like Node does.
+    // The direct child exited on SIGTERM while `close` stays pending, which is
+    // what a grandchild that inherited the captured stderr pipe and ignores
+    // SIGTERM does to a run. `exitCode`/`signalCode` only describe the direct
+    // child, so the gate is `close` and the escalation still has to go out.
     child.signalCode = "SIGTERM";
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.kill).toHaveBeenCalledTimes(2);
+    expect(child.kill).toHaveBeenLastCalledWith("SIGKILL");
 
     child.emit("close", null, "SIGTERM");
     await promise;

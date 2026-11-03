@@ -3,7 +3,7 @@ type: module
 title: HTTP generate pipeline
 description: What the server/ package does around one CLI run per POST /api/generate request (bearer auth, body and attachment checks, temp dir, CLI subprocess, optional scaffoldkit subprocess, tarball, SSE events, cleanup), and how the boot-time scaffoldkit probe relates to the per-request skip reasons.
 tags: [module, server, http, sse, scaffoldkit]
-timestamp: 2026-10-15T04:28:45Z
+timestamp: 2026-11-03T12:38:50Z
 sources:
   - server/src/index.ts
   - server/src/config.ts
@@ -110,79 +110,102 @@ flowchart TD
 ```
 
 1. **Temp dir.** A temp directory named after a fresh request id is created
-   (`server/src/generate.ts:367-372#"mkdtemp(resolve(tmpdir()"`), and the
+   (`server/src/generate.ts:479-484#"mkdtemp(resolve(tmpdir()"`), and the
    request's `input` is written to `input.json` with `JSON.stringify` and file
-   mode 0600 (`server/src/generate.ts:387#"mode: 0o600"`).
+   mode 0600 (`server/src/generate.ts:499#"mode: 0o600"`).
 2. **CLI run.** The CLI is spawned with `--input`, `--outdir` and
    `--no-install` only, in the temp dir
-   (`server/src/generate.ts:389-393#"cwd: tmp"`). No `--format` is passed,
+   (`server/src/generate.ts:501-505#"cwd: tmp"`). No `--format` is passed,
    so the CLI's `json` default applies
    (`scripts/bootstrap-plan.js:31#"format:"`), and no previous-run
    flag is passed, so every service run is a fresh run. The abort signal kills
-   the child with SIGTERM and, if it is still running after the grace, with
-   SIGKILL (`server/src/generate.ts:404-407#"addEventListener"`). The CLI also
+   the child's process group with SIGTERM and, unless the run closed within the
+   grace, again with SIGKILL
+   (`server/src/generate.ts:522-524#"addEventListener"`). The CLI also
    has a wall-clock bound of five minutes
-   (`server/src/generate.ts:186#"CLI_TIMEOUT_MS = 5 * 60_000"`): on expiry it
+   (`server/src/generate.ts:187#"CLI_TIMEOUT_MS = 5 * 60_000"`): on expiry it
    gets the same SIGTERM-then-SIGKILL escalation and the run ends with an
    `error` event "planforge CLI timed out after <ms>ms"
-   (`server/src/generate.ts:491-495#"planforge CLI timed out after"`).
+   (`server/src/generate.ts:608-612#"planforge CLI timed out after"`).
 3. **Progress.** stdout and stderr are split into lines, and each line becomes
    a `progress` event tagged with its stream
-   (`server/src/generate.ts:432-436#"requestId, stream: tag, line"`).
+   (`server/src/generate.ts:549-553#"requestId, stream: tag, line"`).
 4. **Exit.** A spawn failure emits one `error` event and ends the run
-   (`server/src/generate.ts:469-471#"message: err.message"`). A non-zero exit
+   (`server/src/generate.ts:586-588#"message: err.message"`). A non-zero exit
    emits `error` with the exit code
-   (`server/src/generate.ts:501-505#"planforge CLI exited with code"`).
+   (`server/src/generate.ts:618-622#"planforge CLI exited with code"`).
 5. **Read results.** After exit 0, an unreadable `planning/plan-output.json`
    ends the run with `error`
-   (`server/src/generate.ts:513-521#"Failed to read plan-output.json"`). A
+   (`server/src/generate.ts:630-638#"Failed to read plan-output.json"`). A
    missing `exports/scaffoldkit-input.json` sets the export to `null`; any
    other read or parse failure is kept as `inputReadError`
-   (`server/src/generate.ts:533-538#"scaffoldkitInputReadError = (err as Error).message"`).
+   (`server/src/generate.ts:650-655#"scaffoldkitInputReadError = (err as Error).message"`).
    The CLI writes that export on every run that reaches its write step
    (`scripts/bootstrap-plan.js:3347-3349#"renderScaffoldKitInput(input, output, scaffoldkitContext)"`),
    so with the current CLI a missing export after exit 0 is not expected.
 6. **Scaffold decision.** `scaffold: false` gives `skipped: "opt_out"`, a
    read failure gives `input_unreadable`, a missing export gives `no_input`
-   (`server/src/generate.ts:546-555#"no_input"`). Otherwise `runScaffoldkit`
+   (`server/src/generate.ts:663-672#"no_input"`). Otherwise `runScaffoldkit`
    runs; an `ENOENT` spawn error gives `skipped: "not_installed"`, and any
    other spawn error ends the run with `error`
-   (`server/src/generate.ts:565-576#"Failed to spawn scaffoldkit"`).
+   (`server/src/generate.ts:682-693#"Failed to spawn scaffoldkit"`).
 7. **Scaffoldkit subprocess.** The arguments are
-   `-m scaffoldkit.cli from-planforge <export> --target <outdir> --overwrite --no-install --no-ai-context`
-   (`server/src/generate.ts:267-278#"--no-ai-context"`). A non-zero exit is
-   returned as data, not thrown
-   (`server/src/generate.ts:339#"exitCode: code ?? -1"`), so a failed scaffold
-   still produces a `done` event. Captured stderr is capped at 4096 bytes
-   (`server/src/generate.ts:229#"SCAFFOLDKIT_STDERR_MAX_BYTES = 4096"`).
-   After five minutes
-   (`server/src/generate.ts:176#"SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000"`) the
-   watchdog calls the shared escalation helper
-   (`server/src/generate.ts:311-313#"terminateChild(child, graceMs);"`). The
-   helper sends SIGTERM and schedules a SIGKILL after the grace of five
-   seconds (`server/src/generate.ts:193#"KILL_GRACE_MS = 5_000"`), guarded by
-   `!hasExited(child)` (`exitCode` and `signalCode` both still `null`)
-   (`server/src/generate.ts:208-210#"if (!hasExited(child)) child.kill("`), not
-   by `child.killed`, because Node sets `killed` as soon as the SIGTERM is
-   delivered, not when the child exits. So a child that ignores SIGTERM is
-   force-killed after the grace. Either way the request ends with
-   `exitCode: -1` and a timeout message
-   (`server/src/generate.ts:332-335#"scaffoldkit timed out after"`). A client
-   disconnect uses the same helper
-   (`server/src/generate.ts:319-322#"args.abortSignal?.addEventListener"`), so
-   an aborted child that ignores SIGTERM is also force-killed after the grace.
+    `-m scaffoldkit.cli from-planforge <export> --target <outdir> --overwrite --no-install --no-ai-context`
+    (`server/src/generate.ts:374-385#"--no-ai-context"`). A non-zero exit is
+    returned as data, not thrown
+    (`server/src/generate.ts:451#"exitCode: code ?? -1"`), so a failed scaffold
+    still produces a `done` event. Captured stderr is capped at 4096 bytes
+    (`server/src/generate.ts:335#"SCAFFOLDKIT_STDERR_MAX_BYTES = 4096"`).
+    After five minutes
+    (`server/src/generate.ts:177#"SCAFFOLDKIT_TIMEOUT_MS = 5 * 60_000"`) the
+    watchdog calls the shared escalation helper
+    (`server/src/generate.ts:423-425#"terminateChild(child, graceMs);"`). The
+    helper sends SIGTERM and schedules a SIGKILL after the grace of five
+    seconds (`server/src/generate.ts:196#"KILL_GRACE_MS = 5_000"`), guarded by
+    the child's `close` event not having fired yet
+    (`server/src/generate.ts:268-270#"if (!closedChildren.has(child)) signalChildTree"`),
+    not by `child.killed` and not by `exitCode`/`signalCode`: Node sets
+    `killed` as soon as a signal is delivered, and `exitCode`/`signalCode` only
+    describe the DIRECT child, so either guard lets the run hang when the direct
+    child dies on SIGTERM while a grandchild in the same process group traps it
+    and still holds the output pipes. `close` says the direct child exited and every
+    holder of those pipes let go (`server/src/generate.ts:234-244#"const closedChildren"`;
+    a group member holding no pipe is not chased after `close`, on purpose, so no
+    signal goes to a pgid that may have been reused), and a SIGKILL
+    into a group that emptied in the meantime is harmless anyway: the group kill
+    throws `ESRCH` and the fallback signals the already-dead direct child. Either
+    signal goes to the child's
+    process group (`server/src/generate.ts:214-217#"function killProcessGroup"`),
+    and only to the direct child if that throws
+    (`server/src/generate.ts:229-231#"child.kill(signal)"`); both subprocesses are
+    spawned `detached` so they lead the group that gets the signal, which is what
+    takes down a grandchild that inherited the output pipes and would otherwise
+    hold the run past its bound. Either way the request ends with
+    `exitCode: -1` and a timeout message
+    (`server/src/generate.ts:443-447#"scaffoldkit timed out after"`). A client
+    disconnect uses the same helper
+    (`server/src/generate.ts:431-434#"args.abortSignal?.addEventListener"`), so a
+    run whose group still holds the pipes is force-killed after the grace even
+    when the direct child already exited by then.
 8. **Tarball.** The outdir contents are packed with the system `tar`
-   (`server/src/generate.ts:352-357#"maxBuffer: TARBALL_MAX_BYTES"`), with a
-   cap of 50 MiB (`server/src/generate.ts:166#"TARBALL_MAX_BYTES = 50 * 1024 * 1024"`).
-   An oversized or failed tar ends the run with `error`; otherwise the tarball
-   is base64-encoded
-   (`server/src/generate.ts:590-601#"buf.toString"`).
+    (`server/src/generate.ts:464-469#"maxBuffer: TARBALL_MAX_BYTES"`), with a
+    cap of 50 MiB (`server/src/generate.ts:167#"TARBALL_MAX_BYTES = 50 * 1024 * 1024"`).
+    An oversized or failed tar ends the run with `error`; otherwise the tarball
+    is base64-encoded
+    (`server/src/generate.ts:707-718#"buf.toString"`).
 9. **Done.** The `done` event carries `planOutput`, `scaffoldkitInput`, the
-   `scaffoldkit` result object, `outputTarGz` and `exitCode: 0`
-   (`server/src/generate.ts:612-619#"exitCode: 0"`).
+    `scaffoldkit` result object, `outputTarGz` and `exitCode: 0`
+    (`server/src/generate.ts:729-736#"exitCode: 0"`).
 10. **Cleanup.** A `finally` block removes the abort listener and deletes the
-    temp dir on every path, success or failure
-    (`server/src/generate.ts:621-623#"rm(tmp, { recursive: true, force: true })"`).
+     temp dir on every path, success or failure
+     (`server/src/generate.ts:738-740#"rm(tmp, { recursive: true, force: true })"`).
+     Every spawned child is tracked from spawn until it is gone
+     (`server/src/generate.ts:305-319#"function trackChild(child: ChildProcess)"`),
+     and the groups still live when the service process exits are SIGKILLed from
+     an `exit` hook, so a `detached` child cannot outlive the service. That hook
+     covers a NORMAL exit of the service process only: a SIGKILL, an OOM kill or
+     a death from an unhandled signal runs no `exit` listener, and a `detached`
+     child does outlive those.
 
 ## Boot probe versus per-request skip reasons
 
