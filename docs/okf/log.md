@@ -2,6 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-11-03T12:38:50Z, `server/src/generate.ts`: both generate subprocesses are spawned detached and signalled as a process group (direct-child fallback on `ESRCH`/`EPERM`); the post-grace SIGKILL and the termination entry are gated on the child's `close` (not on the direct child having exited), so a SIGTERM-ignoring grandchild holding the pipes cannot outlive the bound; live children are SIGKILLed on a normal exit of the service. `http-generate-pipeline.md` re-verified (steps 2, 7 and 10 rewritten to this behaviour, every remapped `generate.ts` citation checked at HEAD) and re-stamped.
 - 2026-10-15T04:28:45Z, re-verified http-generate-pipeline after review: the Done step citation
   points at the `done` yield again, and the escalation guard is described as
   `!hasExited(child)`. `okf-kit check --require-anchors docs/okf`: 0 errors,
