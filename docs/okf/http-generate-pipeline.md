@@ -168,8 +168,10 @@ flowchart TD
     `killed` as soon as a signal is delivered, and `exitCode`/`signalCode` only
     describe the DIRECT child, so either guard lets the run hang when the direct
     child dies on SIGTERM while a grandchild in the same process group traps it
-    and still holds the output pipes. `close` is the event that says the group is
-    empty (`server/src/generate.ts:234-244#"const closedChildren"`), and a SIGKILL
+    and still holds the output pipes. `close` says the direct child exited and every
+    holder of those pipes let go (`server/src/generate.ts:234-244#"const closedChildren"`;
+    a group member holding no pipe is not chased after `close`, on purpose, so no
+    signal goes to a pgid that may have been reused), and a SIGKILL
     into a group that emptied in the meantime is harmless anyway: the group kill
     throws `ESRCH` and the fallback signals the already-dead direct child. Either
     signal goes to the child's

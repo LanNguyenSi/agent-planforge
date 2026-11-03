@@ -233,9 +233,9 @@ function signalChildTree(child: ChildProcess, signal: NodeJS.Signals): void {
 
 /**
  * Children whose `close` event has already fired, recorded by `trackChild` at
- * spawn time. `close` is the only signal that there is nothing left to kill: it
- * means the process is gone AND every inherited pipe closed, so the process
- * group is empty. The direct child's `exitCode`/`signalCode` say nothing about
+ * spawn time. `close` means the direct child exited AND every holder of the
+ * inherited pipes let go; a group member holding no pipe may live on and is not
+ * chased (no signal to a pgid that may be reused). `exitCode`/`signalCode` say nothing about
  * the group: a grandchild that traps SIGTERM and inherited stdout/stderr keeps
  * `close` pending (and the generate run with it) long after the direct child
  * died, which is why the escalation is gated on `close` and not on the direct
