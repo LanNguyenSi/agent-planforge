@@ -159,9 +159,12 @@ scaffold is fatal to its flow.
   CLI subprocess is stopped after 5 minutes and the request ends with an
   `error` event "planforge CLI timed out after <ms>ms". scaffoldkit is
   stopped after 5 minutes and reported as `exitCode: -1`, with its stderr cut
-  to 4 KiB. Both stops, and a client disconnect, send SIGTERM and then
-  SIGKILL 5 seconds later if the child has still not exited, so a child that
-  ignores SIGTERM is force-killed. The `done` tarball is capped at 50 MiB.
+  to 4 KiB. Both stops, and a client disconnect, send SIGTERM to the
+  subprocess's own process group and then SIGKILL to that group 5 seconds
+  later unless the subprocess's output has closed by then, so a child that
+  ignores SIGTERM is force-killed, and so is a grandchild in the same group
+  that ignores it while the direct child dies on the SIGTERM. The `done`
+  tarball is capped at 50 MiB.
 - **Isolation**: the CLI and scaffoldkit subprocesses receive only `PATH`,
   `HOME`, `NODE_ENV`, `TMPDIR`, `LANG` and `LC_ALL` from the service's
   environment. Each request uses its own temp directory with `input.json`

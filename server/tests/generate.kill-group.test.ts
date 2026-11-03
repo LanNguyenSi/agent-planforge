@@ -6,8 +6,9 @@
  *      direct child is left alone when the group kill worked;
  *   2. a group kill that fails (ESRCH / EPERM) or a child with no usable pid
  *      falls back to signalling the direct child only;
- *   3. the SIGTERM-to-SIGKILL escalation also goes to the group, and repeated
- *      termination requests neither re-signal nor stack a second SIGKILL timer.
+ *   3. the SIGTERM-to-SIGKILL escalation also goes to the group, gated on the
+ *      child's `close` not having fired yet, and repeated termination requests
+ *      neither re-signal nor stack a second SIGKILL timer.
  *
  * `spawn` is mocked (file-scoped) so the child is a controllable fake;
  * `process.kill` is spied on, never really aimed at a pid.
@@ -179,6 +180,37 @@ describe("terminateChild signals the process group", () => {
     // process.kill(-0) means "the caller's own process group", so a pid of 0
     // must never reach it either.
     await expectNoGroupSignal({ pid: 0 });
+  });
+
+  it("does not escalate once close has fired, even though the grace is still open", async () => {
+    // The gate is "close has not fired", in both directions: after close there
+    // is nothing left in the group, and a group id can in principle be reused,
+    // so a SIGKILL that late is at best an ESRCH and at worst aimed at a
+    // stranger.
+    const child = fakeChild({ pid: FAKE_PID });
+    vi.mocked(spawn).mockReturnValue(child);
+    const spy = spyOnProcessKill();
+
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const promise = runScaffoldkit({
+      python: "python3",
+      inputPath: "/tmp/input.json",
+      outdir: "/tmp/out",
+      killGraceMs: 5_000,
+      abortSignal: controller.signal,
+    });
+
+    await vi.advanceTimersByTimeAsync(SCAFFOLDKIT_TIMEOUT_MS + 1);
+    expect(spy).toHaveBeenCalledWith(-FAKE_PID, "SIGTERM");
+
+    // The run closes inside the grace: the group is empty from now on.
+    child.emit("close", null, "SIGTERM");
+    await promise;
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(groupTargets(spy)).toEqual([-FAKE_PID]);
+    expect(child.kill).not.toHaveBeenCalled();
   });
 
   it("a second termination request neither re-signals nor stacks a second SIGKILL", async () => {

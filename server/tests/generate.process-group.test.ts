@@ -6,13 +6,23 @@
  * stdout/stderr pipe keeps the service's read end open after the direct child
  * is gone: the run's `close` event never arrives, and the wall-clock bound on
  * a generate run stops holding. Every fixture here spawns exactly such a
- * grandchild and records its pid, so the assertions can ask whether the
- * grandchild is really gone (`process.kill(pid, 0)` throwing ESRCH).
+ * grandchild and records both pids in files, so the assertions can ask whether
+ * the grandchild is really gone (`process.kill(pid, 0)` throwing ESRCH).
  *
- * Each test also carries its own timeout, well below vitest's default:
- * regressing to a direct-child-only kill does not fail an assertion, it hangs
- * the run on the still-open pipe, so the timeout is what makes that
- * regression visible.
+ * Two shapes of fixture matter, and they cover different bugs:
+ *   - `ignoreSigterm: true`: the whole tree ignores SIGTERM, so only the
+ *     SIGKILL half of the escalation can end it;
+ *   - `grandchildIgnoresSigterm: true`: the DIRECT child dies on SIGTERM while
+ *     the grandchild ignores it. A post-grace SIGKILL gated on the direct
+ *     child still running would then never be sent and the run would hang,
+ *     which is what the close-gated escalation is for.
+ *
+ * Each test carries its own timeout, well below vitest's default: regressing
+ * the kill does not fail an assertion, it hangs the run on the still-open pipe,
+ * so the timeout is what makes that regression visible. `afterEach` reads the
+ * fixture's pid files back (it does not rely on the test having recorded the
+ * pids, which a timed-out test never does) and SIGKILLs each pid and its group,
+ * so no test can leave a process behind.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { spawn } from "node:child_process";
@@ -28,12 +38,16 @@ const CLI_BOUND_MS = 2_000;
 // Generous margin over the grace for slow CI; still far below the 60s
 // self-exit every stub arms itself with, so a regression cannot leak a process.
 const MARGIN_MS = 5_000;
-// Own timeout for every test: a regression hangs on the still-open pipe, and
-// the legit runs need ~2s, so this fails a regression in ~12s instead of
-// waiting out vitest's default per-file budget.
+// Own timeout for the tests whose trigger is a timer or a disconnect and whose
+// legit run needs ~2s: a regression hangs on the still-open pipe, so this fails
+// one in ~12s instead of waiting out vitest's default per-file budget.
 const TEST_TIMEOUT_MS = 12_000;
+// Shorter timeout for the close-gated escalation tests: the legit runs end
+// within the bound + grace + a few hundred ms, so a regression that leaves the
+// group alive (and the run with it) is reported in ~8s.
+const GATED_KILL_TIMEOUT_MS = 8_000;
 
-let workDir: string | undefined;
+let currentFixture: Fixture | undefined;
 const trackedPids = new Set<number>();
 
 function pidAlive(pid: number): boolean {
@@ -64,10 +78,55 @@ async function readPidFile(path: string, timeoutMs = 10_000): Promise<number> {
   return Number(readFileSync(path, "utf8"));
 }
 
+/**
+ * The pid must be unreapable: `process.kill(pid, 0)` reports ESRCH, so the
+ * process is gone rather than merely stopped or about to be reaped.
+ */
+function expectEsrch(pid: number): void {
+  let code: string | undefined;
+  try {
+    process.kill(pid, 0);
+  } catch (err) {
+    code = (err as NodeJS.ErrnoException).code;
+  }
+  expect(code).toBe("ESRCH");
+}
+
+/** SIGKILL a pid and the group it leads; both are already-gone-safe. */
+function killTree(pid: number): void {
+  for (const target of [-pid, pid]) {
+    try {
+      process.kill(target, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+}
+
 interface Fixture {
   planforgeRoot: string;
   childPidFile: string;
   grandchildPidFile: string;
+}
+
+interface FixtureOptions {
+  /** Install the SIGTERM-ignoring handler on BOTH processes. */
+  ignoreSigterm: boolean;
+  /** Install it on the grandchild only: the direct child then dies on SIGTERM. */
+  grandchildIgnoresSigterm?: boolean;
+  /**
+   * Let the direct child exit as soon as it has spawned the grandchild, so the
+   * run is already waiting on the grandchild's pipe before anything signals it.
+   */
+  childExitsImmediately?: boolean;
+}
+
+const IGNORE_SIGTERM = 'process.on("SIGTERM", () => {});\n';
+// Bounded idle: a regression must not leave a process running behind.
+const IDLE = "setTimeout(() => process.exit(0), 60000);\n";
+
+function sigtermHandler(applies: boolean): string {
+  return applies ? IGNORE_SIGTERM : "";
 }
 
 /**
@@ -77,40 +136,40 @@ interface Fixture {
  * are baked into the generated scripts: the CLI child env is allow-listed, so
  * an env var would not reach the stub.
  *
- * `ignoreSigterm` applies to both processes. With it set, only the SIGKILL half
- * of the escalation can end the tree, which is what proves the escalation
- * reaches the grandchild rather than only the direct child.
+ * Which process ignores SIGTERM is what each shape tests: `ignoreSigterm` covers
+ * the whole tree, so only the SIGKILL half of the escalation can end it;
+ * `grandchildIgnoresSigterm` leaves the direct child to die on SIGTERM, so a
+ * SIGKILL that were still gated on the direct child having exited would never
+ * reach the grandchild.
  */
-function makeFixture(name: string, opts: { ignoreSigterm: boolean }): Fixture {
-  workDir = mkdtempSync(join(tmpdir(), `process-group-${name}-`));
-  const scripts = join(workDir, "scripts");
+function makeFixture(name: string, opts: FixtureOptions): Fixture {
+  const dir = mkdtempSync(join(tmpdir(), `process-group-${name}-`));
+  const scripts = join(dir, "scripts");
   mkdirSync(scripts, { recursive: true });
-  const childPidFile = join(workDir, "child.pid");
-  const grandchildPidFile = join(workDir, "grandchild.pid");
-  const grandchildScript = join(workDir, "grandchild.js");
-  const ignoreSigterm = opts.ignoreSigterm ? 'process.on("SIGTERM", () => {});\n' : "";
-  // Bounded idle: a regression must not leave a process running behind.
-  const idle = "setTimeout(() => process.exit(0), 60000);\n";
+  const childPidFile = join(dir, "child.pid");
+  const grandchildPidFile = join(dir, "grandchild.pid");
+  const grandchildScript = join(dir, "grandchild.js");
 
   writeFileSync(
     grandchildScript,
-    ignoreSigterm +
+    sigtermHandler(opts.ignoreSigterm || !!opts.grandchildIgnoresSigterm) +
       `require("node:fs").writeFileSync(${JSON.stringify(grandchildPidFile)}, String(process.pid));\n` +
       'console.log("grandchild: holding the inherited stdout pipe open");\n' +
-      idle,
+      IDLE,
   );
 
   writeFileSync(
     join(scripts, "bootstrap-plan.js"),
-    ignoreSigterm +
+    sigtermHandler(opts.ignoreSigterm) +
       `require("node:child_process").spawn(process.execPath, [${JSON.stringify(grandchildScript)}], { stdio: ["ignore", "inherit", "inherit"] });\n` +
       `require("node:fs").writeFileSync(${JSON.stringify(childPidFile)}, String(process.pid));\n` +
       'console.log("stub cli: grandchild spawned");\n' +
-      idle,
+      (opts.childExitsImmediately ? "process.exit(0);\n" : IDLE),
   );
   chmodSync(join(scripts, "bootstrap-plan.js"), 0o755);
 
-  return { planforgeRoot: workDir, childPidFile, grandchildPidFile };
+  currentFixture = { planforgeRoot: dir, childPidFile, grandchildPidFile };
+  return currentFixture;
 }
 
 function generateOptions(
@@ -130,50 +189,54 @@ function generateOptions(
 /**
  * A `python3` stub for `runScaffoldkit`: spawns a grandchild that inherits the
  * captured stderr pipe, records both pids, idles. Same pipe-holding problem as
- * the CLI child, on the scaffoldkit side of the module.
+ * the CLI child, on the scaffoldkit side of the module, with the same
+ * who-ignores-SIGTERM options (see makeFixture).
  */
-function makeScaffoldkitFixture(opts: { ignoreSigterm: boolean }): Fixture {
-  workDir = mkdtempSync(join(tmpdir(), "process-group-scaffoldkit-"));
-  const childPidFile = join(workDir, "child.pid");
-  const grandchildPidFile = join(workDir, "grandchild.pid");
-  const grandchildScript = join(workDir, "grandchild.js");
-  const ignoreSigterm = opts.ignoreSigterm ? 'process.on("SIGTERM", () => {});\n' : "";
-  const idle = "setTimeout(() => process.exit(0), 60000);\n";
+function makeScaffoldkitFixture(opts: FixtureOptions): Fixture {
+  const dir = mkdtempSync(join(tmpdir(), "process-group-scaffoldkit-"));
+  const childPidFile = join(dir, "child.pid");
+  const grandchildPidFile = join(dir, "grandchild.pid");
+  const grandchildScript = join(dir, "grandchild.js");
 
   writeFileSync(
     grandchildScript,
-    ignoreSigterm +
+    sigtermHandler(opts.ignoreSigterm || !!opts.grandchildIgnoresSigterm) +
       `require("node:fs").writeFileSync(${JSON.stringify(grandchildPidFile)}, String(process.pid));\n` +
-      idle,
+      IDLE,
   );
 
-  const stub = join(workDir, "python3");
+  const stub = join(dir, "python3");
   writeFileSync(
     stub,
     `#!${process.execPath}\n` +
-      ignoreSigterm +
+      sigtermHandler(opts.ignoreSigterm) +
       `require("node:child_process").spawn(process.execPath, [${JSON.stringify(grandchildScript)}], { stdio: ["ignore", "ignore", "inherit"] });\n` +
       `require("node:fs").writeFileSync(${JSON.stringify(childPidFile)}, String(process.pid));\n` +
-      idle,
+      IDLE,
   );
   chmodSync(stub, 0o755);
 
-  return { planforgeRoot: workDir, childPidFile, grandchildPidFile };
+  currentFixture = { planforgeRoot: dir, childPidFile, grandchildPidFile };
+  return currentFixture;
 }
 
 afterEach(() => {
-  for (const pid of trackedPids) {
-    for (const target of [-pid, pid]) {
-      try {
-        process.kill(target, "SIGKILL");
-      } catch {
-        // already gone
+  // The fixture's pid files, not the test body, are the authority on which
+  // processes exist: a test that times out never reaches the point where it
+  // records the pids it wanted cleaned up, and a hanging regression is exactly
+  // the case that must not leave a tree running.
+  if (currentFixture) {
+    for (const pidFile of [currentFixture.childPidFile, currentFixture.grandchildPidFile]) {
+      if (existsSync(pidFile)) {
+        const pid = Number(readFileSync(pidFile, "utf8").trim());
+        if (Number.isInteger(pid) && pid > 0) killTree(pid);
       }
     }
   }
+  for (const pid of trackedPids) killTree(pid);
   trackedPids.clear();
-  if (workDir) rmSync(workDir, { recursive: true, force: true });
-  workDir = undefined;
+  if (currentFixture) rmSync(currentFixture.planforgeRoot, { recursive: true, force: true });
+  currentFixture = undefined;
 });
 
 describe("CLI timeout reaches the whole process group", () => {
@@ -276,6 +339,172 @@ describe("scaffoldkit abort reaches the whole process group", () => {
   );
 });
 
+describe("abort reaches a grandchild that ignores SIGTERM after the direct child died on it", () => {
+  it(
+    "ends the run after the grace and leaves no grandchild holding the stdout pipe",
+    async () => {
+      const fixture = makeFixture("abort-grandchild-only", {
+        ignoreSigterm: false,
+        grandchildIgnoresSigterm: true,
+      });
+      const ac = new AbortController();
+      const events: GenerateEvent[] = [];
+      const drain = (async () => {
+        for await (const ev of runGenerate(
+          { name: "x" },
+          generateOptions(fixture, { abortSignal: ac.signal }),
+        )) {
+          events.push(ev);
+        }
+      })();
+
+      const childPid = await readPidFile(fixture.childPidFile);
+      const grandchildPid = await readPidFile(fixture.grandchildPidFile);
+      trackedPids.add(childPid);
+      trackedPids.add(grandchildPid);
+      expect(pidAlive(grandchildPid)).toBe(true);
+
+      const t0 = Date.now();
+      ac.abort();
+      await drain;
+      const elapsed = Date.now() - t0;
+
+      // The direct child died on SIGTERM (node's default), so the run could only
+      // end once the post-grace SIGKILL reached the grandchild that ignored it:
+      // a gate on the direct child having exited would never send it.
+      expect(elapsed).toBeGreaterThanOrEqual(GRACE_MS - 50);
+      expect(elapsed).toBeLessThan(GRACE_MS + MARGIN_MS);
+      expect(await waitGone(childPid)).toBe(true);
+      expect(await waitGone(grandchildPid)).toBe(true);
+      expectEsrch(grandchildPid);
+      expect(events.at(-1)?.type).toBe("error");
+    },
+    GATED_KILL_TIMEOUT_MS,
+  );
+});
+
+describe("CLI timeout reaches a grandchild that ignores SIGTERM after the direct child died on it", () => {
+  it(
+    "ends the run at the bound plus the grace and leaves no grandchild holding the stdout pipe",
+    async () => {
+      const fixture = makeFixture("timeout-grandchild-only", {
+        ignoreSigterm: false,
+        grandchildIgnoresSigterm: true,
+      });
+      const events: GenerateEvent[] = [];
+      const t0 = Date.now();
+      for await (const ev of runGenerate(
+        { name: "x" },
+        generateOptions(fixture, { cliTimeoutMs: CLI_BOUND_MS }),
+      )) {
+        events.push(ev);
+      }
+      const elapsed = Date.now() - t0;
+
+      const childPid = await readPidFile(fixture.childPidFile);
+      const grandchildPid = await readPidFile(fixture.grandchildPidFile);
+      trackedPids.add(childPid);
+      trackedPids.add(grandchildPid);
+
+      const last = events.at(-1)!;
+      expect(last.type).toBe("error");
+      expect(last.message).toMatch(new RegExp(`planforge CLI timed out after ${CLI_BOUND_MS}ms`));
+      // SIGTERM at the bound ended the direct child; the grandchild only went
+      // with the close-gated SIGKILL, one grace later.
+      expect(elapsed).toBeGreaterThanOrEqual(CLI_BOUND_MS + GRACE_MS - 50);
+      expect(elapsed).toBeLessThan(CLI_BOUND_MS + GRACE_MS + MARGIN_MS);
+      expect(await waitGone(grandchildPid)).toBe(true);
+      expectEsrch(grandchildPid);
+    },
+    GATED_KILL_TIMEOUT_MS,
+  );
+});
+
+describe("scaffoldkit abort reaches a grandchild that ignores SIGTERM after the direct child died on it", () => {
+  it(
+    "ends the scaffold run after the grace and leaves no grandchild holding the stderr pipe",
+    async () => {
+      const fixture = makeScaffoldkitFixture({
+        ignoreSigterm: false,
+        grandchildIgnoresSigterm: true,
+      });
+      const ac = new AbortController();
+      const promise = runScaffoldkit({
+        python: join(fixture.planforgeRoot, "python3"),
+        inputPath: join(fixture.planforgeRoot, "input.json"),
+        outdir: fixture.planforgeRoot,
+        abortSignal: ac.signal,
+        killGraceMs: GRACE_MS,
+      });
+
+      const childPid = await readPidFile(fixture.childPidFile);
+      const grandchildPid = await readPidFile(fixture.grandchildPidFile);
+      trackedPids.add(childPid);
+      trackedPids.add(grandchildPid);
+      expect(pidAlive(grandchildPid)).toBe(true);
+
+      const t0 = Date.now();
+      ac.abort();
+      const result = await promise;
+      const elapsed = Date.now() - t0;
+
+      // Same on the scaffoldkit side: the promise resolves on `close`, which
+      // only arrives once the group is gone.
+      expect(elapsed).toBeGreaterThanOrEqual(GRACE_MS - 50);
+      expect(elapsed).toBeLessThan(GRACE_MS + MARGIN_MS);
+      expect(result.exitCode).toBe(-1);
+      expect(await waitGone(childPid)).toBe(true);
+      expect(await waitGone(grandchildPid)).toBe(true);
+      expectEsrch(grandchildPid);
+    },
+    GATED_KILL_TIMEOUT_MS,
+  );
+});
+
+describe("termination requested after the direct child is already gone", () => {
+  it(
+    "still takes down the grandchild that holds the pipe open and ignores SIGTERM",
+    async () => {
+      const fixture = makeFixture("child-already-gone", {
+        ignoreSigterm: false,
+        grandchildIgnoresSigterm: true,
+        childExitsImmediately: true,
+      });
+      const ac = new AbortController();
+      const events: GenerateEvent[] = [];
+      const drain = (async () => {
+        for await (const ev of runGenerate(
+          { name: "x" },
+          generateOptions(fixture, { abortSignal: ac.signal }),
+        )) {
+          events.push(ev);
+        }
+      })();
+
+      const childPid = await readPidFile(fixture.childPidFile);
+      const grandchildPid = await readPidFile(fixture.grandchildPidFile);
+      trackedPids.add(childPid);
+      trackedPids.add(grandchildPid);
+      // The run is already stuck on the grandchild's pipe with the direct child
+      // dead: an escalation gated on the direct child would find nothing to do.
+      expect(await waitGone(childPid)).toBe(true);
+      expect(pidAlive(grandchildPid)).toBe(true);
+
+      const t0 = Date.now();
+      ac.abort();
+      await drain;
+      const elapsed = Date.now() - t0;
+
+      expect(elapsed).toBeGreaterThanOrEqual(GRACE_MS - 50);
+      expect(elapsed).toBeLessThan(GRACE_MS + MARGIN_MS);
+      expect(await waitGone(grandchildPid)).toBe(true);
+      expectEsrch(grandchildPid);
+      expect(events.at(-1)?.type).toBe("error");
+    },
+    GATED_KILL_TIMEOUT_MS,
+  );
+});
+
 describe("detached children do not outlive the service", () => {
   it(
     "a service process that exits normally takes the CLI child and its grandchild with it",
@@ -285,7 +514,7 @@ describe("detached children do not outlive the service", () => {
       // Stands in for the HTTP service: starts one generate run, then exits
       // normally on a timer (what index.ts's shutdown path ends up doing with
       // process.exit). It kills no children by hand.
-      const serviceEntry = join(workDir!, "service.mjs");
+      const serviceEntry = join(fixture.planforgeRoot, "service.mjs");
       writeFileSync(
         serviceEntry,
         [

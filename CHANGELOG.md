@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **A terminated generate run takes the child's whole process group with it.** The CLI and scaffoldkit subprocesses now run in their own process group (`detached`) and are signalled with `process.kill(-pid, sig)`, falling back to `child.kill(sig)` when the group kill throws `ESRCH`/`EPERM`, so a grandchild that inherited the stdout/stderr pipes no longer survives the SIGTERM-to-SIGKILL escalation and holds the run past its time bound. The service also SIGKILLs the groups it still tracks when its own process exits, so a detached child cannot outlive it.
+- **A terminated generate run takes the child's whole process group with it.** The CLI and scaffoldkit subprocesses now run in their own process group (`detached`) and are signalled with `process.kill(-pid, sig)`, falling back to `child.kill(sig)` when the group kill throws `ESRCH`/`EPERM`, so a grandchild that inherited the stdout/stderr pipes no longer survives the SIGTERM-to-SIGKILL escalation and holds the run past its time bound. The post-grace SIGKILL is gated on the run's `close` event not having fired rather than on the direct child still being alive: previously a direct child that died on SIGTERM while a grandchild trapped it and kept the pipes open left the escalation unsent and the run unbounded, and the same applied to a disconnect that arrived after the direct child had already exited. The service also SIGKILLs the groups it still tracks when its own process exits, so a detached child cannot outlive a normal exit; a SIGKILL, an OOM kill or a death from an unhandled signal runs no exit hook, and a detached child does outlive those.
 
 ### Changed
 
