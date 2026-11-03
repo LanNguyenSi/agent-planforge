@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **`@hono/node-server` 2.1.5** (GHSA-rmxm-3fg6-px4f): the `server/` lockfile resolves 2.1.5 (was 2.0.12), which fixes `serveStatic` decoding the request path a second time and so letting a request bypass middleware on static paths (affected: `>= 1.19.10, < 2.1.3`). Lockfile only, a direct dependency whose range is unchanged.
 
+### Fixed
+
+- **A terminated generate run takes the child's whole process group with it.** The CLI and scaffoldkit subprocesses now run in their own process group (`detached`) and are signalled with `process.kill(-pid, sig)`, falling back to `child.kill(sig)` when the group kill throws `ESRCH`/`EPERM`, so a grandchild that inherited the stdout/stderr pipes no longer survives the SIGTERM-to-SIGKILL escalation and holds the run past its time bound. The service also SIGKILLs the groups it still tracks when its own process exits, so a detached child cannot outlive it.
+
 ### Changed
 
 - Dependency updates: `renovate.json` extends the shared `github>LanNguyenSi/renovate-config` preset (weekly grouped patch/minor pull requests, 7-day minimum release age, no automerge, majors only through the Dependency Dashboard).
