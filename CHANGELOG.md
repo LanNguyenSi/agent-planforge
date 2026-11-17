@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Security
 
 - **`hono` 4.13.18** (GHSA-46wx-v44x-9hh2, GHSA-4h7h-rv7c-7m2v, GHSA-4m76-xfj5-7975, GHSA-h7mg-cq63-vhpq, GHSA-3gg2-335m-rxc6): the lockfile resolves 4.13.18 (was 4.13.13), which fixes `csrf()` ignoring `text/ping` requests, `validator('form')` skipping multipart bodies with extra parameters, `mount()` forwarding paths that bypass scoped middleware, RegExpRouter skipping wildcard middleware, and the `css` helper HTML injection (affected: `< 4.13.16`). Lockfile only, `server/package-lock.json` (direct dependencies of the server); the declared ranges are unchanged.
-- **`@hono/node-server` 2.1.8** (GHSA-qv5m-9pm6-hqp3, GHSA-jpvv-r467-5p4w): the lockfile resolves 2.1.8 (was 2.1.5), which fixes a process crash on `ECONNRESET` during an async WebSocket upgrade and a backslash in the request path being parsed as a separator (affected: `>= 2.0.0, < 2.1.6`). Lockfile only, `server/package-lock.json` (direct dependencies of the server); the declared ranges are unchanged.
+- **`@hono/node-server` 2.1.8** (GHSA-qv5m-9pm6-hqp3, GHSA-jpvv-r467-5p4w): the lockfile resolves 2.1.8 (was 2.1.5), which fixes a process crash on `ECONNRESET` during an async WebSocket upgrade and a backslash in the request path being parsed as a separator (affected: `>= 2.0.0, < 2.1.6`). Lockfile only, `server/package-lock.json` (direct dependencies of the server); #147 later raised the declared server ranges (see Changed).
 - **`@hono/node-server` 2.1.5** (GHSA-rmxm-3fg6-px4f): the `server/` lockfile resolves 2.1.5 (was 2.0.12), which fixes `serveStatic` decoding the request path a second time and so letting a request bypass middleware on static paths (affected: `>= 1.19.10, < 2.1.3`). Lockfile only, a direct dependency whose range is unchanged.
 
 ### Fixed
@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Dependency updates (#147): the CLI's runtime range moves to `ajv` ^8.20.0; the server's ranges move to `@hono/node-server` ^2.1.6 and `hono` ^4.13.17, plus non-major dev-dependency bumps.
 - Dependency updates: `renovate.json` extends the shared `github>LanNguyenSi/renovate-config` preset (weekly grouped patch/minor pull requests, 7-day minimum release age, no automerge, majors only through the Dependency Dashboard).
 - Runtime and CI move from Node 20 (EOL) to Node 24 LTS: the CLI CI matrix is `[22, 24]` (was `[18, 20]`), the server CI job runs on 22 like the server image, and `templates/Dockerfile.dev.template` uses 24 (was 20). `@types/node` is unchanged: `server/` keeps `^22` because its image stays `node:22-bookworm-slim`, and the root package has none.
 - Server image pins scaffoldkit at f951fc7, its v0.4.3 release (was 6c3fa65). The step changes only scaffoldkit's CHANGELOG and package version, so `scaffoldkit --version` in the image reports 0.4.3; no blueprint, schema or CLI change.
